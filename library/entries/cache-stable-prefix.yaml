@@ -1,0 +1,208 @@
+# 3.b.i: Keep the prompt prefix cache-stable
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.b.i
+legacy_id: T63
+slug: cache-stable-prefix
+name: Keep the prompt prefix cache-stable
+kind: technique
+status: card
+tiers:
+- tier: 1
+  why: a reordering that leaves what the model sees unchanged, verified on the hand-labeled set
+- tier: 3
+  why: if content changes or the prefix crosses a caching threshold that alters behavior
+levers:
+- context
+domains:
+- general
+evidence_domains:
+- code-generation
+- data-analysis
+categories:
+- prompts.caching
+summary: 'Put static content (identity, rules, tool definitions) before a boundary and per-turn content
+  (date, state, memory) after it; keep the prefix bit-for-bit identical across turns; strip thinking text
+  from persisted history; and track per-turn cache-miss cost. Check the provider''s caching minimum: a
+  prefix below it never caches.'
+how: '1. Read the prompt assembly code: find timestamps, per-turn state, or non-deterministic serialization
+  (dict order, ids) early in the prompt. 2. Move them after the static block; sort and fix serialization.
+  3. Confirm the static prefix exceeds the provider''s minimum cacheable length. 4. Replay the hand-labeled
+  set; compare cache-hit rate before and after.'
+detect:
+  static: a timestamp, session id or per-turn state before the static block; non-deterministic serialization;
+    a marked-for-caching prefix shorter than the provider's minimum (in one image-labeling agent, 504
+    tokens against Haiku 4.5's 4,096)
+  traces: cache_read tokens near zero across calls that share a prefix; cache-hit rate below about 50%
+    on multi-turn runs
+impact:
+  quality:
+    effect: none
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: cached input is billed at a fraction of full price; RETRACE's cache hits rose 45.6% to 90.8%
+      as a side effect (Aug 2026)
+    basis: evidence
+  performance:
+    effect: improves
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: verify-fix
+  tier: 1
+  how: replay the hand-labeled set; compare cache-hit rate
+- method: monitor
+  how: cache-hit rate and cache-miss cost per turn
+evidence:
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Split the system prompt at a static/dynamic cache boundary
+  effect: Claude Code SYSTEM_PROMPT_DYNAMIC_BOUNDARY; the static prefix is "cached via Blake2b hashing
+    with scope 'global'" and "achieves high cache hit rates across turns and even across sub-agents";
+    OpenHands CacheTier.STATIC/DYNAMIC arrived at the same design independently; Codex prompt_cache_key
+    derived from ThreadId. No hit-rate numbers.
+  direction: supports
+  measured: false
+  locator: Sec 7.2; Observation 2; Table 11 "Prompt Caching"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Normalize the prompt prefix bit-for-bit for cache hits
+  effect: Hermes "prompt prefix is bit-perfect normalized (sorted compact re-serialization of tool-call
+    JSON, a date-only timestamp, a frozen memory snapshot) so that even local llama.cpp and vLLM KV caches
+    hit across turns"; places four cache_control breakpoints ("system_and_3").
+  direction: supports
+  measured: false
+  locator: Sec 7.2 (Hermes); Observation 2
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Emit every provider's cache dialect at once
+  effect: OpenCode "emits six providers' cache dialects simultaneously and shapes its system prompt to
+    at most two messages (one by default) to match the cache slots."
+  direction: supports
+  measured: false
+  locator: Sec 7.2; Observation 2; Table 12 "Cache-Dialect Fanout"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Strip extended-thinking text from persisted history
+  effect: Gemini CLI "Keeps extended-thinking parts out of persisted history at response-recording time
+    so they don't pollute future cache lookups"; cited as a mitigation for "Multi-agent systems use ~15x
+    more tokens than chat" [17].
+  direction: supports
+  measured: false
+  locator: Sec 7.4; Sec 15.1
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Audit per-turn cache-miss cost as a metric
+  effect: Pi "audits per-turn cache-miss dollar waste as a first-class metric"; "a per-turn cache-miss
+    dollar-waste audit that prices every avoidable cache invalidation."
+  direction: supports
+  measured: false
+  locator: Sec 7.5; Observation 2
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Maximize prompt-cache hit rate; track it as metric
+  effect: 'Manus called cache hit rate "the most important metric for production agents": "a higher capacity
+    ($/token) model with caching can actually be cheaper than a lower cost model without it." Coding agents
+    "would be cost-prohibitive without caching." No numbers.'
+  direction: supports
+  measured: false
+  locator: Cache Context
+- source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+    Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+  date: '2026-08-09'
+  task: Share issue and trajectory prefix across verifier calls
+  effect: 'Table 4, average per issue, SWE-bench Verified: GPT-5 mini baseline 26.3K input, 45.6% cache
+    hit, $0.07 vs RETRACE 60.6K input, 90.8% cache hit, $0.06; output tokens 4.2K -> 1.2K. MiniMax M2.5
+    baseline 123.3K input, 94.6% cache hit, 0.07 vs RETRACE 78.0K, 96.7%, 0.05. Cost ratio below 1.0x
+    on both backbones.'
+  direction: supports
+  measured: true
+  locator: Cost analysis; Table 4
+- source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
+    A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
+  date: '2026-04-28'
+  task: Cache the schema and semantic-layer prefix
+  effect: 'Argued, not measured: the document adds ~2-4K input tokens per query (Table 1); with caching
+    "the marginal cost ... is effectively zero".'
+  direction: supports
+  measured: false
+  locator: Section 5.3 Cost and Latency
+related:
+- 3.a.iv
+absorbs:
+- legacy_id: P22
+  name: KV-cache-friendly prompt layout
+  group: Production
+  source: master
+  family: prompt
+  sub_type: formatting
+  categories:
+  - prompts.caching
+  note: Stable prefix, append-only, deterministic serialization.
+  assessment:
+    detection:
+      static: Timestamps or dynamic content at the prompt start; non-deterministic serialization (dict
+        ordering); tool list changes mid-session.
+      traces: Cache-read token counts from provider usage fields.
+      evals: Cost per item; cache hit percentage.
+      judge: null
+      probes:
+        what: Replay identical sessions.
+        construct: Run the same prefix twice and read cache metrics.
+      primary:
+      - static
+      - traces
+    qa:
+      unit: Hash of the first N prompt tokens is stable across runs.
+      examples: Replay probes.
+      benchmark: null
+      production: Cache hit rate dashboard.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: Up to 10x on cached tokens.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: none
+        magnitude: low
+        note: ''
+      latency:
+        effect: improves
+        magnitude: medium
+        note: ''
+      primary:
+      - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: formatting
+  harness_role: prompt
+  action: restructure

@@ -1,0 +1,161 @@
+# 8.a.ii: Surface information the source holds but the agent cannot read
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 8.a.ii
+legacy_id: T39
+slug: surface-unreadable-information
+name: Surface information the source holds but the agent cannot read
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model can reach and sees
+levers:
+- knowledge-access
+domains:
+- retrieval
+- data-analysis
+- document-extraction
+evidence_domains:
+- data-analysis
+- web-research
+- code-generation
+categories:
+- retrieval.sources
+summary: 'Find information a connected source holds that the agent never reads, and expose it. At file
+  level: a reader that drops a format (PDF, Excel, Word, ZIP) or a channel (cell colors, formatting,
+  comments). At warehouse level: tables and columns never queried, found by comparing what the agent queried
+  against the source''s catalog and joining that to failed cases; then add them to the schema context.
+  An index over existing metadata raised table discovery sharply. The runtime alternative, a catalog-search
+  tool the agent calls, did not beat giving the schema up front.'
+how: 1. List the source's contents (formats, catalog). 2. Diff against what the agent's tools can read
+  and what its queries touched. 3. Join the gap to failed or insufficient-evidence cases. 4. Extend the
+  reader, or add the missing tables to the schema context (5.b.i). 5. Paired eval on the cases that failed
+  for lack of data.
+detect:
+  static: a file tool limited to plain-text formats; a spreadsheet reader that drops formatting; the source
+    catalog lists tables or columns the agent's prompts and tools never reference
+  traces: failed opens of PDF, Excel, Word or ZIP files; the set of tables and columns queried, compared
+    with the catalog, joined to failures; failure rows labeled domain-knowledge-deficit or missed-read
+  evals: failures where the answer existed in an unread part of the source
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: Excel colors +4.9% on FACTS; Genie metadata index raised table-discovery Recall@10 from 0.075
+      to 0.450 (May 2026); PDF reading flat on GAIA
+    basis: evidence
+  cost:
+    effect: unknown
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval on the questions that failed for lack of data
+evidence:
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Build a knowledge graph of tables from enterprise metadata
+  effect: 'Table 2, internal 133-question benchmark, gpt-4o: all knowledge-graph components vs schemas
+    only (A.1): score (% 4+) 48% vs 9%, table recall 78% vs 45%, column recall 56% vs 24%, compile 96%
+    vs 88%. Paper: "Most of the improvement is from example queries, table clustering, and table/column
+    attributes." Modeling-only ablation B.1 vs Full moves score only 46% -> 48%: "The knowledge graph
+    is a better lever to improve semantic understanding."'
+  direction: supports
+  measured: true
+  locator: §2.1, Figure 1, Table 1; §3.3.1-3.3.2, Table 2
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Build a semantic search index from existing data assets
+  effect: 'Figure 4, internal table-discovery benchmark, Recall@10 with vs without semantic context by
+    max steps: 2 steps 0.450 vs 0.075; 4 steps 0.623 vs 0.219; 8 steps 0.724 vs 0.342; 16 steps 0.774
+    vs 0.466. Prose: "improve table search performance by up to 40%". End-to-end (Figure 1, bundled with
+    the rest of the Genie harness): leading code agent + Databricks MCP 32.1% at 1.00x relative cost vs
+    Genie with Specialized Knowledge Search (Opus 4.6) 73.8% at 0.23x cost (+41.7pp).'
+  direction: supports
+  measured: true
+  locator: Specialized Knowledge Search section; Figure 4; Figure 1
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Search several indices in parallel with metadata signals
+  effect: 'Described only: "It uses multiple search indices in parallel together with rich metadata signals
+    to efficiently discover most relevant assets for a user query." Not ablated separately from the index
+    itself.'
+  direction: supports
+  measured: false
+  locator: Specialized Knowledge Search section
+- source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
+    A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
+  date: '2026-04-28'
+  task: Put the semantic context in the prompt, not behind search
+  effect: 'Reported only in passing (Section 6.5; REPORT.md 3.5): "did not significantly outperform raw-DDL
+    Claude on this benchmark"; numbers not given in the paper. 25-table schema, so everything fit in context;
+    the authors flag 1,000+ table warehouses as open.'
+  direction: contradicts
+  measured: false
+  locator: Section 6.5 Limitations; REPORT.md 3.5
+- source: Andrew Qu (Vercel), "We removed 80% of our agent's tools", https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools
+  date: '2025-12-22'
+  task: Mount raw semantic-layer files instead of retrieval tools
+  effect: 'Same bundled 5-query result. "The semantic layer is already great documentation ... We were
+    building tools to summarize what was already legible. Claude just needed access to read it directly."
+    Code: sandbox.writeFiles(files) from ./semantic-catalog.'
+  direction: mixed
+  measured: true
+  locator: 'v2: The file system is the agent'
+- source: Jediah Katz (Cursor), "Dynamic context discovery", https://cursor.com/blog/dynamic-context-discovery
+  date: '2026-01-06'
+  task: Sync terminal sessions to files the agent greps
+  effect: '"Since terminal history can be long, the agent can grep for only the relevant outputs, which
+    is useful for logs from a long-running process like a server."'
+  direction: supports
+  measured: false
+  locator: 5. Treating all integrated terminal sessions as files
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Escalate from SQL to document search when data stops explaining
+  effect: 'Single worked trajectory (Figure 2), Phase 4 Root-Cause Investigation, steps 56-91, 18 queries
+    + 2 doc searches: "Finds a Cost-Attribution doc"; "Escalates to docs when SQL stops explaining."'
+  direction: supports
+  measured: false
+  locator: Figure 2
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Give the SQL agent web search for public conventions
+  effect: Enabled on LS-Hard only (withheld groundings are web-recoverable by construction); disabled
+    on RealEHR because groundings are institution-specific. Not ablated.
+  direction: supports
+  measured: false
+  locator: Appendix B.2; §4.1
+- source: paper Figure 14
+  task: GAIA
+  effect: '"Added PDF reading support" in the last phase, flat on train (0.24).'
+- source: paper Table 10
+  task: GAIA/FACTS/SimpleQA
+  effect: Knight ships with complex-format reading; Pawn reads .txt/.md/.json/.csv only.
+- source: blog tricks table (Original template)
+  task: FACTS
+  effect: +4.9%; "identified that GAIA questions encode data in cell background colors".
+caveats: 'The only evidence is one row of the blog''s tricks table (checked against the table
+  image, 2026-09-23). It is about background colors alone, not formatting in general, and it credits
+  a FACTS gain to GAIA questions without saying how the two relate. Read it as one instance of 8.a.ii, not
+  as a general spreadsheet technique.'
+related:
+- 5.b.i
+- 8.b.i
+- 2.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: database
+  harness_role: retrieval
+  action: add

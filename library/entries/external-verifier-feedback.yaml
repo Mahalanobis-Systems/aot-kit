@@ -1,0 +1,416 @@
+# 9.a.i: Feed back a sound external verifier's verdict; never the model's own critique
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.a.i
+legacy_id: T43
+slug: external-verifier-feedback
+name: Feed back a sound external verifier's verdict; never the model's own critique
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: 'error recovery: catches outputs the check can reject'
+- tier: 3
+  why: when repairs change answer quality
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- reasoning
+- data-analysis
+- code-generation
+- planning
+- web-research
+categories:
+- verification.external
+summary: 'Run a check the model cannot fool on its output (compiler, tests, schema validation, execution,
+  EXPLAIN on generated SQL, a solver) and feed the verdict back; a pass/fail verdict is enough, and resampling
+  until the check accepts works about as well as detailed feedback. Repair generated SQL from execution
+  errors and check for hallucinated tables; run it read-only with timeouts. Do not add a step where the
+  model critiques or re-checks its own answer with no external signal: it lowered accuracy in every study,
+  and a multi-step self-verification tool that helped on GAIA (+5.75%) cost 17.8 points on SimpleQA.'
+how: 1. Identify the sound check the task admits (build, tests, schema, execution). 2. Run it on each
+  output before returning; feed pass/fail back and let the agent retry, or resample until it passes. 3.
+  If no sound check exists, do not substitute a model critique; use 9.b.iii or 9.b.ii instead. 4. Measure the
+  check-failure rate and end quality.
+detect:
+  static: no step runs the build, tests, linter, schema check or execution on the output before it is
+    returned; a critique or reflect step where the same model reviews its own answer with no tool output
+    or environment state in the loop
+  traces: errors a compiler, test or schema check would catch reaching the final answer; SQL errors and
+    hallucinated table names; answers changed after a critique turn with no new external information;
+    failure rows labeled tool-feedback-neglect or satisficing
+  evals: failures a deterministic check would have flagged; accuracy before and after any critique step
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'external verifier: Blocksworld 40% to 87% (2024); SQL compilation 66% to 96% (LinkedIn, 2025);
+      model-only critique: negative in every study, e.g. GPT-3.5 75.8 to 38.1'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    basis: evidence
+  performance:
+    effect: degrades
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: rate of outputs failing the check, same cases
+- method: experiment
+  tier: 3
+  how: paired eval of end quality
+evidence:
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: Backprompt with a sound external verifier
+  effect: 'Table 1, LLM+Sound Critique (best of binary / first-error / all-error feedback) vs standard
+    prompting: Game of 24 38% vs 5%; Graph Coloring 38% vs 16%; Blocksworld 87% vs 40%; Mystery Blocksworld
+    10% vs 4%. Monotone improvement with more backprompts up to an asymptote (Figure 2), 15-round timeout.'
+  direction: supports
+  measured: true
+  locator: Sec. 3; Sec. 5; Table 1; Figure 2
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: Richer verifier feedback adds little over pass/fail
+  effect: 'Table 1, binary / first-error / all-errors: Game of 24 36% / 38% / n.a.; Graph Coloring 38%
+    / 37% / 34%; Blocksworld 60% / 87% / 83%; Mystery Blocksworld 10% / 8% / 6%. Blocksworld is the exception
+    where first-error feedback helped (60 -> 87).'
+  direction: supports
+  measured: true
+  locator: Sec. 5.2; Table 1
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: Resample the same prompt until a sound verifier accepts
+  effect: 'Table 1, sampling k=15 / k=25: Game of 24 28% / 42%; Graph Coloring 40% / 44%; Blocksworld
+    68% / 72%; Mystery Blocksworld 9% / 14% (standard prompting 5/16/40/4%).'
+  direction: supports
+  measured: true
+  locator: Sec. 5.2; Table 1
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Use external feedback such as code execution for correction
+  effect: Recommendation citing Self-Debug, CRITIC and trained verifiers; not tested in this paper.
+  direction: supports
+  measured: false
+  locator: Sec. 6 Leveraging external feedback
+- source: Kamoi et al., "When Can LLMs Actually Correct Their Own Mistakes? A Critical Survey of Self-Correction
+    of LLMs", https://arxiv.org/abs/2406.01297
+  date: '2024-06-03'
+  task: Drive correction with reliable external feedback
+  effect: 'Survey conclusion (2): prior studies "widely agree" self-correction improves responses when
+    reliable external tools or knowledge exist; code-interpreter feedback counted as fair because it cannot
+    easily improve the initial generation.'
+  direction: supports
+  measured: false
+  locator: Sec. 5.1; Sec. 7; Table 5
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Repair generated SQL iteratively from execution errors
+  effect: 'Table 8, Spider 2.0-Lite, DeepSeek-R1: base generation EX 23.47 -> + iterative correction 31.34
+    (+7.87).'
+  direction: supports
+  measured: true
+  locator: Appendix B; Appendix D Table 8
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Validate SQL with EXPLAIN and a hallucination checker, then fix
+  effect: 'Table 2, removing the query fixer (B.3 -> B.2): successful compilation 95% -> 76%, valid tables
+    & columns 98% -> 85%, score 47% -> 47%, LLM calls 4.3 -> 4.0. Conclusion: schema hallucination 23%
+    -> 1% and compilation errors 34% -> 4% overall from modeling components.'
+  direction: supports
+  measured: true
+  locator: §2.2.3; Table 2 B.2; §5
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Majority-vote or resample until verification passes
+  effect: Proposed tactic (cited prior work); flagged as inconsistent.
+  direction: supports
+  measured: false
+  locator: App. G.1
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Add multi-level, domain-specific verification
+  effect: 'Observational: existing verifiers "perform only superficial checks ... such as checking if
+    the code compiles or if there are leftover TODO comments". The +15.6 on ProgramDev is cited as the
+    demonstration.'
+  direction: supports
+  measured: false
+  locator: §4 Insight 3, App. G.2, Table 4
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Feed lint/test failures back in a reflection loop
+  effect: 'Aider three-stage Python pipeline (syntax, compile, flake8) plus tests; "up to a configurable
+    maximum (default: 3 reflections)"; TreeContext shows "code context around error lines".'
+  direction: supports
+  measured: false
+  locator: Sec 6.3; Table 11 "Reflection Loop"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Append LSP diagnostics to every edit result
+  effect: '"OpenCode feeds LSP diagnostics back into every edit result"; bundles "25 auto-downloaded LSP
+    servers feed diagnostics (no persistent index)".'
+  direction: supports
+  measured: false
+  locator: Sec 6.3; Table 7; Table 13
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Append lint diagnostics to every edit result
+  effect: Held fixed. It only fires through the predefined edit tools, so it is part of the bundled action-space
+    contrast above and not isolated.
+  direction: supports
+  measured: false
+  locator: §2.4 Post-edit diagnostics; §2.2
+- source: paper §5.3, A.3.4 (Pawn, Cookbook+Reasoning, iteration 3)
+  task: GAIA / SimpleQA
+  effect: +5.75% on GAIA and -17.8% on SimpleQA in the same commit; overhead hurt simple factual queries.
+- source: paper Table 10
+  task: GAIA/FACTS/SimpleQA
+  effect: Present in Knight, absent in Pawn. Knight's baselines are 43.7 / 64.7 / 84.4 vs Pawn's 19.5
+    / 54.7 / 68.9 (Table 7), though the two also differ in prompt, tools and turns.
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Do not add intrinsic self-correction to reasoning tasks
+  effect: 'Table 3/4, standard -> round 1 -> round 2 (1/3/5 calls). GPT-3.5: GSM8K 75.9/75.1/74.7, CSQA
+    75.8/38.1/41.8, HotpotQA 26.0/25.0/25.0. GPT-4: GSM8K 95.5/91.5/89.0, CSQA 82.0/79.5/80.0, HotpotQA
+    49.0/49.0/43.0. GPT-4-Turbo: GSM8K 91.5/88.0/90.0, CSQA 84.0/81.5/83.0. Llama-2-70b: GSM8K 62.0/43.5/36.5,
+    CSQA 64.0/37.5/36.5. GPT-3.5 keeps its GSM8K answer 74.7% of the time and more often flips correct
+    -> incorrect than the reverse.'
+  direction: contradicts
+  measured: true
+  locator: Sec. 3.2-3.3; Tables 3-4; Figure 1
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Rewording the critique prompt does not rescue self-correction
+  effect: 'Table 5 GPT-4-Turbo (baseline GSM8K 91.5, CSQA 84.0), best rounds: "Assume ... could be either
+    correct or incorrect" 90.0/83.0; "Review ... determine whether it''s correct" 90.0/81.0 (CSQA round
+    1 74.5); "Verify whether your answer is correct" 91.0/83.5. Table 6 Llama-2 (baseline 62.0/64.0):
+    rounds range 30.5-58.0 GSM8K and 24.0-43.0 CSQA.'
+  direction: contradicts
+  measured: true
+  locator: Sec. 3.2; Tables 5-6
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Oracle-stopped self-correction gains are not deployable
+  effect: 'Table 2 with oracle stop: GPT-3.5 GSM8K 75.9 -> 84.3, CSQA 75.8 -> 89.7, HotpotQA 26.0 -> 29.0;
+    GPT-4 95.5 -> 97.5, 82.0 -> 85.5, 49.0 -> 59.0. Same setups without oracle all decrease (Table 3).
+    Applies to RCI and Reflexion evaluations.'
+  direction: contradicts
+  measured: true
+  locator: Sec. 3.2; Table 1; Table 2
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: Do not use the same LLM as verifier in a backprompt loop
+  effect: 'Table 1, standard prompting -> LLM+LLM: Game of 24 5% -> 3%; Graph Coloring 16% -> 2%; Blocksworld
+    40% -> 55%; Mystery Blocksworld 4% -> 0%. Figure 2: performance collapses immediately with the LLM
+    verifier.'
+  direction: contradicts
+  measured: true
+  locator: Sec. 5; Table 1; Figure 2
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: LLM verifiers reject correct answers too often
+  effect: 'Table 2 (accuracy / FPR / FNR): Game of 24 87.0% / 10.4% / 20.7%; Graph Coloring 72.4% / 6.5%
+    / 95.8%; Blocksworld 71.8% / 18.55% / 15.48%; Mystery Blocksworld 79.6% / 0.5% / 97.09%. Game of 24:
+    of expressions guaranteed to equal 24, labeled correct 79.1% while evaluating 81.6% to 24.'
+  direction: contradicts
+  measured: true
+  locator: Sec. 5; Table 2; Sec. 5.1
+- source: Kamoi et al., "When Can LLMs Actually Correct Their Own Mistakes? A Critical Survey of Self-Correction
+    of LLMs", https://arxiv.org/abs/2406.01297
+  date: '2024-06-03'
+  task: Do not rely on prompted intrinsic self-correction for general tasks
+  effect: 'Survey conclusion (1): no prior work shows successful self-correction with feedback from prompted
+    LLMs under fair settings in general tasks; negative results cited for arithmetic reasoning, closed-book
+    QA, code generation, plan generation and graph coloring.'
+  direction: contradicts
+  measured: false
+  locator: Sec. 4; Sec. 7; Table 4
+- source: Kamoi et al., "When Can LLMs Actually Correct Their Own Mistakes? A Critical Survey of Self-Correction
+    of LLMs", https://arxiv.org/abs/2406.01297
+  date: '2024-06-03'
+  task: Do not stop the correction loop with ground-truth labels
+  effect: RCI and Reflexion classified as unrealistic frameworks that cannot verify any research question.
+  direction: contradicts
+  measured: false
+  locator: Sec. 3.2; Sec. 4 Oracle Information; Table 4
+- source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+    Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+  date: '2026-08-09'
+  task: Do not rely on Self-Refine patch review at equal budget
+  effect: 'mini-SWE-agent, 500 issues: GPT-5 mini 56.2% -> 54.8% (-1.4); MiniMax M2.5 75.8% -> 74.0% (-1.8).
+    Scaffold-dependent: on OpenHands (120-issue subset) Self-Refine helped, GPT-5-mini 37.5% -> 53.3%
+    (+15.8), MiniMax 62.5% -> 64.2% (+1.7), but stayed below RETRACE (56.7%, 70.0%).'
+  direction: contradicts
+  measured: true
+  locator: Baselines; Table 1; Table 3; Generalizability
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Add a self-verification step after multi-step tasks
+  effect: Proposed tactic (cited to prior work); the paper warns it "may miss flaws, rely on vague conditions,
+    or be impractical".
+  direction: mixed
+  measured: false
+  locator: App. G.1, Table 4
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Validate SQL with EXPLAIN and a hallucination checker, then fix
+  effect: 'Table 2, removing the query fixer (B.3 -> B.2): successful compilation 95% -> 76%, valid tables
+    & columns 98% -> 85%, score 47% -> 47%, LLM calls 4.3 -> 4.0. Conclusion: schema hallucination 23%
+    -> 1% and compilation errors 34% -> 4% overall from modeling components.'
+  direction: supports
+  measured: true
+  locator: §2.2.3; Table 2 B.2; §5
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Send hallucinated tables to a researcher sub-agent
+  effect: 'Table 2, removing the researcher (Full -> B.3): score 48% -> 47%, table recall 78% -> 75%,
+    column recall 56% -> 53%, compile 96% -> 95%, valid 99% -> 98%, LLM calls 4.6 -> 4.3. Small effect.'
+  direction: supports
+  measured: true
+  locator: §2.2.3; Appendix A.4; Table 2 B.3
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Test schema sufficiency with a minimal executable query
+  effect: 'Table 4 (Spider 2.0-Lite SRR) removing @verify_schema: n=5 79.2 -> 77.2 (-2.0); n=50 88.0 ->
+    86.8 (-1.2); n=100 91.2 -> 89.6 (-1.6).'
+  direction: supports
+  measured: true
+  locator: Action Space @verify_schema; Table 4
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Repair generated SQL iteratively from execution errors
+  effect: 'Table 8, Spider 2.0-Lite, DeepSeek-R1: base generation EX 23.47 -> + iterative correction 31.34
+    (+7.87).'
+  direction: supports
+  measured: true
+  locator: Appendix B; Appendix D Table 8
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Majority-vote SQL candidates by execution result
+  effect: 'Table 8, Spider 2.0-Lite: + majority voting on top of iterative correction EX 31.34 -> 34.97
+    (+3.63).'
+  direction: supports
+  measured: true
+  locator: Appendix B Majority Voting; Table 8
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Keep grounding hypotheses open until execution distinguishes them
+  effect: 'Table 1/7 (mean +/- sd over 5 runs). GPT-5.4-mini: RealEHR 55.2 vs ReAct 42.9, ReDel 44.8,
+    ReFoRCE 48.6; EHRSQL 34.4 vs 32.2/26.8/27.6; LS-Hard 45.1 vs 37.8/40.2/40.1. Qwen3-8B: RealEHR 5.6
+    vs 1.7/2.5/3.8; EHRSQL 35.0 vs 30.2/26.4/31.2; LS-Hard 17.3 vs 14.5/8.0/13.9. Full method (includes
+    all components below).'
+  direction: supports
+  measured: true
+  locator: §3.1-3.2; Table 1; Appendix B.8 Table 7
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Restrict agent SQL to read-only with timeout and row caps
+  effect: Implementation detail (Appendix B.2), not ablated.
+  direction: supports
+  measured: false
+  locator: Appendix B.2
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Retry malformed JSON outputs with error-specific hints
+  effect: Implementation detail (Appendix B.4, prompts in C.4), not ablated.
+  direction: supports
+  measured: false
+  locator: Appendix B.4
+caveats: 'The paper''s example of a gain that does not transfer across evaluation sets.'
+related:
+- 9.b.iii
+- 5.b.i
+absorbs:
+- legacy_id: P39
+  name: Rich feedback loops
+  group: Feedback & Iteration
+  source: catalog
+  family: tool
+  sub_type: error_handling
+  categories:
+  - verification.external
+  note: Compiler errors, test failures, linter output after every call.
+  assessment:
+    detection:
+      static: Tools return compiler, test and linter output; the loop feeds diagnostics back.
+      traces: Diagnostics used in the next step; iterations to green.
+      evals: Fix rate after feedback.
+      judge: null
+      probes:
+        what: Code with one error of each class.
+        construct: Syntax, type, test-failure and lint errors, one per item.
+      primary:
+      - static
+      - evals
+    qa:
+      unit: Diagnostics captured and formatted.
+      examples: Error-class probes.
+      benchmark: SWE-bench or Terminal-Bench.
+      production: Iterations to green.
+      primary:
+      - benchmark
+    impact:
+      cost:
+        effect: improves
+        magnitude: medium
+        note: Fewer blind iterations.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: high
+        note: Coding tasks.
+      latency:
+        effect: improves
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: reflection
+  harness_role: control_loop
+  action: add

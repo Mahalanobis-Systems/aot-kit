@@ -1,0 +1,278 @@
+# 10.b.i: Gate irreversible actions: allow, ask or deny by side effect
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 10.b.i
+legacy_id: T69
+slug: risky-action-policy
+name: 'Gate irreversible actions: allow, ask or deny by side effect'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: safety containment
+levers:
+- guardrails
+domains:
+- general
+evidence_domains:
+- code-generation
+categories:
+- safety.approval
+summary: 'Classify every action the agent can take by its side effect (read, reversible write, irreversible
+  or externally visible: sending email, issuing a refund, deleting a record, posting publicly, pushing
+  code) and gate by class: allow, ask a human or a policy, or deny. Where the environment already stages
+  changes before they reach the world, gate only what escapes the stage. Coding agents can run on auto-approve
+  because the development process contains their changes (a branch, PR review and CI stand between the
+  agent and production). Most other agents (marketing, support, CRM, finance) have no such stage, so the
+  gate has to sit at the action, or the harness has to build one: drafts, pending changes, batched approval.
+  Keep a deny floor that auto-approve cannot switch off, and write the policy as code with tested examples.'
+how: '1. List the agent''s actions and mark each one''s side effect: read, reversible write, irreversible
+  or externally visible. 2. For each irreversible action, find where review can happen: an existing stage
+  (branch and PR, draft, staging environment) or none. 3. Where there is no stage, add one (draft and
+  approve, pending changes, batch approval) or an ask gate on the action; deny what should never run unattended,
+  in a floor auto-approve cannot lift. 4. Write the policy as code with tested examples. 5. Run safety
+  evals built from irreversible actions; monitor approved, denied and escalated actions in production,
+  including how often humans approve without changes.'
+detect:
+  static: tools with irreversible or externally visible effects (send, pay, delete, publish, push) with
+    no gate and no staging step; one approval setting for every tool; a deny list that auto-approve disables
+  traces: irreversible actions taken without a policy or human check; failure rows labeled unauthorized-irreversible-action
+    or over-initiative
+  evals: safety cases built from the agent's own irreversible actions, including prompt-injected requests
+    for them
+impact:
+  quality:
+    effect: none
+    basis: evidence
+  cost:
+    effect: none
+    basis: evidence
+  performance:
+    effect: degrades
+    size: small
+    when: approval waits; staging and batching keep them small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: safety evals on risky-action prompts
+- method: monitor
+  how: denied and approved risky actions in production
+evidence:
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Accept mid-run user steering via queues
+  effect: Pi "steer() queue injects messages after the current turn's tool calls, while followUp() drains
+    only when the agent would otherwise stop"; Hermes "mid-turn user steering is spliced into the last
+    tool result behind an anti-injection marker."
+  direction: supports
+  measured: false
+  locator: Sec 6.2 (Pi, Hermes)
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Use a structural read-only plan mode
+  effect: Mistral Vibe "a plan file under a dedicated plans directory is the profile's only writable target,
+    and an exit_plan_mode tool emits a PlanReviewRequestedEvent"; "all four provider-native systems now
+    ship a read-only planning mode."
+  direction: supports
+  measured: false
+  locator: Sec 6.2 (Mistral Vibe); Sec 10.2; Sec 10.5
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Offer PLAN / DEFAULT / AUTO_EDIT / YOLO approval modes
+  effect: 'Gemini CLI ApprovalMode enum (four modes); Mistral Vibe four-layer permission hierarchy; Rec
+    9: "matches how a human developer triages risk."'
+  direction: supports
+  measured: false
+  locator: Sec 10.5; Sec 10.6; Recommendation 9
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Codify safety rules as policy-as-code with tested examples
+  effect: 'Codex execpolicy "rules may carry inline match/not_match examples that are validated at parse
+    time—executable test cases inside the policy file"; Rec 11: "Policies-as-code survive refactors and
+    are auditable independently of the loop."'
+  direction: supports
+  measured: false
+  locator: Sec 10.2 Layer 1; Recommendation 11; Table 11 "Policy-as-Code"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Keep a hardline command floor that survives YOLO
+  effect: Hermes "twelve-pattern hardline floor ... that survives --yolo—the YOLO environment variable
+    is frozen at module import precisely so a prompt-injected skill cannot flip it"; 47 dangerous patterns
+    "matched on deobfuscated variants".
+  direction: supports
+  measured: false
+  locator: Sec 10.7; Recommendation 11
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Parse shell commands and scope grants by arity
+  effect: OpenCode "130-entry, explicitly LLM-generated command-arity dictionary (git 2, npm run 3), producing
+    grants like git commit * rather than blanket approval"; "denying "*" for a tool removes it from the
+    LLM's view entirely".
+  direction: supports
+  measured: false
+  locator: Sec 10.9; Sec 8.2 (Mistral Vibe); Table 12 "Syntax-Aware Command Permissioning"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Review risky actions with a fail-closed LLM classifier
+  effect: Codex Guardian "fails closed on timeout or malformed output, and carries a per-turn rejection
+    circuit breaker"; Hermes _smart_approve "temperature 0, 16 max tokens, APPROVE/DENY/ESCALATE"; OpenHands
+    EnsembleSecurityAnalyzer "worst-case-wins, with broken child analyzers failing closed to HIGH"; LLMSecurityAnalyzer
+    uses agent-filled security_risk.
+  direction: supports
+  measured: false
+  locator: Sec 10.2 Layer 3; Sec 10.3; Sec 10.7
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Expose lifecycle hooks that can veto or rewrite calls
+  effect: 'Codex hooks "near-verbatim Claude Code''s: PreToolUse, PermissionRequest, PostToolUse, PreCompact,
+    ... Stop ... with block/allow decision outputs"; Mistral Vibe hooks.toml "can deny a tool call, rewrite
+    its inputs, or append context"; Gemini CLI eleven lifecycle events.'
+  direction: supports
+  measured: false
+  locator: Sec 10.2 Layer 2; Sec 12.3; Sec 14.1
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Gate actions with workspace guard and allow/ask/deny permissions
+  effect: Held fixed, not ablated. The deny and allow lists are given in the bash tool description.
+  direction: supports
+  measured: false
+  locator: §2.4 Safety; App 8.3 Fig 27
+related:
+- 10.a.i
+absorbs:
+- legacy_id: P59
+  name: Human-in-the-loop approval gates
+  group: Safety
+  source: catalog
+  family: tool
+  sub_type: human_input
+  categories:
+  - safety.approval
+  assessment:
+    detection:
+      static: An approval gate before risky tools; a risky-tool list.
+      traces: Approval requests; time to approve; overrides.
+      evals: Gate coverage of risky calls.
+      judge: Rate whether approval requests carry enough context.
+      probes:
+        what: Tasks that require a risky action.
+        construct: One task per risky tool; success is a gate firing.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Gate fires for every listed tool.
+      examples: Risky-action probes.
+      benchmark: null
+      production: Approval latency; override rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: low
+        note: Human time.
+      security:
+        effect: improves
+        magnitude: high
+        note: ''
+      brand:
+        effect: improves
+        magnitude: medium
+        note: ''
+      governance:
+        effect: improves
+        magnitude: high
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: ''
+      latency:
+        effect: degrades
+        magnitude: high
+        note: Waits on a person.
+      primary:
+      - security
+      - governance
+- legacy_id: P60
+  name: Spectrum of control
+  group: Safety
+  source: catalog
+  family: workflow
+  sub_type: orchestration
+  categories:
+  - safety.approval
+  assessment:
+    detection:
+      static: Configurable autonomy modes.
+      traces: Mode distribution; mode switches.
+      evals: Per-mode quality.
+      judge: null
+      probes:
+        what: The same task at each mode.
+        construct: One task run in every autonomy level.
+      primary:
+      - static
+      - evals
+    qa:
+      unit: Mode boundaries enforced.
+      examples: Per-mode probes.
+      benchmark: null
+      production: Mode usage.
+      primary:
+      - unit
+    impact:
+      cost:
+        effect: mixed
+        magnitude: low
+        note: ''
+      security:
+        effect: improves
+        magnitude: low
+        note: ''
+      brand:
+        effect: improves
+        magnitude: low
+        note: User control.
+      governance:
+        effect: improves
+        magnitude: medium
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: ''
+      latency:
+        effect: mixed
+        magnitude: low
+        note: ''
+      primary:
+      - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: validation
+  harness_role: tool_impl
+  action: add
+caveats: 'Every source comes from coding-agent harnesses (a source-code study of 11 of them, and
+  one controlled study that held the policy fixed), and none measures the gate''s effect. The shell examples
+  (rm -rf, sudo, git push, command parsing) are one case of the general rule. Asking too often has a cost
+  of its own: approvals slow the agent, and humans who are asked constantly start approving without reading,
+  so stage and batch where you can rather than prompt per action.'

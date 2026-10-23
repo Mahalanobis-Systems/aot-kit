@@ -1,0 +1,97 @@
+# 2.b.i: Make tool calls and tool results fail soft, and retry transient failures
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.b.i
+legacy_id: T16
+slug: fail-soft-tools
+name: Make tool calls and tool results fail soft, and retry transient failures
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: removes crashes, a hard failure
+levers:
+- tool-surface
+- control-flow
+domains:
+- tool-use
+evidence_domains:
+- web-research
+- code-generation
+categories:
+- tools.misuse
+- orchestration.bound
+summary: 'Guard the tool-call parser against calls in an unexpected shape (a string where a dict is expected),
+  catch errors inside tools (bad file format, failed fetch, extraction failure) and return a usable message
+  instead of raising, and replace custom extraction code (HTML, tables) with a standard parser. A failed
+  call must never crash the loop. Evaluate the errored cases first: a tool fix can break the agent outright.
+  Retry transient failures (rate limits, timeouts and server errors from the model provider or a tool''s
+  backend) with backoff and a bounded count, and when the count runs out, return that to the loop as a
+  result rather than ending the run.'
+how: 1. From traces, list unhandled exceptions by tool and by parser. 2. Add type guards where calls and
+  results are built. 3. Wrap each tool body; on error return a short message the model can act on. 4.
+  Replace hand-written HTML or table extraction with a library parser. 5. Add bounded retries with backoff
+  for transient errors on model and tool calls. 6. Re-run the errored cases; then the full set.
+detect:
+  static: parsing that assumes a fixed call shape; tool bodies with no try/except; custom HTML or table
+    extraction code
+  traces: runs ending in an unhandled exception (AttributeError, parse or fetch errors) rather than an
+    answer; tool spans returning empty or garbled text; failure rows labeled tool-recovery-failure or
+    observation-failure; requests failing on rate limits or transient server errors with no retry, or
+    with retries exhausted; failure rows labeled service-failure or recovery-failure-external
+  evals: crash outcomes as a share of failures; request-failure outcomes
+impact:
+  quality:
+    effect: improves
+    size: small
+    when: 'VeRO: removed all 11 parser crashes in 2 of 3 runs, but only 1-3 became passes; a parser switch
+      on SimpleQA went 0.62 to 0.86 against the last working version'
+    basis: evidence
+  cost:
+    effect: none
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: unhandled-exception rate, crash outcomes and request-failure rate on the same cases or load stream
+evidence:
+- source: paper Figure 14
+  task: GAIA
+  effect: '"Robust file/Wikipedia tools" flat (0.24 to 0.22); the follow-up "fix Wikipedia tool file errors"
+    0.22 to 0.26.'
+- source: paper Figure 15
+  task: SimpleQA
+  effect: A Wikipedia table-extraction fix crashed the agent (validation to 0.10) before being replaced
+    by T18.
+- source: paper §A.4, Table 16
+  task: TerminalBench-2 (Terminus-KIRA on Haiku 4.5)
+  effect: Eliminated all 11 baseline AttributeError crashes in two of three runs; only 3 and 1 of those
+    samples became passes, the rest failed differently.
+- source: paper §5.4
+  task: TerminalBench-2
+  effect: Found independently by the Tools-B=89 and Filesystem-B=178 runs. Tools-B=178 guarded three result
+    builders but not the parser and left the crash intact, yet had the best pass rate.
+- source: paper Figure 15
+  task: SimpleQA
+  effect: Validation 0.10 to 0.86 and test 0.58 to 0.86; the best SimpleQA result in Table 2 (0.86 max).
+caveats: Tool fixes can break the agent outright; evaluate the errored samples first. Reliably
+  discoverable but neither necessary nor sufficient for a pass-rate gain.
+related:
+- 9.b.i
+- 9.a.i
+- 7.b.iii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: error_handling
+  harness_role: tool_impl
+  action: fix

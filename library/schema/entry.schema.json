@@ -1,0 +1,679 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Optimization register entry",
+  "description": "One agent optimization: what it changes, where it applies, and the evidence for it. Lever, domain and category ids are checked against ../vocabulary.yaml by tools/validate.py.",
+  "$defs": {
+    "text": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "detect_method": {
+      "enum": [
+        "static",
+        "traces",
+        "evals",
+        "judge",
+        "probes"
+      ]
+    },
+    "qa_method": {
+      "enum": [
+        "unit",
+        "examples",
+        "benchmark",
+        "production"
+      ]
+    },
+    "dimension": {
+      "enum": [
+        "cost",
+        "security",
+        "brand",
+        "governance",
+        "quality",
+        "latency"
+      ]
+    },
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effect",
+        "magnitude",
+        "note"
+      ],
+      "properties": {
+        "effect": {
+          "enum": [
+            "improves",
+            "degrades",
+            "mixed",
+            "none"
+          ]
+        },
+        "magnitude": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "impact_dimension": {
+      "enum": [
+        "quality",
+        "cost",
+        "performance",
+        "security",
+        "governance",
+        "brand"
+      ]
+    },
+    "impact_effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effect"
+      ],
+      "description": "Expected effect on one dimension. `basis` says where the rating comes from: evidence (the entry's sources) or assessment (the unmeasured first pass); it is required unless the effect is unknown.",
+      "properties": {
+        "effect": {
+          "enum": [
+            "improves",
+            "degrades",
+            "mixed",
+            "none",
+            "unknown"
+          ]
+        },
+        "size": {
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ]
+        },
+        "when": {
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "evidence",
+            "assessment"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "effect": {
+            "not": {
+              "const": "unknown"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "basis"
+        ]
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "slug",
+    "name",
+    "kind",
+    "status",
+    "tiers",
+    "levers",
+    "domains",
+    "evidence_domains",
+    "categories",
+    "summary",
+    "detect",
+    "impact",
+    "provenance"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*\\.[a-z]\\.(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$",
+      "description": "The entry's id and its number in the library: family number, sub-category letter and a roman numeral (2.a.ii), from its home (first) category. Assigned once and never reused; a new entry takes the next free numeral in its home sub-category."
+    },
+    "legacy_id": {
+      "type": "string",
+      "pattern": "^[TP][0-9]{2}$",
+      "description": "The id the entry had before 2026-10-19 (T = technique, P = pattern; the T numbers began as VeRO's technique ids). Kept for history: evidence `via`, provenance notes, excluded.yaml and absorbed patterns still use these. Entries added after 2026-10-19 have none."
+    },
+    "former_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]*\\.[a-z]\\.(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$"
+      },
+      "description": "Ids the entry had before it moved category; the site redirects them to the entry."
+    },
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "description": "Public, stable name: the file name, the aot-kit skill name and the wiki URL."
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "technique",
+        "pattern"
+      ]
+    },
+    "status": {
+      "enum": [
+        "outline",
+        "card"
+      ],
+      "description": "outline: no `how` yet. card: the full format (how, impact, measure, evidence)."
+    },
+    "tiers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tier",
+          "why"
+        ],
+        "properties": {
+          "tier": {
+            "enum": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "why": {
+            "type": "string"
+          },
+          "proposed": {
+            "const": true,
+            "description": "Tier proposed when the kit was generated (2026-10-12), not yet reviewed."
+          }
+        }
+      }
+    },
+    "levers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      },
+      "description": "Where the change lands in the agent, most important first."
+    },
+    "domains": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      },
+      "description": "Capability domains the optimization is specific to, or [general]."
+    },
+    "evidence_domains": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+      },
+      "description": "Domains its evidence comes from; empty when it has none."
+    },
+    "categories": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z-]*\\.[a-z][a-z-]*$"
+      },
+      "description": "Finer category ids under the levers (vocabulary.yaml); empty means it fits none."
+    },
+    "summary": {
+      "type": "string"
+    },
+    "how": {
+      "type": "string",
+      "description": "How to produce the change, as numbered steps."
+    },
+    "detect": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Signals that this optimization applies to an agent: in its code (static), its traces, its eval results, a judge, or constructed probes. `primary` names the one or two best.",
+      "properties": {
+        "static": {
+          "type": "string"
+        },
+        "traces": {
+          "type": "string"
+        },
+        "evals": {
+          "type": "string"
+        },
+        "judge": {
+          "type": "string"
+        },
+        "probes": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "what",
+            "construct"
+          ],
+          "properties": {
+            "what": {
+              "type": "string"
+            },
+            "construct": {
+              "type": "string"
+            }
+          }
+        },
+        "primary": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/detect_method"
+          }
+        }
+      }
+    },
+    "assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qa",
+        "impact"
+      ],
+      "description": "First-pass assessment carried over from the pattern library (2026-09-23): how to QA the change and its expected effect on six dimensions. Unmeasured.",
+      "properties": {
+        "qa": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unit",
+            "examples",
+            "benchmark",
+            "production",
+            "primary"
+          ],
+          "properties": {
+            "unit": {
+              "$ref": "#/$defs/text"
+            },
+            "examples": {
+              "$ref": "#/$defs/text"
+            },
+            "benchmark": {
+              "$ref": "#/$defs/text"
+            },
+            "production": {
+              "$ref": "#/$defs/text"
+            },
+            "primary": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/qa_method"
+              }
+            }
+          }
+        },
+        "impact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cost",
+            "security",
+            "brand",
+            "governance",
+            "quality",
+            "latency",
+            "primary"
+          ],
+          "properties": {
+            "cost": {
+              "$ref": "#/$defs/impact"
+            },
+            "security": {
+              "$ref": "#/$defs/impact"
+            },
+            "brand": {
+              "$ref": "#/$defs/impact"
+            },
+            "governance": {
+              "$ref": "#/$defs/impact"
+            },
+            "quality": {
+              "$ref": "#/$defs/impact"
+            },
+            "latency": {
+              "$ref": "#/$defs/impact"
+            },
+            "primary": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "items": {
+                "$ref": "#/$defs/dimension"
+              }
+            }
+          }
+        }
+      }
+    },
+    "impact": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Expected impact on the six dimensions every entry carries (2026-10-19). Performance is speed and latency. `primary` names the one or two dimensions the change is mainly for.",
+      "required": [
+        "quality",
+        "cost",
+        "performance",
+        "security",
+        "governance",
+        "brand"
+      ],
+      "properties": {
+        "quality": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "cost": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "performance": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "security": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "governance": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "brand": {
+          "$ref": "#/$defs/impact_effect"
+        },
+        "primary": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/impact_dimension"
+          }
+        }
+      }
+    },
+    "measure": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "method",
+          "how"
+        ],
+        "properties": {
+          "method": {
+            "enum": [
+              "verify-fix",
+              "before-after",
+              "experiment",
+              "production-test",
+              "monitor"
+            ]
+          },
+          "tier": {
+            "enum": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "how": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "task",
+          "effect"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "task": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "description": "Publication date of the source. Sources over 12 months old are discounted."
+          },
+          "direction": {
+            "enum": [
+              "supports",
+              "contradicts",
+              "mixed"
+            ],
+            "description": "Relative to the entry it sits on. Absent means supports."
+          },
+          "conditions": {
+            "type": "string",
+            "description": "When the effect holds: window size, model, benchmark, n."
+          },
+          "measured": {
+            "type": "boolean",
+            "description": "false when the source describes the practice without measuring it."
+          },
+          "locator": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "caveats": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "related": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[1-9][0-9]*\\.[a-z]\\.(i|ii|iii|iv|v|vi|vii|viii|ix|x|xi|xii|xiii|xiv|xv|xvi|xvii|xviii|xix|xx)$"
+      }
+    },
+    "absorbs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "legacy_id",
+          "name",
+          "group",
+          "source",
+          "family",
+          "sub_type",
+          "categories"
+        ],
+        "properties": {
+          "legacy_id": {
+            "type": "string",
+            "pattern": "^P[0-9]{2}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "master",
+              "catalog",
+              "both"
+            ]
+          },
+          "family": {
+            "enum": [
+              "prompt",
+              "tool",
+              "workflow",
+              "config",
+              "dependency",
+              "other"
+            ]
+          },
+          "sub_type": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "categories": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z-]*\\.[a-z][a-z-]*$"
+            }
+          },
+          "assessment": {
+            "type": "object",
+            "description": "The pattern's whole first-pass assessment (detection, qa, impact), kept as it was."
+          }
+        },
+        "description": "A library pattern that is the same change as this entry and has no entry of its own, kept whole."
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "layer",
+        "origin",
+        "change_type",
+        "sub_type"
+      ],
+      "description": "Where the entry came from, in VeRO's edit taxonomy (vero-taxonomy.yaml).",
+      "properties": {
+        "layer": {
+          "enum": [
+            "target"
+          ],
+          "description": "Always target. Optimizer-side practices moved to docs/optimization-process.md (2026-09-23)."
+        },
+        "origin": {
+          "enum": [
+            "observed",
+            "proposed"
+          ],
+          "description": "observed (default): seen in a source and backed by evidence. proposed: authored by us to fill a gap, backed by a rationale until measured."
+        },
+        "change_type": {
+          "enum": [
+            "prompt",
+            "tool",
+            "workflow",
+            "config",
+            "dependency",
+            "other"
+          ]
+        },
+        "sub_type": {
+          "type": "string"
+        },
+        "harness_role": {
+          "enum": [
+            "prompt",
+            "control_loop",
+            "tool_surface",
+            "tool_impl",
+            "submission",
+            "model_client",
+            "budget_turns",
+            "budget_output",
+            "budget_wallclock",
+            "context_mgmt",
+            "retrieval",
+            "env_setup",
+            "initialization",
+            "tests",
+            "metadata",
+            "other"
+          ]
+        },
+        "action": {
+          "enum": [
+            "fix",
+            "add",
+            "remove",
+            "tune",
+            "restructure",
+            "reword",
+            "revert",
+            "cosmetic",
+            "other"
+          ]
+        },
+        "library_group": {
+          "type": "string"
+        },
+        "library_source": {
+          "enum": [
+            "master",
+            "catalog",
+            "both"
+          ]
+        }
+      }
+    }
+  }
+}

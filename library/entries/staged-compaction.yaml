@@ -1,0 +1,308 @@
+# 5.a.i: Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 5.a.i
+legacy_id: T31
+slug: staged-compaction
+name: 'Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: stops runs dying on context overflow, a hard failure
+- tier: 3
+  why: it changes what the model sees, so quality must be checked
+levers:
+- context
+domains:
+- general
+evidence_domains:
+- code-generation
+categories:
+- context.lean-window
+summary: Manage the history before it overflows. Past a soft threshold (about 60% of the window) replace
+  old tool outputs with short stubs; only past a hard threshold (about 85%) summarize the oldest turns
+  into a summary with fixed sections (goal, files touched, done, pending, errors, next step) that is updated
+  incrementally, not regenerated. Keep the recent tail verbatim. The value is large at small windows and
+  near zero at 128k; compaction alone does not carry multi-window work (see 4.b.iii for state kept in files).
+how: 1. Measure peak context against the window on the longest runs. 2. Implement the two thresholds and
+  the fixed-section summary. 3. Evaluate with post-compaction probes (recall, artifacts, next step) and
+  tokens per task, not compression ratio.
+detect:
+  static: no compaction, or compaction that summarizes the whole history at once; a context window under
+    about 64k
+  traces: context-overflow outcomes; peak context over about 85% of the window; summaries that drop file
+    changes or decisions; failure rows labeled context-rationale-erosion
+  evals: failures concentrated in the longest trajectories
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: +35.7 points at 32k, +2.7 at 128k (Fan, Sep 2026); staged elision matches other strategies on
+      success
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: staged elision lowest cost in 7 of 8 panels, e.g. $1.45 against $2.57
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: context-overflow rate on the same cases
+- method: experiment
+  tier: 3
+  how: paired eval, tokens per task, post-compaction probes
+evidence:
+- source: repo figure_04
+  task: five follow-up benchmarks
+  effect: MAX_HISTORY_CHARS lowered twice, never raised.
+- source: repo figure_01
+  task: five follow-up benchmarks
+  effect: Context-management edits in 6 to 10 of 20 runs per benchmark.
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Add context management when the window is tight
+  effect: 'Managed tiers (T1-T4) vs no management (T0), averaged over 4 models (Nemotron-3 30B/120B/550B,
+    Mistral-Medium-3.5-128B): the gap is 35.7, 15.9, 5.5 and 2.7 pp on SWE-Bench Verified (n=500) and
+    9.5, 7.5, 4.8 and 2.8 pp on Terminal-Bench 2.1 (n=89) at 32k/64k/96k/128k. T0 overflow rate falls
+    from 78.7% to 8.7% (SWE) and 61.0% to 12.1% (TB) over the same budgets. Managed tiers have zero overflow
+    at every budget. Example at 32k SWE: T0 9.4/11.4/6.4/12.6% vs T1 20.6/43.0/51.4/64.4%. At 128k, managed
+    tiers change trajectory shape very little (median turns 39-42 for 30B, 70-74 for 550B).'
+  direction: supports
+  measured: true
+  locator: §3.2 'The value of context management grows as the context-window budget shrinks', Fig 3, Tables
+    3-4; §4, App 9.5
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Skip recoverable recall of elided outputs
+  effect: 'T2 (elision+recall) vs T1 (elision) over 32 model-benchmark-window comparisons: 15 wins, 14
+    losses, 3 ties. Mean -0.36 pp (+0.40 SWE, -1.12 TB). 36 of 64 T2/T4 settings never call recall_event
+    and the median rate is zero. Use is concentrated at 32k in Nemotron-3 30B (TB T2 4.326 calls/task),
+    and even that setting scores below T1. The 550B and Mistral models almost never recall.'
+  direction: supports
+  measured: true
+  locator: §3.2 'Recall (M2) is rarely used...'; App 9.6 Table 13
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Compact at a fixed buffer, keeping a verbatim recent tail
+  effect: Claude Code "AUTOCOMPACT_BUFFER_TOKENS = 13 000"; post-compact restores "up to 5 files (POST_COMPACT_TOKEN_BUDGET
+    = 50 000)"; Gemini "fires when history exceeds 50% ... preserves the most recent 30%"; Mistral Vibe
+    envelope "re-injects prior user messages ... so original task goals survive resets"; 7 of 11 systems
+    use threshold compaction.
+  direction: supports
+  measured: false
+  locator: Sec 9.5; Recommendation 7; Figure 4
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Compact reactively on context-overflow errors
+  effect: Mistral Vibe "the same routine fires reactively when a turn overflows the context window mid-flight";
+    OpenHands "context-window overflows and malformed-history errors trigger a condensation rather than
+    a crash"; Pi "one-shot compact-and-retry on context overflow."
+  direction: supports
+  measured: false
+  locator: Sec 9.4; Sec 9.5; Recommendation 7
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Soft-prune old tool outputs
+  effect: OpenCode "opt-in pruning soft-deletes old tool outputs, protecting the newest 40K tokens and
+    firing only if more than 20K are reclaimable."
+  direction: supports
+  measured: false
+  locator: Sec 9.5 (OpenCode)
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Compact by rotating to a linked child session
+  effect: Hermes "compaction does not rewrite the transcript—it ends the session ... rotates to a child
+    chained by parent_session_id ... no history is ever destroyed." Trigger at 50% of context minus max-tokens
+    (64K floor), summary capped at min(5% of context, 12K).
+  direction: supports
+  measured: false
+  locator: Sec 9.5 (Hermes); Table 12 "Lineage Compaction"
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Compress history with a dedicated summarization model
+  effect: '"we introduce a new LLM model whose key purpose is to compress a history of actions & conversation
+    into key details, events, and decisions. This is hard to get right ... you might even consider fine-tuning
+    a smaller model (this is in fact something we''ve done at Cognition)." Still "eventually hit a limit".'
+  direction: supports
+  measured: false
+  locator: A Theory of Building Long-running Agents (compression diagram)
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Do not rely on compaction alone for multi-window work
+  effect: '"compaction isn''t sufficient. Out of the box, even a frontier coding model like Opus 4.5 running
+    on the Claude Agent SDK in a loop across multiple context windows will fall short of building a production-quality
+    web app if it''s only given a high-level prompt". Compaction "doesn''t always pass perfectly clear
+    instructions to the next agent."'
+  direction: mixed
+  measured: false
+  locator: The long-running agent problem
+- source: Drew Breunig, "How Long Contexts Fail / How to Fix Your Context", https://www.dbreunig.com/2025/06/22/how-contexts-fail-and-how-to-fix-them.html
+    ; https://www.dbreunig.com/2025/06/26/how-to-fix-your-context.html (2025-06-26)
+  date: '2025-06-22'
+  task: Keep context structured so sections prune independently
+  effect: 'Design suggestion: "ensure the main instructions and goals are preserved while the document
+    or history sections can be pruned or summarized".'
+  direction: supports
+  measured: false
+  locator: 06-26 post, "Context Pruning" (closing paragraph)
+- source: Drew Breunig, "How Long Contexts Fail / How to Fix Your Context", https://www.dbreunig.com/2025/06/22/how-contexts-fail-and-how-to-fix-them.html
+    ; https://www.dbreunig.com/2025/06/26/how-to-fix-your-context.html (2025-06-26)
+  date: '2025-06-22'
+  task: Summarize accrued context before the distraction threshold
+  effect: 'Gemini Pokemon agent: "anything beyond 100,000 tokens triggered this behavior" (repeating past
+    actions) despite a 1M+ window. No effect size for summarizing.'
+  direction: supports
+  measured: false
+  locator: 06-26 post, "Context Summarization"
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Offload old tool results to files before summarizing
+  effect: '"Manus writes old tool results to files and only applies summarization once there is diminishing
+    returns from offloading." Addresses the concern that compaction "can result in loss of useful information."'
+  direction: supports
+  measured: false
+  locator: Offload Context
+- source: Jediah Katz (Cursor), "Dynamic context discovery", https://cursor.com/blog/dynamic-context-discovery
+  date: '2026-01-06'
+  task: Give summarized agent a searchable chat-history file
+  effect: '"If the agent knows that it needs more details that are missing from the summary, it can search
+    through the history to recover them." No numbers.'
+  direction: supports
+  measured: false
+  locator: 2. Referencing chat history during summarization
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Elide stale tool outputs to stubs before summarizing
+  effect: 'T4 (staged elision, then summarization) matches T1-T3 on success and has the lowest cost in
+    7 of 8 model-benchmark panels. It has the lowest mean cost per task and the lowest average peak-context/budget
+    ratio at every budget, and it calls summarization less than T3 at every budget. At 32k, T1/T2 (elision
+    only) still reach about the full window. Example SWE 32k, Nemotron-3 550B: T4 55.6% at $1.45 vs T1
+    51.4% at $2.57.'
+  direction: supports
+  measured: true
+  locator: §2.3 Algorithm 1; §3.1 Implementation Details (thresholds); §3.2 'T4 offers the best accuracy-cost
+    trade-off', Figs 4-5
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Summarize old history into fixed-heading running summary
+  effect: 'Summarization alone (T3) vs T0 at 32k SWE: 23.8/39.6/58.4/63.2% vs 9.4/11.4/6.4/12.6% (30B/120B/550B/Mistral).
+    T3 is cheaper than elision-only at 32k, e.g. 550B $1.25 vs T1 $2.57, and keeps peak context well below
+    the window where T1/T2 do not. The prompt is reproduced in Fig 18.'
+  direction: supports
+  measured: true
+  locator: §2.3; App 7.3 Fig 18-19; Tables 3-4; Fig 5(a)
+- source: Factory Research, "Evaluating Context Compression for AI Agents", https://factory.com/news/evaluating-compression
+  date: '2025-12-16'
+  task: Anchored iterative summarization with fixed sections
+  effect: '36,611 messages from production SWE sessions (hundreds of compression points, 4 probes each,
+    GPT-5.2 judge, 0-5 scale): overall Factory 3.70, Anthropic SDK (full regeneration) 3.44, OpenAI /responses/compact
+    3.35. Accuracy 4.04 / 3.74 / 3.43; context awareness 4.01 / 3.56 / 3.64. Compression 98.6% / 98.7%
+    / 99.3%. Differences "consistent across task types and session lengths." Factory summaries came from
+    production; the others were generated from the same prefixes. Agent model not stated. Vendor evaluating
+    its own method.'
+  direction: supports
+  measured: true
+  locator: Three approaches to compression; Results table
+- source: Factory Research, "Evaluating Context Compression for AI Agents", https://factory.com/news/evaluating-compression
+  date: '2025-12-16'
+  task: Track file artifacts in a separate index
+  effect: 'Proposed, not tested: artifact-trail score was 2.19-2.45/5 for all methods; it "probably requires
+    specialized handling beyond summarization: a separate artifact index, or explicit file-state tracking
+    in the agent scaffolding."'
+  direction: supports
+  measured: false
+  locator: What we learned
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Merge summaries incrementally into anchored sections
+  effect: 'OpenCode <previous-summary> merge into "Objective / Important Details / Work State / Next Move
+    / Relevant Files"; Pi iterative merge; Rec 7: incremental merging "preserves early decisions that
+    from-scratch re-summarization loses."'
+  direction: supports
+  measured: false
+  locator: Sec 9.5 (OpenCode, Pi); Recommendation 7
+related:
+- 10.c.i
+- 2.c.i
+- 7.b.iv
+absorbs:
+- legacy_id: P18
+  name: Context compaction
+  group: Long-Horizon
+  source: master
+  family: workflow
+  sub_type: state_management
+  categories:
+  - context.lean-window
+  note: Summarize near the limit; clear old tool results first.
+  assessment:
+    detection:
+      static: A compaction function; history-length thresholds; a summarization call; old tool results
+        cleared.
+      traces: Context length over turns; compaction events; questions re-asked after compaction.
+      evals: Long-task success; context-length-exceeded rate.
+      judge: Compare pre- and post-compaction context for lost decisions or constraints.
+      probes:
+        what: Long tasks where a fact stated early is needed late.
+        construct: 'Needle-in-history: introduce a constraint at turn 1, pad past the threshold, require
+          it at the end.'
+      primary:
+      - traces
+      - probes
+    qa:
+      unit: Summary preserves required fields (decisions, open bugs, file list).
+      examples: Needle-in-history probes.
+      benchmark: Long-horizon benchmark.
+      production: Context-error rate; compaction count per session.
+      primary:
+      - examples
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: ''
+      security:
+        effect: mixed
+        magnitude: low
+        note: Safety context can be summarized away.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: mixed
+        magnitude: low
+        note: Audit trail becomes lossy unless raw history is stored.
+      quality:
+        effect: mixed
+        magnitude: medium
+        note: 'Enables long tasks; loses detail. VeRO T31: history caps were only ever lowered.'
+      latency:
+        effect: improves
+        magnitude: medium
+        note: ''
+      primary:
+      - cost
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: state_management
+  harness_role: context_mgmt
+  action: tune

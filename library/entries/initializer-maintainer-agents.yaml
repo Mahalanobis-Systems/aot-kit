@@ -1,0 +1,116 @@
+# 4.b.ii: Initializer-maintainer dual agent
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 4.b.ii
+legacy_id: P46
+slug: initializer-maintainer-agents
+name: Initializer-maintainer dual agent
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it splits the work across two agents
+  proposed: true
+levers:
+- state
+domains:
+- planning
+- code-generation
+evidence_domains: []
+categories:
+- memory.resume
+summary: Initializer-maintainer dual agent
+detect:
+  static: Two entry points; a progress file and feature list; bootstrap and per-session flows.
+  traces: Session handoffs; progress file updates.
+  evals: Multi-session completion rate.
+  probes:
+    what: A multi-session project.
+    construct: A feature list of ten items completed over several sessions.
+  primary:
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: Long projects only.
+    basis: assessment
+  cost:
+    effect: improves
+    size: small
+    basis: assessment
+  performance:
+    effect: none
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: medium
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: 'Introduces the two-agent harness: an initializer agent sets up the environment once, a coding agent makes
+    incremental progress each session'
+  effect: '"an initializer agent that sets up the environment on the first run, and a coding agent that is tasked
+    with making incremental progress in every session, while leaving clear artifacts for the next session."'
+  direction: supports
+  measured: false
+  locator: Intro; The long-running agent problem
+assessment:
+  qa:
+    unit: Progress file schema.
+    examples: Multi-session probes.
+    benchmark: null
+    production: Sessions per feature.
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: improves
+      magnitude: low
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: medium
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Long projects only.
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  library_group: Multi-Agent
+  library_source: catalog

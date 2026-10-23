@@ -1,0 +1,116 @@
+# 3.c.i: Self-Discover reasoning structures
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.c.i
+legacy_id: P35
+slug: self-discover-reasoning
+name: Self-Discover reasoning structures
+kind: pattern
+status: outline
+tiers:
+- tier: 3
+  why: it changes the reasoning prompt
+  proposed: true
+levers:
+- model
+- prompt
+domains:
+- reasoning
+evidence_domains:
+- reasoning
+categories:
+- prompts.reasoning-effort
+summary: Self-Discover reasoning structures
+detect:
+  static: A module-selection step before solving; a composed reasoning plan.
+  traces: Plan structure per task; modules chosen.
+  evals: Accuracy on hard, heterogeneous reasoning.
+  judge: Rate whether the chosen structure fits the task.
+  probes:
+    what: A mix of task types needing different reasoning.
+    construct: Interleave arithmetic, deduction and planning items.
+  primary:
+  - evals
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: Catalog cites up to 32 percent over fixed CoT.
+    basis: assessment
+  cost:
+    effect: degrades
+    size: small
+    when: One extra planning call.
+    basis: assessment
+  performance:
+    effect: degrades
+    size: small
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: none
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Reasoning & Search group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: 'Zhou et al., "Self-Discover: Large Language Models Self-Compose Reasoning Structures", https://arxiv.org/abs/2402.03620'
+  date: '2024-02-06'
+  task: The model selects atomic reasoning modules and composes them into a task-specific structure before solving
+  effect: Improves GPT-4 and PaLM 2 "by as much as 32% compared to Chain of Thought"; beats CoT-Self-Consistency
+    "by more than 20%, while requiring 10-40x fewer inference compute"
+  conditions: BigBench-Hard, grounded agent reasoning, MATH; GPT-4, PaLM 2
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: null
+    examples: Mixed-type probes.
+    benchmark: BigBench-Hard style.
+    production: null
+    primary:
+    - benchmark
+  impact:
+    cost:
+      effect: degrades
+      magnitude: low
+      note: One extra planning call.
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: none
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Catalog cites up to 32 percent over fixed CoT.
+    latency:
+      effect: degrades
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: instructions
+  library_group: Reasoning & Search
+  library_source: catalog

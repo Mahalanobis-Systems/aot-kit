@@ -1,0 +1,747 @@
+# Every optimization aot-kit has a skill for, one row per skill. Generated from library/ by
+# tools/render_skills.py: change the entry in library/entries/, not this file.
+# `absorbs` lists library patterns that are the same change as the entry and have no skill of
+# their own; `folded_patterns` is the same mapping the other way round. `excluded` lists ids that
+# are not optimizations of an agent, or were dropped in review.
+
+counts:
+  skills: 60
+  techniques: 32
+  patterns: 28
+  patterns_folded: 31
+  patterns_optimizer_side: 2
+optimizations:
+- id: 2.c.i
+  legacy_id: T02
+  skill: bound-tool-output
+  name: 'Bound tool output: cap it, or write it to a file the agent can read'
+  kind: technique
+  tier: 3
+  categories:
+  - tools.lean-returns
+  - context.filter-input
+  absorbs:
+  - P11
+- id: 3.a.iv
+  legacy_id: T04
+  skill: restructure-system-prompt
+  name: 'Restructure the system prompt: every requirement once, up front, in named sections; nothing the
+    model doesn''t need'
+  kind: technique
+  tier: 3
+  categories:
+  - prompts.structure
+  absorbs:
+  - P01
+- id: 7.b.i
+  legacy_id: T05
+  skill: detect-loops-and-stalls
+  name: 'Detect stalls and loops: warn, then stop early'
+  kind: technique
+  tier: 2
+  categories:
+  - orchestration.bound
+  absorbs:
+  - P28
+- id: 2.b.ii
+  legacy_id: T09
+  skill: tool-use-guidance
+  name: Tell the agent when to use each tool, in context it always sees
+  kind: technique
+  tier: 3
+  categories:
+  - tools.misuse
+  absorbs:
+  - P07
+- id: 3.a.i
+  legacy_id: T11
+  skill: few-shot-examples
+  name: Add worked examples to the prompt (few-shot), or curated example queries for data agents
+  kind: technique
+  tier: 3
+  categories:
+  - prompts.structure
+  absorbs: []
+- id: 2.b.i
+  legacy_id: T16
+  skill: fail-soft-tools
+  name: Make tool calls and tool results fail soft, and retry transient failures
+  kind: technique
+  tier: 2
+  categories:
+  - tools.misuse
+  - orchestration.bound
+  absorbs: []
+- id: 7.b.iii
+  legacy_id: T29
+  skill: size-execution-budgets
+  name: 'Size run budgets so productive runs aren''t cut off: turn caps, deadlines, command timeouts'
+  kind: technique
+  tier: 2
+  categories:
+  - orchestration.bound
+  absorbs: []
+- id: 5.a.i
+  legacy_id: T31
+  skill: staged-compaction
+  name: 'Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary'
+  kind: technique
+  tier: 2
+  categories:
+  - context.lean-window
+  absorbs:
+  - P18
+- id: 9.b.i
+  legacy_id: T32
+  skill: extractable-final-answer
+  name: 'Make the final answer reliably extractable: state the format, extract robustly, force an answer
+    at the limit'
+  kind: technique
+  tier: 2
+  categories:
+  - verification.completion
+  - prompts.structure
+  absorbs: []
+- id: 8.b.i
+  legacy_id: T34
+  skill: tune-search-tool
+  name: 'Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality'
+  kind: technique
+  tier: 2
+  categories:
+  - retrieval.query
+  - retrieval.results
+  absorbs: []
+- id: 2.a.ii
+  legacy_id: T35
+  skill: rewrite-tool-surface
+  name: 'Rewrite the tool surface: names, schemas, descriptions'
+  kind: technique
+  tier: 1
+  categories:
+  - tools.refactor
+  - tools.misuse
+  absorbs:
+  - P08
+  - P09
+  - P12
+- id: 8.a.ii
+  legacy_id: T39
+  skill: surface-unreadable-information
+  name: Surface information the source holds but the agent cannot read
+  kind: technique
+  tier: 3
+  categories:
+  - retrieval.sources
+  absorbs: []
+- id: 5.b.i
+  legacy_id: T40
+  skill: ground-queries-in-schema
+  name: 'Give the model the schema it queries, in context: descriptions, keys, codes, sample values'
+  kind: technique
+  tier: 3
+  categories:
+  - context.filter-input
+  - retrieval.query
+  absorbs: []
+- id: 9.a.i
+  legacy_id: T43
+  skill: external-verifier-feedback
+  name: Feed back a sound external verifier's verdict; never the model's own critique
+  kind: technique
+  tier: 2
+  categories:
+  - verification.external
+  absorbs:
+  - P39
+- id: 9.b.iii
+  legacy_id: T44
+  skill: verify-completion
+  name: Verify completion against the environment before the agent stops
+  kind: technique
+  tier: 2
+  categories:
+  - verification.completion
+  absorbs:
+  - P40
+- id: 9.b.ii
+  legacy_id: T45
+  skill: false-success-detector
+  name: Triage false success with a cheap trained detector, not an LLM judge
+  kind: technique
+  tier: 2
+  categories:
+  - verification.completion
+  - verification.spend
+  absorbs: []
+- id: 9.c.ii
+  legacy_id: T46
+  skill: samples-before-verification
+  name: 'Spend extra samples before extra verification: parallel attempts with a vote or judge; verify
+    only where it pays'
+  kind: technique
+  tier: 3
+  categories:
+  - verification.spend
+  - orchestration.extra-compute
+  absorbs:
+  - P05
+  - P36
+  - P31
+- id: 9.c.iii
+  legacy_id: T48
+  skill: audit-verifier-cascade
+  name: Audit a verifier-gated cascade against a gold sample the verifier never sees
+  kind: technique
+  tier: 4
+  categories:
+  - verification.spend
+  - topologies.escalate
+  absorbs: []
+- id: 9.a.ii
+  legacy_id: T50
+  skill: verify-citations
+  name: Verify citations claim by claim for factual support
+  kind: technique
+  tier: 3
+  categories:
+  - verification.external
+  - retrieval.results
+  absorbs: []
+- id: 9.c.i
+  legacy_id: T51
+  skill: no-self-written-tests
+  name: Don't prompt agents to write their own tests; suppress it for test-heavy models
+  kind: technique
+  tier: 3
+  categories:
+  - verification.spend
+  absorbs: []
+- id: 7.a.i
+  legacy_id: T54
+  skill: semantic-layer-routing
+  name: Route metric questions through a deterministic semantic layer; fall back to text-to-SQL
+  kind: technique
+  tier: 3
+  categories:
+  - orchestration.route
+  - retrieval.query
+  absorbs: []
+- id: 8.a.i
+  legacy_id: T57
+  skill: choose-retriever
+  name: Choose the retriever by corpus size and question type
+  kind: technique
+  tier: 3
+  categories:
+  - retrieval.sources
+  - retrieval.query
+  - orchestration.route
+  absorbs: []
+- id: 2.a.i
+  legacy_id: T60
+  skill: reduce-tool-surface
+  name: 'Reduce the tool surface: remove and consolidate tools, then defer the rest behind search'
+  kind: technique
+  tier: 1
+  categories:
+  - tools.refactor
+  - context.filter-input
+  absorbs:
+  - P10
+  - P57
+- id: 2.a.iii
+  legacy_id: T61
+  skill: choose-action-interface
+  name: 'Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task'
+  kind: technique
+  tier: 3
+  categories:
+  - tools.refactor
+  - models.workload-fit
+  absorbs:
+  - P06
+- id: 7.b.iv
+  legacy_id: T62
+  skill: track-task-progress
+  name: 'Track explicit progress: a task list with a status per item, re-injected each turn'
+  kind: technique
+  tier: 3
+  categories:
+  - orchestration.bound
+  absorbs:
+  - P25
+- id: 3.b.i
+  legacy_id: T63
+  skill: cache-stable-prefix
+  name: Keep the prompt prefix cache-stable
+  kind: technique
+  tier: 1
+  categories:
+  - prompts.caching
+  absorbs:
+  - P22
+- id: 6.b.iii
+  legacy_id: T64
+  skill: multi-agent-for-breadth
+  name: Use multi-agent orchestration only for breadth-first, independent sub-tasks
+  kind: technique
+  tier: 4
+  categories:
+  - topologies.parallel
+  - context.isolate
+  absorbs:
+  - P15
+  - P16
+- id: 1.b.i
+  legacy_id: T65
+  skill: model-and-effort-per-call-site
+  name: Match the model and its effort to each call site and query class
+  kind: technique
+  tier: 3
+  categories:
+  - models.specialists
+  - models.workload-fit
+  - prompts.reasoning-effort
+  absorbs:
+  - P03
+  - P14
+- id: 10.a.i
+  legacy_id: T68
+  skill: constrain-agent-reach
+  name: Constrain what the agent can touch
+  kind: technique
+  tier: 2
+  categories:
+  - safety.sandbox
+  absorbs:
+  - P61
+- id: 10.b.i
+  legacy_id: T69
+  skill: risky-action-policy
+  name: 'Gate irreversible actions: allow, ask or deny by side effect'
+  kind: technique
+  tier: 2
+  categories:
+  - safety.approval
+  absorbs:
+  - P59
+  - P60
+- id: 10.c.i
+  legacy_id: T70
+  skill: contain-untrusted-input
+  name: Contain sensitive data and untrusted input
+  kind: technique
+  tier: 2
+  categories:
+  - safety.data
+  absorbs:
+  - P41
+  - P53
+- id: 8.b.ii
+  legacy_id: T71
+  skill: link-large-schemas
+  name: 'Link large schemas by exploration: start broad, grow the linked set with probing queries, favor
+    recall'
+  kind: technique
+  tier: 3
+  categories:
+  - retrieval.query
+  absorbs: []
+- id: 3.a.iii
+  legacy_id: P02
+  skill: inject-runtime-context
+  name: Dynamic context injection
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - prompts.structure
+  absorbs: []
+- id: 7.d.iii
+  legacy_id: P04
+  skill: react-loop
+  name: ReAct loop
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.loop
+  absorbs: []
+- id: 7.a.ii
+  legacy_id: P13
+  skill: prompt-chaining-with-gates
+  name: Prompt chaining with gate checks
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.route
+  absorbs: []
+- id: 7.c.iii
+  legacy_id: P17
+  skill: evaluator-optimizer-loop
+  name: Evaluator-optimizer loop
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 5.c.ii
+  legacy_id: P20
+  skill: isolated-subagent-context
+  name: Sub-agent architectures with clean contexts
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - context.isolate
+  absorbs:
+  - P44
+- id: 4.b.iii
+  legacy_id: P21
+  skill: multi-window-task-state
+  name: Keep plan, progress and results in files when work outlives one context window
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - memory.resume
+  - memory.externalize
+  absorbs:
+  - P19
+  - P24
+  - P56
+- id: 3.b.ii
+  legacy_id: P23
+  skill: mask-tools-not-remove
+  name: Mask tools instead of removing them
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - prompts.caching
+  - tools.misuse
+  absorbs: []
+- id: 7.b.ii
+  legacy_id: P26
+  skill: keep-errors-in-context
+  name: Keep errors in context
+  kind: pattern
+  tier: 2
+  tier_proposed: true
+  categories:
+  - orchestration.bound
+  absorbs: []
+- id: 3.a.ii
+  legacy_id: P27
+  skill: vary-few-shot-examples
+  name: Avoid few-shot ruts
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - prompts.structure
+  absorbs: []
+- id: 7.c.vii
+  legacy_id: P32
+  skill: tree-of-thought
+  name: Tree-of-Thought
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 7.c.iv
+  legacy_id: P33
+  skill: graph-of-thought
+  name: Graph-of-Thought
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 7.c.v
+  legacy_id: P34
+  skill: language-agent-tree-search
+  name: Language Agent Tree Search (LATS)
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 3.c.i
+  legacy_id: P35
+  skill: self-discover-reasoning
+  name: Self-Discover reasoning structures
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - prompts.reasoning-effort
+  absorbs: []
+- id: 7.c.i
+  legacy_id: P37
+  skill: reflection-loop
+  name: Reflection loop
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 7.c.ii
+  legacy_id: P38
+  skill: self-critique-evaluator
+  name: Self-critique evaluator loop
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 6.a.i
+  legacy_id: P42
+  skill: oracle-worker-escalation
+  name: Oracle-worker multi-model
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - topologies.escalate
+  - models.cheap-verifiable
+  absorbs: []
+- id: 7.c.vi
+  legacy_id: P43
+  skill: multi-agent-debate
+  name: Multi-agent debate
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.extra-compute
+  absorbs: []
+- id: 6.b.ii
+  legacy_id: P45
+  skill: llm-map-reduce
+  name: LLM map-reduce
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - topologies.parallel
+  absorbs: []
+- id: 4.b.ii
+  legacy_id: P46
+  skill: initializer-maintainer-agents
+  name: Initializer-maintainer dual agent
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - memory.resume
+  absorbs: []
+- id: 5.c.i
+  legacy_id: P47
+  skill: discrete-phase-separation
+  name: Discrete phase separation
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - context.isolate
+  absorbs: []
+- id: 6.c.ii
+  legacy_id: P48
+  skill: plan-then-execute
+  name: Plan-then-execute
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - topologies.trust
+  absorbs: []
+- id: 6.c.i
+  legacy_id: P49
+  skill: code-then-execute
+  name: Code-then-execute (CaMeL)
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - topologies.trust
+  absorbs: []
+- id: 7.d.ii
+  legacy_id: P50
+  skill: inversion-of-control
+  name: Inversion of control
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.loop
+  absorbs: []
+- id: 7.d.i
+  legacy_id: P51
+  skill: continuous-task-loop
+  name: Continuous autonomous task loop
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - orchestration.loop
+  absorbs: []
+- id: 6.b.i
+  legacy_id: P52
+  skill: parallel-read-only-tools
+  name: Parallel tool execution for read-only calls
+  kind: pattern
+  tier: 3
+  tier_proposed: true
+  categories:
+  - topologies.parallel
+  absorbs: []
+- id: 4.b.i
+  legacy_id: P54
+  skill: filesystem-checkpoints
+  name: Filesystem-based agent state and checkpoints
+  kind: pattern
+  tier: 2
+  tier_proposed: true
+  categories:
+  - memory.resume
+  absorbs: []
+- id: 4.c.i
+  legacy_id: P55
+  skill: episodic-memory
+  name: Episodic memory retrieval
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - memory.reuse
+  absorbs: []
+- id: 4.c.ii
+  legacy_id: P58
+  skill: skill-library
+  name: Skill library evolution
+  kind: pattern
+  tier: 4
+  tier_proposed: true
+  categories:
+  - memory.reuse
+  absorbs: []
+folded_patterns:
+- legacy_id: P01
+  name: System prompt altitude and sectioned structure
+  covered_by: 3.a.iv
+- legacy_id: P03
+  name: Chain-of-thought
+  covered_by: 1.b.i
+- legacy_id: P05
+  name: Self-consistency voting
+  covered_by: 9.c.ii
+- legacy_id: P06
+  name: CodeAct
+  covered_by: 2.a.iii
+- legacy_id: P07
+  name: Tool docstrings with use / do-not-use guidance and examples
+  covered_by: 2.b.ii
+- legacy_id: P08
+  name: Low-friction tool input formats
+  covered_by: 2.a.ii
+- legacy_id: P09
+  name: Poka-yoke tool design
+  covered_by: 2.a.ii
+- legacy_id: P10
+  name: Consolidate tools into higher-level operations
+  covered_by: 2.a.i
+- legacy_id: P11
+  name: Token-efficient tool responses
+  covered_by: 2.c.i
+- legacy_id: P12
+  name: Tool namespacing
+  covered_by: 2.a.ii
+- legacy_id: P14
+  name: Routing to specialists
+  covered_by: 1.b.i
+- legacy_id: P15
+  name: Parallelization by sectioning or voting
+  covered_by: 6.b.iii
+- legacy_id: P16
+  name: Orchestrator-workers
+  covered_by: 6.b.iii
+- legacy_id: P18
+  name: Context compaction
+  covered_by: 5.a.i
+- legacy_id: P19
+  name: Structured note-taking
+  covered_by: 4.b.iii
+- legacy_id: P22
+  name: KV-cache-friendly prompt layout
+  covered_by: 3.b.i
+- legacy_id: P24
+  name: File system as external memory
+  covered_by: 4.b.iii
+- legacy_id: P25
+  name: Attention recitation
+  covered_by: 7.b.iv
+- legacy_id: P28
+  name: Infinite-loop prevention by hashing recent calls
+  covered_by: 7.b.i
+- legacy_id: P31
+  name: LLM-as-judge
+  covered_by: 9.c.ii
+- legacy_id: P36
+  name: Inference-time scaling
+  covered_by: 9.c.ii
+- legacy_id: P39
+  name: Rich feedback loops
+  covered_by: 9.a.i
+- legacy_id: P40
+  name: Stop-hook auto-continue
+  covered_by: 9.b.iii
+- legacy_id: P41
+  name: Dual LLM (privileged / quarantined)
+  covered_by: 10.c.i
+- legacy_id: P44
+  name: Sub-agent spawning with isolated context
+  covered_by: 5.c.ii
+- legacy_id: P53
+  name: Context minimization
+  covered_by: 10.c.i
+- legacy_id: P56
+  name: Proactive state externalization
+  covered_by: 4.b.iii
+- legacy_id: P57
+  name: Progressive tool discovery
+  covered_by: 2.a.i
+- legacy_id: P59
+  name: Human-in-the-loop approval gates
+  covered_by: 10.b.i
+- legacy_id: P60
+  name: Spectrum of control
+  covered_by: 10.b.i
+- legacy_id: P61
+  name: Tool capability compartmentalization
+  covered_by: 10.a.i
+excluded:
+- legacy_id: P29
+  name: Evaluation-driven tool development
+  why: optimizer-side practice (how an agent is optimized), not a change to an agent
+- legacy_id: P30
+  name: Track accuracy, tool-call counts, tool errors, runtime, tokens
+  why: optimizer-side practice (how an agent is optimized), not a change to an agent
+- legacy_id: T37
+  name: Unit tests for the harness
+  why: an optimizer practice (test the harness you are changing), not a change to an agent
+- legacy_id: O01-O20
+  name: Optimizer-side practices
+  why: practices of whoever optimizes the agent, not changes to an agent (moved 2026-09-23)
+- legacy_id: T49
+  name: Verify a coding patch by reconstructing the problem from the patch alone
+  why: Dropped from the catalog in review (2026-09-23).

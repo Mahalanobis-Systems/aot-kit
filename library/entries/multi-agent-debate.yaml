@@ -1,0 +1,118 @@
+# 7.c.vi: Multi-agent debate
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.c.vi
+legacy_id: P43
+slug: multi-agent-debate
+name: Multi-agent debate
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it adds a multi-agent topology
+  proposed: true
+levers:
+- control-flow
+domains:
+- reasoning
+evidence_domains:
+- reasoning
+categories:
+- orchestration.extra-compute
+summary: Multi-agent debate
+detect:
+  static: Multiple agents with opposing prompts and a synthesizer.
+  traces: Rounds; whether positions change.
+  evals: Decision quality vs single agent.
+  judge: Rate synthesis and whether the debate was substantive.
+  probes:
+    what: Questions with a confirmation-bias trap.
+    construct: Prompts that lead a single agent to a confident wrong answer.
+  primary:
+  - evals
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: Decisions only.
+    basis: assessment
+  cost:
+    effect: degrades
+    size: large
+    basis: assessment
+  performance:
+    effect: degrades
+    size: large
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    when: Recorded arguments.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - cost
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Du et al., "Improving Factuality and Reasoning in Language Models through Multiagent Debate", https://arxiv.org/abs/2305.14325
+  date: '2023-05-23'
+  task: Several model instances propose answers and debate over rounds before agreeing on one
+  effect: '"Arithmetic: 81.8 vs 67.0 single agent; Grade School Math: 85.0 vs 77.0 (%, Table 1)"'
+  conditions: 3 agents, two rounds of debate; arithmetic, GSM, chess
+  direction: supports
+  locator: Table 1
+assessment:
+  qa:
+    unit: null
+    examples: Trap probes.
+    benchmark: Decision or judgment benchmark.
+    production: null
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: degrades
+      magnitude: high
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: low
+      note: Recorded arguments.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Decisions only.
+    latency:
+      effect: degrades
+      magnitude: high
+      note: ''
+    primary:
+    - quality
+    - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  library_group: Multi-Agent
+  library_source: catalog

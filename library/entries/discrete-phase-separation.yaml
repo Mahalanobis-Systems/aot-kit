@@ -1,0 +1,118 @@
+# 5.c.i: Discrete phase separation
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 5.c.i
+legacy_id: P47
+slug: discrete-phase-separation
+name: Discrete phase separation
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it splits the work into isolated phases
+  proposed: true
+levers:
+- context
+domains:
+- general
+evidence_domains: []
+categories:
+- context.isolate
+summary: Research, plan, execute; pass only distilled conclusions.
+detect:
+  static: Phases with distilled handoffs rather than shared history.
+  traces: Phase boundaries; handoff size vs full history.
+  evals: Quality vs monolithic run.
+  judge: Rate handoffs for completeness.
+  probes:
+    what: Tasks where premature implementation hurts.
+    construct: Tasks with a design decision that must precede coding.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: improves
+    size: medium
+    basis: assessment
+  cost:
+    effect: improves
+    size: small
+    basis: assessment
+  performance:
+    effect: degrades
+    size: small
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: medium
+    when: Review at boundaries.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Dex Horthy (HumanLayer), "Getting AI to Work in Complex Codebases", https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/ace-fca.md
+  date: '2025-08-29'
+  task: Describes a research, plan, implement workflow for coding agents that keeps context utilization low and
+    adds human review between phases
+  effect: '"We use a "research, plan, implement" workflow"; reports shipping 35k LOC to BAML in 7 hours (3 on research/plans,
+    4 on implementation). Anecdotal, no controlled comparison.'
+  direction: supports
+  measured: false
+  locator: Intro; Solving complex problems
+assessment:
+  qa:
+    unit: Handoff schema.
+    examples: Design-first probes.
+    benchmark: Coding benchmark.
+    production: Rework rate.
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: improves
+      magnitude: low
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: medium
+      note: Review at boundaries.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: degrades
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  library_group: Multi-Agent
+  library_source: catalog

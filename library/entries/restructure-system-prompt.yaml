@@ -1,0 +1,209 @@
+# 3.a.iv: Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.a.iv
+legacy_id: T04
+slug: restructure-system-prompt
+name: 'Restructure the system prompt: every requirement once, up front, in named sections; nothing the
+  model doesn''t need'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- prompt
+domains:
+- general
+evidence_domains:
+- code-generation
+- reasoning
+categories:
+- prompts.structure
+summary: 'Rewrite the system prompt so that each requirement the task has (constraints, the answer format,
+  the completion check, how to work efficiently, the domain procedure) is stated once, up front, in a
+  named section, and remove instructions the model does not need. Adding structure and removing bulk are
+  the same edit seen from two sides: what stays is what the eval shows the model needs. A domain procedure
+  section is worth adding only when failures cluster on a step an expert would take; write it from those
+  failures, from a domain expert, or by searching prompt variants against the eval (GEPA).'
+how: 1. List the requirements the task actually has, from the task spec and from failures.
+  2. Put each in one named section; put the answer format and completion check in their own sections.
+  3. Cut everything else, and shorten tool descriptions and checklists with it (the TerminalBench run
+  cut the prompt from 7 lines to 3). 4. Add a domain procedure only if failures cluster on a step; derive
+  it from those failures or an expert, or generate and test variants with GEPA. 5. Run the paired eval
+  on development and held-out cases; keep only sections that earn their place.
+detect:
+  static: system prompt with no named sections; requirements repeated, contradictory, or absent (no answer
+    format, no completion criteria); prompt plus tool descriptions over about a quarter of the context
+    window
+  traces: failure rows labeled instruction-following-failure or instruction-grader-mismatch where the
+    requirement was never in the prompt; prompt tokens the largest share of input per step; context-overflow
+    outcomes
+  evals: an ablation that removes a section and shows no loss (cut it), or failures that cluster on one
+    step of the task procedure (add it)
+impact:
+  quality:
+    effect: mixed
+    size: small
+    when: 'adds: MAST +4.7 to +5.0 points on GSM-Plus (2025), VeRO MATH validation +0.10 with train -0.07;
+      cuts: TerminalBench +6.8 points where the prompt crowded out context, GPQA train -0.04 where the
+      prompt carried procedure'
+    basis: evidence
+  cost:
+    effect: improves
+    size: small
+    when: fewer prompt tokens
+    basis: evidence
+  performance:
+    effect: improves
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval, old against restructured prompt, checked on held-out cases; count context-overflow
+    failures too
+evidence:
+- source: paper §A.4
+  task: TerminalBench-2
+  effect: 8 lines to 23 lines in Filesystem-B=178. Net-zero pass rate (6 new passes, 6 regressions) although
+    the run had the largest crash reduction (46.1% to 30.3%).
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Move self-correction criteria into the initial prompt
+  effect: 'Table 8, CommonGen-Hard concept coverage, gpt-3.5-turbo-0613: Madaan et al. reported standard
+    44.0 -> self-correct 67.0 (7 calls); replication 53.0 -> 61.1; adding "Write a reasonable paragraph
+    that includes *ALL* of the above concepts" gives 81.8 in 1 call, and self-correcting that drops it
+    to 75.1.'
+  direction: supports
+  measured: true
+  locator: Sec. 5; Table 8
+- source: Kamoi et al., "When Can LLMs Actually Correct Their Own Mistakes? A Critical Survey of Self-Correction
+    of LLMs", https://arxiv.org/abs/2406.01297
+  date: '2024-06-03'
+  task: Put every task requirement in the initial prompt
+  effect: Self-Refine used wrong few-shot labels or mismatched instructions only for initial generation
+    (Tables 9-10); detoxification studies often do not ask for harmless output initially.
+  direction: supports
+  measured: false
+  locator: Sec. 4 Weak Initial Responses; Table 4
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Restructure prompt with a dedicated verification section
+  effect: 'Table 5, GSM-Plus (200 sampled problems, 6 repetitions): GPT-4 84.75±1.94 -> 89.75±1.44; GPT-4o
+    84.25±1.86 -> 89.00±1.38 (Wilcoxon p=0.03 vs baseline for both).'
+  direction: supports
+  measured: true
+  locator: App. H.1, App. L.1-L.2, Table 5
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Specify each agent's role and task clearly
+  effect: Proposed tactic (App. L.2 is the example; measured forms are the ChatDev/AG2 entries above).
+    Such tactics "often prove inconsistent".
+  direction: supports
+  measured: false
+  locator: App. G.1, Table 4
+- source: paper §A.4
+  task: TerminalBench-2
+  effect: Five-line block in Tools-B=89 alongside T01 and T02; that commit went 30.3% to 33.7% pass rate.
+- source: paper §A.4, Table 16
+  task: TerminalBench-2
+  effect: '"Tools-B=178: prompt 7 to 3 lines, tool descriptions to one phrase each, checklist 10 to 4
+    lines, cap 17KB. Best pass rate of the study, 37.1% (+6.8pp), with ContextLengthExceeded 13 to 2,
+    without fixing the parser crash."'
+- source: paper Figure 12 (Orchestrator, Sonnet 4.5)
+  task: MATH
+  effect: Validation 0.78 to 0.88 in phase 1; train dropped 0.85 to 0.78 in the same phase.
+- source: paper Figure 12
+  task: MATH
+  effect: Flat on validation (0.87).
+- source: paper Figure 13 (Resources Only, Sonnet 4.5)
+  task: GPQA
+  effect: Train 0.58 to 0.54 (regressed).
+- source: paper §A.4
+  task: TerminalBench-2
+  effect: As part of T06, the best result in that study.
+caveats: Intermediate 20-task subset showed 45% and misled the optimizer; full evaluation regressed previously-passing
+  tasks. 12 new passes against 6 regressions; the same run left 11 AttributeError crashes in
+  place. Helps when the prompt was crowding out task context; hurts on reasoning tasks where
+  the prompt carried procedure.
+related:
+- 3.a.ii
+- 2.b.ii
+- 9.b.i
+- 3.b.i
+absorbs:
+- legacy_id: P01
+  name: System prompt altitude and sectioned structure
+  group: Context Engineering
+  source: master
+  family: prompt
+  sub_type: formatting
+  categories:
+  - prompts.structure
+  note: Balance specific vs vague; XML/markdown sections; tell the model what to do, not what not to do.
+  assessment:
+    detection:
+      static: Parse prompt strings. Check for section delimiters (XML tags or headings), total length,
+        ratio of MUST/NEVER/CRITICAL phrasing, long if-then rule lists (too specific) or no actionable
+        rules (too vague), contradictory rules.
+      traces: Outputs that violate a stated format or tool rule; sections the model never acts on.
+      evals: Format-compliance rate; failure categories that map to a prompt section.
+      judge: Rate the prompt for altitude, organization and contradictions; flag redundant tokens the
+        model ignores.
+      probes:
+        what: One task per rule in the prompt, plus paraphrased versions of the same task.
+        construct: Enumerate every instruction in the prompt; write an input that can only pass if that
+          instruction is followed; paraphrase to test robustness to wording.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: 'Prompt lint: required sections present, length cap, no placeholder left unrendered, no contradictory
+        rules.'
+      examples: Run the per-rule probe set; every rule exercised at least once.
+      benchmark: Task benchmark before and after at the same budget.
+      production: Instruction-violation and format-compliance rates on sampled traffic.
+      primary:
+      - unit
+      - examples
+    impact:
+      cost:
+        effect: improves
+        magnitude: low
+        note: Shorter, stable prompts cache better.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: improves
+        magnitude: low
+        note: Consistent tone and format.
+      governance:
+        effect: improves
+        magnitude: low
+        note: Rules are readable and auditable.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: VeRO T04 and T07 show restructuring can help or be net zero; the paper counts prompt edits
+          as the lowest-leverage arm.
+      latency:
+        effect: improves
+        magnitude: low
+        note: Fewer prompt tokens.
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: system_prompt
+  harness_role: prompt
+  action: restructure

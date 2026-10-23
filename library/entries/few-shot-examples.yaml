@@ -1,0 +1,81 @@
+# 3.a.i: Add worked examples to the prompt (few-shot), or curated example queries for data agents
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.a.i
+legacy_id: T11
+slug: few-shot-examples
+name: Add worked examples to the prompt (few-shot), or curated example queries for data agents
+kind: technique
+status: outline
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- prompt
+domains:
+- general
+evidence_domains: []
+categories:
+- prompts.structure
+summary: Add solved examples of the task to the prompt. For data agents the examples are curated example
+  queries (commented SQL for custom metrics, an example-query index). Vary their form so the model reasons
+  about the case instead of copying the examples' pattern, and don't add examples where the problem calls
+  for validation.
+detect:
+  static: a prompt with no worked examples on a task with a fixed output shape; a data agent with no example
+    queries for its metrics
+  traces: outputs that miss the expected shape or metric definition; repeated queries for the same custom
+    metric
+  evals: failures that cluster on custom metrics or an output format the examples would show
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: weak in VeRO (MATH train 0.81 to 0.83, validation flat); strong for data agents (Genie 54% to
+      77%)
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    when: more prompt tokens
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval with and without the examples, on held-out cases
+evidence:
+- source: paper Figure 12
+  task: MATH, phase 4
+  effect: 'Adding few-shot maths examples: train 0.81 to 0.83, validation flat at 0.87.'
+- source: 'Databricks, "How to Build Production-Ready Genie Spaces and Build Trust Along the Way", https://www.databricks.com/blog/how-build-production-ready-genie-spaces-and-build-trust-along-way'
+  date: 2026-02
+  task: Commented example SQL for custom metrics
+  effect: 54% to 77% on 13 questions.
+  measured: true
+- source: 'Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data Analytics", https://arxiv.org/abs/2507.14372'
+  date: 2025-07
+  task: Remove the example-query index
+  effect: 49% to 24%.
+  direction: supports
+  measured: true
+caveats: Vary the examples (3.a.ii, avoid few-shot ruts). Don't add examples where the problem calls for
+  validation, one of VeRO's anti-patterns.
+related:
+- 3.a.iv
+- 3.a.ii
+- 7.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: few_shot
+  harness_role: prompt
+  action: add

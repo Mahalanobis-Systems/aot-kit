@@ -1,0 +1,15 @@
+aot-kit
+Copyright 2026 Mahal Systems
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The optimization library (library/) cites third-party works as evidence: papers, articles,
+documentation and benchmark reports, each named with its authors and a link. Short quotations
+from those works remain their authors' and are included for citation. library/vero-taxonomy.yaml
+reproduces the edit taxonomies of VeRO (Scale AI, "VeRO: A Harness for Agents to Optimize
+Agents", https://arxiv.org/abs/2602.22480), and library/library.yaml lists the sources of VeRO's
+pattern library.
+
+"Mahal Systems", "AOT" and the AOT logo are trademarks of Mahal Systems. As section 6 of the
+Apache License states, the license grants no permission to use them, except as needed to
+describe where the software comes from.

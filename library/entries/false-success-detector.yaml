@@ -1,0 +1,135 @@
+# 9.b.ii: Triage false success with a cheap trained detector, not an LLM judge
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.b.ii
+legacy_id: T45
+slug: false-success-detector
+name: Triage false success with a cheap trained detector, not an LLM judge
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: detects a silent failure mode; it does not change the agent
+levers:
+- control-flow
+domains:
+- judging
+evidence_domains: []
+categories:
+- verification.completion
+- verification.spend
+summary: Train a lightweight text classifier (TF-IDF with logistic regression) on 50-100 labeled runs
+  to flag likely false successes for review. LLM judges, including reasoning models and tuned judge prompts,
+  peaked at AUROC 0.65 and were anti-correlated on false success against honest failure; the detector
+  reached 0.83-0.95 and caught 72% at a 10% review budget.
+how: 1. Label 50-100 runs as true success, false success or honest failure from the environment (9.b.iii).
+  2. Train the classifier on the run's closing text and tool sequence. 3. Route the top 10% by score to
+  review; track catch rate against the labels.
+detect:
+  traces: runs that end with a success claim; the closing message text and the tool-call sequence are
+    the detector's inputs
+  evals: an LLM judge currently used to decide whether a run completed; a labeled sample with a false-success
+    rate above a few percent
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'as a review triage signal: 72% of false successes caught at a 10% review budget, against 13%
+      for the best judge (Jun 2026)'
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: compared with an LLM judge
+    basis: evidence
+  performance:
+    effect: improves
+    size: large
+    when: 3,300x lower latency than a judge call
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: monitor
+  how: catch rate at a fixed review budget against a labeled sample
+evidence:
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Triage false success with a lightweight trained detector
+  effect: Task-disjoint AUROC 0.849 (LR) / 0.825 (XGB) / 0.827 (DeBERTa-v3) on tau2-bench and 0.953 (XGB)
+    on AppWorld API-call sequences, versus best LLM judge 0.640 and 0.537. At a 10% flag rate the detector
+    recovers 72% of false successes [95% CI 63-80] vs 13% [8-17] for the best judge (Sonnet 4.5 no_closing);
+    at 5%, 51% vs 6%. Precision at 10% flag rate is only 50%. 1.19 ms per CPU inference vs ~4,000 ms per
+    judge call (~3,300x). Cross-domain zero-shot transfer drops to 0.69 (airline<->retail); cross-generation
+    (tau-v1 -> tau2) 0.73; rewriting honest-failure closings in confident style flips the detector on
+    10/50 (20%).
+  direction: supports
+  measured: true
+  locator: §4.2, §4.4, Tables 4 and 6, Appendix H
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Calibrate the detector on 50-100 in-domain examples
+  effect: 'tau2-bench airline<->retail LODO: TF-IDF+LR 0.693 zero-shot -> 0.736 (K=10 per class) -> 0.788
+    (K=50) -> 0.827 (K=100). TF-IDF+XGB degrades 0.657 -> 0.538 at K=100. Entity stripping does not help
+    (LR 0.690, XGB 0.684).'
+  direction: supports
+  measured: true
+  locator: Appendix I, Table 13; §5 Limitations
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Ensemble detector with an LLM judge
+  effect: Detector and judge scores correlate at rho=0.41; a 75/25 weighted ensemble raises tau2-bench
+    AUROC from 0.834 to 0.855. Author calls the gain modest.
+  direction: supports
+  measured: true
+  locator: §4.4, Figure 7
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Do not rely on an LLM judge to detect false success
+  effect: 'tau2-bench, 295 trajectories, 5 judges (GPT-4o, Sonnet 4.5, Llama 3.3-70B, DeepSeek-R1, o3-mini)
+    x 5 prompt conditions x 3 phrasings: no configuration exceeds AUROC 0.65 on false success vs true
+    success (best 0.640). On false success vs honest failure every cell is 0.18-0.30, i.e. anti-correlated
+    with truth; assertion-vocabulary trajectories score 0.27-0.36 more "completed" regardless of outcome.
+    AppWorld, 200 API-call sequences, 3 judges: best 0.537.'
+  direction: supports
+  measured: true
+  locator: §4.3, Table 5, Figures 4-5
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Judge prompt tweaks do not fix completion judging
+  effect: 'tau2-bench: Sonnet 4.5 blind 0.576, checklist 0.576, stepwise 0.590, tool_only 0.605, no_closing
+    0.640; adding the full task spec (strong-real) moves 0.640 -> 0.632 ("judges do not lack information,
+    they fail to use it"). AppWorld: telling the judge GET-only sequences cannot complete write tasks
+    raises GPT-4o 0.394 -> 0.537 but lowers Sonnet 4.5 (blind 0.368 -> with_task 0.289 -> checklist 0.274)
+    and Llama 3.3-70B (0.505 -> 0.384).'
+  direction: supports
+  measured: true
+  locator: §3.5, §4.3, Table 5, Appendix D
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Reasoning models do not prevent false success
+  effect: Qwen3-Max-Thinking has the highest tau2-bench false-success rate (79% of failures; range across
+    8 families 13% GPT-5.2 to 79%); its <think> traces average 1,274 chars in false-success cases vs 486
+    for other models. As judges, DeepSeek-R1 peaks at AUROC 0.573 and o3-mini at 0.554.
+  direction: supports
+  measured: true
+  locator: §4.1, §4.3, Figure 1, Table 5
+related:
+- 9.b.iii
+- 9.c.ii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: validation
+  harness_role: submission
+  action: add

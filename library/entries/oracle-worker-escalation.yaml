@@ -1,0 +1,120 @@
+# 6.a.i: Oracle-worker multi-model
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.a.i
+legacy_id: P42
+slug: oracle-worker-escalation
+name: Oracle-worker multi-model
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it adds a multi-model topology
+  proposed: true
+levers:
+- model
+domains:
+- general
+evidence_domains: []
+categories:
+- topologies.escalate
+- models.cheap-verifiable
+summary: Cheap worker, expensive oracle on request.
+detect:
+  static: Two models with an escalation call from worker to oracle.
+  traces: Escalation rate; oracle tokens share.
+  evals: Quality vs cost against single-model baselines.
+  judge: Whether escalations were warranted.
+  probes:
+    what: Tasks where the worker fails.
+    construct: Build from the worker's failure set.
+  primary:
+  - traces
+  - evals
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: Depends on the escalation trigger.
+    basis: assessment
+  cost:
+    effect: improves
+    size: large
+    basis: assessment
+  performance:
+    effect: mixed
+    size: small
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - cost
+  - quality
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: 'Lingjiao Chen, Matei Zaharia, James Zou, "FrugalGPT: How to Use Large Language Models While Reducing
+    Cost and Improving Performance", https://arxiv.org/abs/2305.05176'
+  date: '2023-05-09'
+  task: 'LLM cascade: learn which cheaper models to try first and when to escalate to a stronger one'
+  effect: '"FrugalGPT can match the performance of the best individual LLM (e.g. GPT-4) with up to 98% cost reduction
+    or improve the accuracy over GPT-4 by 4% with the same cost"'
+  conditions: Commercial LLM APIs incl. GPT-4
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Escalation trigger.
+    examples: Worker-failure probes.
+    benchmark: Task benchmark with cost.
+    production: Escalation rate; cost per task.
+    primary:
+    - benchmark
+    - production
+  impact:
+    cost:
+      effect: improves
+      magnitude: high
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: low
+      note: ''
+    quality:
+      effect: mixed
+      magnitude: medium
+      note: Depends on the escalation trigger.
+    latency:
+      effect: mixed
+      magnitude: low
+      note: ''
+    primary:
+    - cost
+    - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  library_group: Multi-Agent
+  library_source: catalog

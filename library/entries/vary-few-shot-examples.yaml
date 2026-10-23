@@ -1,0 +1,380 @@
+# 3.a.ii: Avoid few-shot ruts
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.a.ii
+legacy_id: P27
+slug: vary-few-shot-examples
+name: Avoid few-shot ruts
+kind: pattern
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+  proposed: true
+levers:
+- prompt
+domains:
+- general
+evidence_domains:
+- tool-use
+- code-generation
+- planning
+- document-extraction
+- judging
+categories:
+- prompts.structure
+summary: 'An agent''s own history, and any examples in its prompt, act as few-shot demonstrations: when
+  the context fills with near-identical action-observation pairs (twenty similar items in a row, a retried
+  call), the model tends to copy their surface form instead of judging the current item. The change is
+  to break that uniformity: vary the serialization, phrasing and order of examples and of newly appended
+  actions and observations, describe repeated or failed actions instead of replaying them verbatim, or
+  move independent items into separate contexts (5.c.ii). The measured support is mostly for the mechanism
+  and for diverse examples: a failed call''s verbatim string accounted for 83% of small models'' pull
+  toward repeating it, batching 20 studies flipped 5.6-26.7% of one model''s screening decisions against
+  one-at-a-time runs, and diverse demonstrations beat the most similar ones by up to 23 points. No study
+  tests Manus-style serialization noise on an agent end to end, and equivalent formats alone moved accuracy
+  by up to 76 points, so measure the variation instead of assuming it helps.'
+how: '1. Start from the baseline: run the agent with its uniform template on a batch of near-identical
+  items (for example 20 resumes or abstracts in one context), plant an outlier late in the batch (position
+  15 of 20), run every item alone in a fresh context as the reference, and log accuracy and decisions
+  by position, repeated actions and repeats of failed calls. 2. Find where uniformity enters: tool results
+  and actions serialized with one fixed template, harness messages with identical wording, few-shot examples
+  that share one format and one structure, many similar items in one context, and failed calls replayed
+  verbatim. 3. Diversify the examples in the prompt: choose examples that differ in structure and cover
+  edge cases instead of the most similar ones; if you also vary their formatting (field names, separators,
+  layout), pin the required output format with an instruction or a schema, since examples are what the
+  model copies the format from. 4. Vary newly appended history, deterministically: rotate two or three
+  equivalent templates and phrasings for observations and harness messages, and the order of fields that
+  carry no meaning, choosing the variant from the item index or a seed at append time; never rewrite earlier
+  entries, so the context stays append-only and the prefix cache-stable (see 3.b.i). 5. Do not replay repeated
+  or failed actions verbatim (see 7.b.ii): replace a failed call with a short runtime-generated description
+  of what failed, or block exact repeats at the decoder (see 7.b.i); an instruction not to repeat did not
+  reduce repeats, and deleting the failed step made them worse. 6. Where items are independent, break
+  the repetition structurally instead: process each item or small batches in fresh contexts (5.c.ii), shuffle
+  item order across batches, and in proposal loops reject proposals too similar to recently accepted ones;
+  raising the temperature did not add real diversity. 7. Measure with paired runs on the same items, uniform
+  against varied (and against per-item contexts): accuracy and outlier detection by position, decision
+  flip rate against the single-item runs, exact-repeat rate, output-format errors, tokens and cache hit
+  rate, over several template sets and per model, reporting the spread rather than one number.'
+detect:
+  static: Every action and tool result serialized with one fixed template; harness messages with identical
+    wording; few-shot examples that share one format and one structure or were picked as the most similar
+    to the input; many similar items processed in one context; failed calls replayed verbatim in the history.
+  traces: Identical or near-identical consecutive actions; repeats of a call that already failed; later
+    outputs that copy wording or structure from earlier items; decisions that drift with position in the
+    batch or toward the batch majority, or that differ from the same item run alone.
+  evals: Accuracy and outlier detection by position in the batch; decision flip rate against each item
+    run alone; spread across several equivalent templates.
+  judge: 'Detect over-generalization: later outputs that carry over content or conclusions from earlier
+    items instead of the current one.'
+  probes:
+    what: A batch of similar items with one outlier.
+    construct: Twenty similar items with an outlier at position fifteen; run each item alone as the reference.
+  primary:
+  - evals
+  - probes
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: diverse demonstrations beat the most similar ones by up to 23 points, 50.3 to 73.5, on compositional
+      semantic parsing (Levy, Dec 2022); mixing formats across few-shot examples raised one task's worst-format
+      accuracy from 0.139 to 0.712 but lost on three task-model pairs (Ngweta, Apr 2025); describing a
+      failed call instead of replaying it cut exact repeats from 31% to 16% while task success went from
+      42% to 33%, within noise (Gumaan, Aug 2026); rejecting near-duplicate proposals and reweighting
+      toward unused edit types raised audited faithfulness from 0.44 to 0.71 where a higher temperature
+      added 0.02-0.03 (He, Aug 2026); equivalent formats alone moved accuracy by up to 76 points (Sclar,
+      Oct 2023)
+    basis: evidence
+  cost:
+    effect: mixed
+    size: small
+    when: replacing a verbatim call with a description cost no generated tokens (Gumaan, Aug 2026); varying
+      entries already in the history breaks the prompt cache, which the same Manus post warns against
+      (Ji, Jul 2025); one item per call gives up the savings that are the reason to batch (Hida, Aug 2026)
+    basis: evidence
+  performance:
+    effect: none
+    when: no study reports latency; serialization changes add no generated tokens (Gumaan, Aug 2026);
+      per-item contexts add calls that can run in parallel (see 5.c.ii)
+    basis: evidence
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: none
+    basis: assessment
+  brand:
+    effect: mixed
+    size: small
+    basis: assessment
+  primary:
+  - quality
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired runs on one batch of near-identical items with an outlier planted late (position 15 of
+    20), each item also run alone as the reference: uniform template against varied templates, phrasing
+    and order (and against per-item contexts); accuracy and outlier detection by position, decision flip
+    rate against the single-item runs, exact-repeat rate of actions, output-format errors, tokens and
+    cache hit rate; repeat over at least three template sets and report the spread, per model'
+- method: monitor
+  how: 'per batch in production: share of consecutive identical or near-identical actions, repeats of
+    a call that already failed, decision rates by position against the first items of the batch and drift
+    toward the batch majority; on a weekly sample, re-run items alone and track the decision flip rate'
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Production group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: 'Yichao ''Peak'' Ji (Manus), "Context Engineering for AI Agents: Lessons from Building Manus", https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus'
+  date: '2025-07-18'
+  task: Add structured variation to actions and observations so the agent does not copy its own past pattern
+  effect: Manus "introduces small amounts of structured variation in actions and observations—different serialization
+    templates, alternate phrasing, minor noise in order or formatting." Example of drift while reviewing 20 resumes.
+    No numbers.
+  direction: supports
+  measured: false
+  locator: Don't Get Few-Shotted
+- source: 'Esmail Gumaan, "Feedback That Backfires: Why Small Language Model Agents Repeat the Call They
+    Just Watched Fail", https://arxiv.org/abs/2608.23651'
+  date: '2026-08-24'
+  task: 'Measure whether a failed tool call kept verbatim in the transcript makes the agent repeat it,
+    and compare harnesses that change only how the failure is serialized: the verbatim call plus error,
+    a runtime-generated description instead of the call, the failed step deleted (clean retry), an added
+    "do not repeat" instruction, and a decoder ban on previously failed strings'
+  effect: 'For every model "the normalised probability of repeating the failed call rises from 0.06 to
+    0.54", and greedy decoding repeated it token for token on 19% of items against 0% before. "The failed
+    call''s surface form accounts for 83% of the damage." A description instead of the call "removes 76%
+    of the inversion at no token cost"; the instruction left it where it was, and deleting the failed
+    step was "the worst harness we measured for repetition". The authors'' rule: "the context after a
+    failure must differ from the context before it, and the difference must not be the failed action."
+    In end-to-end rollouts the description cut exact repeats from 31% to 16% (paired difference -14 [-32,
+    +2] points) and the decoder ban to 8%, but "Neither surface-form intervention improves task success":
+    success went from 0.42 to 0.33 with the description. Within a family, "Larger models copy less".'
+  conditions: 6 instruction-tuned checkpoints of 135M-1.7B (Llama-3.2, Qwen2.5, Qwen3, SmolLM2); the authors'
+    simulated tool-calling environment and MBPP program repair; rollouts on 24 tasks with Qwen2.5-0.5B
+    and greedy decoding; frontier-scale models untested
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §6.4; §7; §8.3 Table 8; §11
+- source: 'Akshit Sinha, Arvindh Arun, Shashwat Goel, Steffen Staab, Jonas Geiping, "The Illusion of Diminishing
+    Returns: Measuring Long Horizon Execution in LLMs", https://arxiv.org/abs/2509.09677'
+  date: '2025-09-11'
+  task: Inject a controlled rate of errors into the model's own prior turns of a long, simple execution
+    task (look up values in an in-context dictionary and keep a running sum) and measure accuracy at a
+    later turn
+  effect: '"as we increase the rate of injected errors into the context, accuracy at turn 100 consistently
+    degrades further"; the authors tie this to in-context learning, since here "the model conditions on
+    its own past behaviour, which could be wrong". Large non-thinking models "remain susceptible to self-conditioning".
+    "Qwen3 models with thinking enabled no longer self-condition, even when the entire prior history has
+    wrong answers." Keeping only recent turns "reduces the self-conditioning effect, but relies on the
+    Markovian nature of our task", and "Self-verification does not fix self-conditioning". Results are
+    in figures.'
+  conditions: Synthetic key-value running-sum task, 100 samples per setting; Qwen3 4-32B and Gemma3 4-27B,
+    with Kimi-K2, DeepSeek-V3 and Qwen3-235B-Instruct-2507 for scale; the errors in history are injected,
+    and the tested fix shrinks history rather than varying it
+  direction: mixed
+  measured: true
+  locator: §3.2 Results 3-5, Figures 5-6; Appendix C, Figures 9-10
+- source: Gilberto Sussumu Hida, Danilo Monteiro Ribeiro, Clayton Suguio Hida, "Class Imbalance and Batch
+    Effects in LLM-Based Screening for Systematic Reviews", https://arxiv.org/abs/2608.14737
+  date: '2026-08-13'
+  task: Screen studies for systematic reviews one per call, against the same studies shuffled into batches
+    of 20 in one prompt, with and without a sentence giving the expected inclusion rate
+  effect: For Llama, batching changed the decision on 5.6% (rsl_1) to 26.7% (rsl_4) of studies, significant
+    by McNemar (p < 0.001) in all five reviews; for GPT-5-mini 1.3% to 14.0%, significant in four of five
+    (mean flip rate 0.160 for Llama against 0.057). Batching made Llama more inclusive in the four reviews
+    with prevalence of 20% or less (net shift +3.5 to +10.5 points) and more restrictive in the balanced
+    one (-25.3), which the authors read as "a possible tendency toward implicit normalization of decisions
+    within the batch". F2 changes ranged from -0.101 to +0.096; in one review F2 rose from 0.37 to 0.46
+    while at item level "29 studies improved and 85 worsened". Stating the expected inclusion rate did
+    not correct the shift in the balanced review for either model.
+  conditions: Llama-3.3-70B-Instruct-Turbo and GPT-5-mini; five software-engineering reviews from SESR-Eval
+    (prevalence 2.9% to 53%); one batch arrangement and one run per condition; compares batching with
+    one study per call (isolation), not varied serialization
+  direction: mixed
+  measured: true
+  locator: §3.3; §4.3 RQ2; §4.4 Table 2; §4.5 RQ4; §5
+- source: 'Tianxi Li, Jie Ding, "Trustworthy Method Comparison with AI Judges: Estimation and Design under
+    Order, Batch, and Aggregation Effects", https://arxiv.org/abs/2610.07755'
+  date: '2026-10-06'
+  task: Three LLM judges each rate the same 30 research proposals accept or reject, all 30 in one context,
+    in 200 randomly shuffled orders; model how each rating depends on the ratings before it
+  effect: Gemini 2.5 Flash accepted an item 73.0% of the time right after a rejection and 66.6% after
+    an acceptance, a difference of -6.4% (95% interval [-8.9%, -3.9%]). "The lag-1 contrast is negative
+    and supported by the bootstrap for all three judges, indicating that an acceptance lowers the probability
+    of a subsequent acceptance"; GPT-5.4-mini also showed a lag-3 effect and Claude Haiku 4.5 significant
+    negative contrasts at all three lags. The dependence is contrast between neighbors, not imitation.
+    The authors "recommend GLMM inference with a random-shuffle batch design".
+  conditions: Gemini 2.5 Flash, GPT-5.4-mini, Claude Haiku 4.5; 6,000 binary ratings per judge plus 100
+    new shuffled batches for out-of-sample checks; one pool of 30 items
+  direction: mixed
+  measured: true
+  locator: §2 (Figures 1-2); §2.3; §7
+- source: 'Bowei He, Weixu Zhang, Yili Jin, Xue Liu, "Beneath the Diff: Diagnosing and Mitigating Algorithmic
+    Mode Collapse in Code-Level Autonomous Research Loops", https://arxiv.org/abs/2609.00077'
+  date: '2026-08-31'
+  task: Track the diversity of an autonomous research agent's accepted code edits over hundreds of iterations,
+    then add diversity-aware proposal sampling (reweighting toward under-used edit types, a memory that
+    rejects proposals too similar to recently accepted ones, and an audit-based revert gate), compared
+    with raising the proposer's temperature from 0.7 to 1.2
+  effect: '"surface-level edit diversity remains stable, but semantic and mechanism-level diversity collapse:
+    the agent continues to edit different lines of code while repeatedly proposing the same kinds of algorithmic
+    changes", and in-loop gains do not transfer (audited faithfulness 0.38-0.49). Higher temperature gave
+    0.43, 0.49, 0.40 and 0.51 against 0.41, 0.46, 0.38 and 0.49: "raising temperature is not a remedy".
+    The two diversity components alone raised average faithfulness from 0.44 to 0.71 and cut semantic-cluster
+    decay from 0.68 to 0.28 at 0.986 of the in-loop gain; the full method reached 0.74-0.82.'
+  conditions: Claude Opus 4.7 proposer (GPT-5.2 and Llama-3.3-70B in robustness runs); four single-GPU
+    tasks (small-LM pretraining, instruction tuning, GSM8K tuning, prompt optimization); 300 iterations,
+    3 seeds (5 for one task); autoresearch fork and Aider. The authors' "self-imitation through history
+    conditioning" is part of a conceptual model, not isolated; the fix acts on proposal sampling, not
+    on how history is serialized
+  direction: supports
+  measured: true
+  locator: Abstract; §4.2 Table 2; §4.5 Table 5; Appendix A (F3)
+- source: Lilian Ngweta, Kiran Kate, Jason Tsay, Yara Rizk, "Towards LLMs Robustness to Changes in Prompt
+    Format Styles", https://arxiv.org/abs/2504.06969
+  date: '2025-04-09'
+  task: 'Mixture of Formats: present each few-shot example in a different format style (field names, separators,
+    casing) and have the model rewrite each example in another style, instead of one shared format; compare
+    accuracy across 10 format variants'
+  effect: '"MOF prompting effectively reduces style-induced prompt brittleness across several datasets
+    and LLMs, with a notable 46% reduction in task280 using Llama-2-13b." For llama-3-70b-instruct on
+    task317, worst/best-format accuracy rose from 0.139/0.229 to 0.712/0.795. Mean accuracy for Llama-2-13b
+    rose on task280 (0.635 to 0.842) but fell on task1612 (0.564 to 0.505), and "exceptions occur in task190
+    (llama-3-70b-instruct), task1612 (llama-2-13b-chat), and task320 (falcon-11B), where traditional prompts
+    perform better."'
+  conditions: 16 randomly chosen Super-NaturalInstructions tasks, 1,000 samples each, 5-shot, 10 format
+    variants per arm built with FormatSpread; falcon-11B, Llama-2-13b, Llama-2-13b-chat, llama-3-70b-instruct;
+    short paper calling its results preliminary, no variance or significance reported
+  direction: supports
+  measured: true
+  locator: §3.2; Table 1; Figure 3; Appendix A Table 2
+- source: Itay Levy, Ben Bogin, Jonathan Berant, "Diverse Demonstrations Improve In-context Compositional
+    Generalization", https://arxiv.org/abs/2212.06800
+  date: '2022-12-13'
+  task: Choose few-shot demonstrations that together cover the structures the output needs (or are dissimilar
+    from one another), instead of the top-k most similar ones, which "yields repetitive demonstrations"
+  effect: Diverse demonstrations "improve performance by up to 23 absolute points (e.g., 50.3 → 73.5 on
+    SMCalFlow-CS) compared to a baseline that retrieves demonstrations according to similarity alone";
+    all diversity methods beat top-k "in 7 out of 8 compositional splits". The coverage method failed
+    on the zero-shot cross-domain split (0.3 against 17.0 for top-k).
+  conditions: Codex (code-davinci-002), 24 demonstrations, 100 test examples x 3 seeds per split; GeoQuery,
+    SMCalFlow-CS and COVR-10 semantic parsing; also T5-large fine-tuned with demonstrations
+  direction: supports
+  measured: true
+  locator: Figure 1; §4.4 Table 2
+- source: 'Melanie Sclar, Yejin Choi, Yulia Tsvetkov, Alane Suhr, "Quantifying Language Models'' Sensitivity
+    to Spurious Features in Prompt Design or: How I learned to start worrying about prompt formatting",
+    https://arxiv.org/abs/2310.11324'
+  date: '2023-10-17'
+  task: Measure few-shot accuracy across meaning-preserving prompt formats (separators, casing, spacing,
+    field names)
+  effect: Accuracy varied "in up to 76 points for LLaMA-2-13B between equivalent formats", about 10 points
+    on average across 50+ tasks and several models, and "this variance is not eliminated by adding few-shot
+    examples, increasing model size, or instruction tuning". GPT-3.5 showed "a spread up to 56 accuracy
+    points with a median spread of 6.4". Format performance "only weakly correlates between models"; LLaMA-2-13B
+    and -70B swapped order with probability 0.141 when the format changed.
+  conditions: 53 Super-NaturalInstructions classification tasks; LLaMA-2 7B/13B/70B, Falcon-7B and -7B-Instruct,
+    GPT-3.5-Turbo; 1- and 5-shot; one format per prompt (formats are not mixed within a prompt)
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §4.2; §4.5 (Figure 4)
+- source: 'Manus, "Wide Research: Beyond the Context Window", https://manus.im/blog/manus-wide-research-solve-context-problem'
+  date: '2025-10-29'
+  task: 'Describes quality decay when one agent context handles many similar items in sequence, and Manus''s
+    later answer: one sub-agent with a fresh context per item'
+  effect: '"by the eighth or ninth item in a multi-subject research task, the AI starts fabricating."
+    "Items 6-8: The quality begins to subtly degrade. Descriptions become slightly more generic. The model
+    starts relying more on prior patterns than fresh research." The fabrications "follow the established
+    format perfectly" and are "stylistically consistent with the earlier, legitimate entries." Manus attributes
+    this to context load and answers it with fresh-context sub-agents, not with variation. No numbers.'
+  conditions: Vendor product post; no method, model or sample reported
+  direction: mixed
+  measured: false
+  locator: The Fabrication Threshold; Why Bigger Context Windows Can't Fix This
+- source: Anthropic, "Prompting best practices" (Claude Docs), https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/multishot-prompting
+  date: '2024-06-21'
+  task: Vendor guidance on writing few-shot examples
+  effect: 'Make examples "Diverse: Cover edge cases and vary enough that Claude doesn''t pick up unintended
+    patterns." Examples "are one of the most reliable ways to steer Claude''s output format, tone, and
+    structure."'
+  conditions: Living documentation page; the date is the earliest archived capture of the multishot-prompting
+    page, which already carried the same "Diverse" guidance; no measurements
+  direction: supports
+  measured: false
+  locator: Use examples effectively
+- source: Google, "Prompt design strategies" (Gemini API docs), https://ai.google.dev/gemini-api/docs/prompting-strategies
+  date: '2024-07-21'
+  task: Vendor guidance on formatting few-shot examples
+  effect: '"Make sure that the structure and formatting of few-shot examples are the same to avoid responses
+    with undesired formats. ... it is essential to ensure a consistent format across all examples, especially
+    paying attention to XML tags, white spaces, newlines, and example splitters." The same page warns
+    that with too many examples "the model may start to overfit the response to the examples."'
+  conditions: Living documentation page; the date is the earliest archived capture found containing the
+    passage; no measurements. Contradicts varying the serialization of examples; agrees that models over-fit
+    to their examples
+  direction: contradicts
+  measured: false
+  locator: 'Zero-shot vs few-shot prompts: Optimal number of examples; Consistent formatting'
+assessment:
+  qa:
+    unit: null
+    examples: Outlier probes.
+    benchmark: null
+    production: Accuracy by position.
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: none
+      magnitude: low
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: mixed
+      magnitude: low
+      note: ''
+    governance:
+      effect: none
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: low
+      note: Judgment; Manus anecdote.
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+related:
+- 3.a.i
+- 5.c.ii
+- 7.b.ii
+- 7.b.i
+- 3.b.i
+- 7.b.iv
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: few_shot
+  library_group: Production
+  library_source: master
+caveats: 'No study tests Manus-style serialization noise on an agent end to end: the measured support
+  is for the mechanism (models copy what repeats in their context) and for diverse few-shot examples,
+  often on small or older models (135M-1.7B for the failed-call study, Codex for the demonstration study).
+  Variation is not free: equivalent formats moved accuracy by up to 76 points, mixing formats lost on
+  some task-model pairs, Google advises identical formatting across examples, and a serialization fix
+  that cut repeats did not raise task success. The effect depends on the model and task: thinking models
+  did not self-condition on errors in their history, larger models copied a failed call less, and a batch-judging
+  study found contrast between neighbors rather than imitation. Varying entries already in the history
+  also breaks the append-only, cache-stable context, so vary only new entries, deterministically.'

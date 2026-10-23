@@ -1,0 +1,594 @@
+# 9.c.ii: Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.c.ii
+legacy_id: T46
+slug: samples-before-verification
+name: 'Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only
+  where it pays'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: extra compute within the existing design
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- reasoning
+- data-analysis
+- planning
+categories:
+- verification.spend
+- orchestration.extra-compute
+summary: 'Running several independent attempts and picking by majority vote or a judge raised accuracy
+  (Genie 73.8% to 81.4% with 8 runs, at up to 2.1x cost). Before adding a generative verifier on top,
+  compare it with the vote at equal compute: it needs 4-64x the compute to match, and pays only on hard,
+  medium-difficulty problems from weak-to-medium generators. If you do verify, an ensemble of diverse
+  weak verifiers weighted by estimated accuracy beat one strong verifier (87.7% against 72.2%).'
+how: 1. Measure variance across repeated runs on the same questions; if low, stop here. 2. Add N parallel
+  attempts with a vote or aggregator; paired eval at matched compute. 3. Only then try a verifier, at
+  the same compute, on the hard slice.
+detect:
+  static: a single attempt per question; or a generative verifier or best-of-N step with no comparison
+    against a plain vote
+  traces: answer disagreement across repeated runs of the same question
+  evals: accuracy of vote against verifier at equal compute, split by difficulty
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'Genie +7.6 points with 8 parallel runs (May 2026); verifier over vote: gains only on hard problems
+      (2025)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: large
+    when: 0.23x to 2.13x cost; verifier ensembles far more
+    basis: evidence
+  performance:
+    effect: degrades
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval, N attempts against one, and vote against verifier, at matched compute
+evidence:
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Prefer self-consistency over generative verification at low budgets
+  effect: 'Llama-3.1-8B GenRM-FT on MATH: GenRM needs 8x the compute of SC to match it, and 128x to beat
+    SC''s best by 3.8%; SC plateaus around 128 solutions. Qwen-2.5-7B GenRM-FT: SC peaks with 64x less
+    compute; GenRM +5.4% at 512x. Llama-3.3-70B GenRM-Base: SC peak at 4x less; GenRM +1.7% at 64x. QwQ-32B
+    on AIME25: GenRM needs 4x to match, +2.5% at 16x. GPQA-Diamond (70B): +2.5% at 256x. LiveCodeBench
+    (8B): 16x to match, +3.5% at 64x. Comparing at fixed solution count instead (GenRM matches SC with
+    4x fewer solutions) is called misleading.'
+  direction: supports
+  measured: true
+  locator: §5.1, Figures 1, 4, 5, 8, 9; Appendix G, H
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Reserve generative verification for hard problems
+  effect: 'Llama-3.1-8B GenRM-FT (32 verifications) vs SC: up to 30% relative improvement on MATH level
+    5 vs much less on level 1. AIME24 (trained on MATH): GenRM almost doubles SC''s performance but needs
+    256x more compute; SC reaches its peak with 16x less compute than GenRM needs for the same level.'
+  direction: supports
+  measured: true
+  locator: §5.1 Impact of Problem Difficulty, Easy-To-Hard Generalization; Figures 3a, 4a
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Scale solutions faster than verifications per solution
+  effect: 'Fitted power laws on MATH: Llama-3.1-8B GenRM-FT S_opt ~ C^0.57, V_opt ~ C^0.39; Qwen-2.5-7B
+    GenRM-FT S_opt ~ C^0.75, V_opt ~ C^0.32; Llama-3.3-70B GenRM-Base S_opt ~ C^0.69, V_opt ~ C^0.43.
+    Up to 128 solutions x 128 verifications sampled.'
+  direction: supports
+  measured: true
+  locator: §3.2, §5.2 Figure 6; Appendix J Figures 11-13
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Shorten verification outputs to cut verifier cost
+  effect: 'Analytical upper bound assuming constant verifier accuracy (Llama-3-8B GenRM-FT, MATH): tokens
+    per verification 2048 -> compute to match SC 8x, to beat 128x; 1024 -> 4x/64x; 512 -> 2x/32x; 256
+    -> 1x/16x. The authors note keeping accuracy while shortening is non-trivial.'
+  direction: supports
+  measured: true
+  locator: Appendix F, Table 1
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Expect single generative verifications to be noisy
+  effect: '"In most cases, at least 32 verifications are needed to achieve good results" (Llama-3.1-8B,
+    MATH).'
+  direction: supports
+  measured: true
+  locator: Appendix E
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Skip strong verifiers on strong generators
+  effect: 'Math: Qwen2.5-72B verifier TNR 0.68 on Llama-3.1-8B solutions vs 0.17 on Qwen3-32B solutions.
+    With strong generators, verification gain peaks at only about 0.1 for both GPT-4o and Qwen2.5-7B verifiers
+    and the gap between them narrows. Holds for thinking verifiers (Qwen3-8B/32B-Thinking), Qwen3-235B
+    and three verification prompts.'
+  direction: supports
+  measured: true
+  locator: §4.2 Figure 4; §5.2 Figure 8; Appendix C.2, C.6 Figure 21, D.3, D.4
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Skip verification on the easiest and hardest problems
+  effect: 'Math: verification gains drop to 0.1 or below for both GPT-4o and Qwen2.5-7B on easy and hard
+    problems. On hard problems (difficulty [0.1,0.3)) verification accuracy plateaus around 0.65 in math
+    regardless of verifier capability and is flat elsewhere; on hard 3-way NL reasoning verifiers score
+    below random because they solve-and-match with a wrong answer. Medium problems ([0.4,0.5)) show linear
+    capability-accuracy correlation (r>0.9).'
+  direction: supports
+  measured: true
+  locator: §4.3 Figure 6; §5.2 Figure 8; Appendix C.3, C.4, C.6 Figure 21
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Estimate difficulty from answer entropy of a small model
+  effect: 8 samples from Qwen2.5-3B per question, difficulty = H/log K. Reproduces the oracle-difficulty
+    findings for TPR vs difficulty and capability-accuracy regimes (math). No downstream accuracy or cost
+    number reported.
+  direction: supports
+  measured: true
+  locator: Appendix D.1, Figures 22-23
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Do not scale verifier size to fix hard-problem verification
+  effect: '39.1% of verification false negatives on hard problems contain a mistake in the verifier''s
+    own reference answer (LLM-judge analysis). Hard [0.2,0.3) math: Qwen3-32B (capability ~0.6) and Qwen2.5-72B
+    (~0.4) both plateau near 0.7 verification score. "Scaling verifiers from 7B models to GPT-4o fails
+    to overcome fundamental verification challenges" in these regimes.'
+  direction: supports
+  measured: true
+  locator: §4.1 Figure 3; §5.2; Appendix C.4
+- source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
+  date: '2023-10-03'
+  task: Prefer self-consistency voting over multi-agent debate
+  effect: 'Table 7, GSM8K full test set, gpt-3.5-turbo-0301, 3 agents, Du et al. prompts: standard 76.7
+    (1 response); self-consistency 82.5 (3); debate round 1 83.2 (6) vs self-consistency 85.3 (6); debate
+    round 2 83.0 (9) vs self-consistency 88.2 (9).'
+  direction: supports
+  measured: true
+  locator: Sec. 4; Table 7
+- source: Kamoi et al., "When Can LLMs Actually Correct Their Own Mistakes? A Critical Survey of Self-Correction
+    of LLMs", https://arxiv.org/abs/2406.01297
+  date: '2024-06-03'
+  task: Compare self-correction with self-consistency at equal compute
+  effect: 'Survey RQ3: self-correction is often not compared to strong baselines, so it is still unclear
+    whether it beats them; cites self-consistency and pass@k comparisons.'
+  direction: supports
+  measured: false
+  locator: Sec. 6; Table 7 checklist
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Select among many samples by self-verification, not voting
+  effect: 'Gemini 1.5 Pro, k_inf=200, k_verif=50, with tie-break: AIME 8/15 vs Consistency@200 4/15 and
+    Pass@1 1/15 (o1-Preview reported 7/15); MATH 467/500 vs 460; LiveBench Math 135/200 vs 118; LiveBench
+    Reasoning 97/140 vs 75. Consistency@1,000 no better than @200 (e.g. AIME 3/15). Single runs.'
+  direction: mixed
+  measured: true
+  locator: §1 Table 1; Algorithm 1; §3.1
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Keep sampling past self-consistency saturation when a verifier exists
+  effect: 'AIME: Consistency@50 equals Consistency@10,000 while Verification@k (k_verif=50) shows power-law
+    scaling in k. Example AIME 2024 II P11: 1 of 200 samples correct (answer 601, verification score 0.98)
+    vs majority answer "1" from 124 samples (score <=0.36). Accuracy on "ambiguous" questions (at least
+    one correct candidate) rises with k at fixed k_verif (implicit scaling). Largest gains when both k_inf
+    and k_verif grow; strongest on AIME where correct answers are rare.'
+  direction: mixed
+  measured: true
+  locator: §2.1 Figure 2.1; §2.2 Figures 2.2-2.3; §2.3 Figure 2.4, Table 2
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Break verifier ties by pairwise comparison of candidates
+  effect: 'Gemini 1.5 Pro, k_tie=100 per matchup, Verification@200 without vs with tie-break: MATH 457
+    -> 467/500 (Cons@200 460); LiveBench Math 125 -> 135/200 (Cons 118); LiveBench Reasoning 94 -> 97/140
+    (Cons 75); AIME 7 -> 8/14 (Cons 4). Helps most when the verifier over-assigns high scores (MATH top-3
+    average score near 90%).'
+  direction: supports
+  measured: true
+  locator: §3 principle 1; §3.1 Tie-Break; §3.2 Table 3
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Have the verifier rewrite candidates as theorem-lemma-proof first
+  effect: 'Verification prompt ablation, Gemini 1.5 Pro, 20 verification attempts per response, 1,080
+    responses to 54 MATH level-5 train questions and 120 responses to 6 AIME 2023 questions: Main (with
+    rewrite) FPR/FNR MATH 14%/17%, AIME 7%/7%; Without Rewrite MATH 16%/18%, AIME 11%/12%. Fails where
+    the answer format does not fit a theorem statement (LiveBench Olympiad: Verif@200 22.7% vs Cons@200
+    25.0%).'
+  direction: supports
+  measured: true
+  locator: §3 principle 2; §3.2 Table 4; §4.2 Table 6; Appendix B.2
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Do not split verification into separate per-piece threads
+  effect: 'Same ablation as the rewrite row: Split-Context FPR/FNR MATH 19%/23%, AIME 11%/14% vs Main
+    14%/17% and 7%/7%; attributed to miscalibration.'
+  direction: supports
+  measured: true
+  locator: §3.2 Table 4
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Prune candidates with cheap preliminary verification scores
+  effect: '10 preliminary scores, discard average <0.2, keep top 15 per final answer, then 50 scores on
+    the rest: cuts output tokens about 70%, per-question cost about $650 -> $200 (Pro); Flash as verifier
+    brings it to about $12. Accuracy impact of pruning not separately reported. Used on all datasets except
+    AIME.'
+  direction: supports
+  measured: true
+  locator: §5 Preliminary scoring, Compute
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Do not trust out-of-box frontier-model verification
+  effect: 'Curated verification benchmark (random-guess baseline: 80% correct, 20% wrong, 20% flawed,
+    50% comparison). GPT-4o Pass@1: 76.5% / 31.0% / 22.2% / 43.2%; Claude 3.5 Sonnet 89.6% / 22.5% / 33.3%
+    / 56.1%; o1-preview 100% / 68.8% / 80.0% / 84.5%. Consistency@5 lowered GPT-4o on flawed (22.2 ->
+    11.1) and comparison (43.2 -> 35.4).'
+  direction: supports
+  measured: true
+  locator: §6 Table 7
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Sampling temperature barely matters for verified search
+  effect: 'MATH train split, 100 questions, 20 samples, Verification@20 without tie-break: inference temp
+    0.2/1.0/1.5/2.0 -> 82/80/79/82; verification temp 0.2/1.0/2.0 -> 76/79/79.'
+  direction: supports
+  measured: true
+  locator: Appendix B.1 Tables 8-9
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Expect verifier ensembles to cost far more than voting
+  effect: Majority voting plateaus around 2^2-2^3 ExaFLOPs per query while Weaver keeps improving up to
+    512 ExaFLOPs (K from 1 to 100); the authors call the extra compute "prohibitive". Standard baselines
+    (majority vote, single RM, self-verification, multi-agent verification) plateau after a few generations;
+    self-verification averaged 66.9% and multi-agent verification 71.6% at K=100, below majority vote
+    (72.2%).
+  direction: supports
+  measured: true
+  locator: §5.2 (1) Figure 3, (4) Figure 5; Table 1
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Weight verifiers by estimated accuracy, not naive averaging
+  effect: 'Llama 3.3 70B, K=100, average of 4 benchmarks: Weaver 87.7% vs majority vote 72.2%, best single
+    RewardBench RM 72.7%, naive top-10 RM ensemble 69.1%, first sample 68.4%, Pass@100 oracle 91.9%; o3-mini
+    first sample 86.7%. Oracle-labeled weighted ensembles beat naive averaging by up to 11.2 points (3.6
+    for top-K selection, 7.8 for supervised weights on average). Individual verifier success rates span
+    up to 37.5 points.'
+  direction: supports
+  measured: true
+  locator: §4.1 Figure 2; §5.1 Table 1; Appendix Table 16
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Estimate verifier accuracies from agreement with weak supervision
+  effect: Supervised logistic regression / naive Bayes weights fit on 0.01n labeled samples lose 20.1%
+    on average vs their oracle versions, which motivates the label-free estimate. Weaver beats naive averaging
+    by +2.4 to +10.1 points across datasets (GPQA +10.1, MMLU Pro +5.1) with 1-15 verifiers.
+  direction: supports
+  measured: true
+  locator: §4.2 eqs 1-5; §5.2 Figure 4; Appendix B.1, Table 17
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Drop low-signal verifiers before ensembling
+  effect: Verifier pruning gives a 12.5% performance improvement in the 70B setting; also decorrelates
+    the verifier set (precision-matrix off-diagonals attenuate).
+  direction: supports
+  measured: true
+  locator: Appendix B.3, Table 5, Figure 14
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Binarize verifier scores with dev-set thresholds
+  effect: Dev-set thresholds from 5-10 labeled queries (<=1% of eval) improve Weaver by 8.4% on average
+    for 70B vs median-split binarization. Binarization strategies differ only modestly in selection accuracy;
+    quantile (top 15%) does best on imbalanced GPQA. With ample labels, continuous-score logistic regression
+    beats discrete.
+  direction: supports
+  measured: true
+  locator: Appendix B.2-B.3, Table 4, Table 7, Figures 8-9
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Add more verifier models rather than resampling one
+  effect: 'Llama 3.3 70B generations: adding more models gives average gains of 5.4% (RMs) and 6.1% (LM
+    judges) vs 0.8% and 1.1% from extra scores from a single RM or judge. Aggregating up to 15 verifiers
+    improves up to 8.5% over the top-1 verifier, with diminishing returns from correlated biases on hard
+    examples.'
+  direction: supports
+  measured: true
+  locator: §5.2 (3); Appendix C.5 Table 21
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Distill the verifier ensemble into a small cross-encoder
+  effect: 'GPQA Diamond, Llama 70B generations, 80:20 split: retains 98.2% of Weaver''s accuracy (98.7%
+    stated elsewhere); 1.01 vs 35.35 exaFLOPs per 100 samples (99.97% verification FLOPs saved); beats
+    majority vote by 23.2% at 0.57% more inference cost than generation alone. Runs on one A100 instead
+    of an 8-GPU node per 70B verifier.'
+  direction: supports
+  measured: true
+  locator: §6 Figure 6; Appendix C.6 Figure 24, Table 22
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Cluster queries by difficulty for per-cluster verifier weights
+  effect: 'Oracle difficulty clusters (1-5) with threshold grid 0.05-0.95: 8B setting +4.8%; 70B about
+    +1% and more clusters often degrade it. Per-model thresholds add +0.5 to +0.8 (70B) and +1.6 to +2.8
+    (8B).'
+  direction: supports
+  measured: true
+  locator: Appendix B.4, Tables 9-11
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: Optimize LM-judge prompts for precision
+  effect: '250 labeled examples, DSPy 0/3/5-shot: average +3.8% precision of best judge over CoT baseline,
+    MATH500 +9%; scaling training data 1% -> 16% gives about +3.2% precision on most datasets (MMLU-College
+    minimal). Gains come mainly from lower false-positive rates.'
+  direction: supports
+  measured: true
+  locator: Appendix C.7 Figures 25-27
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Decorrelate the verifier from the student model
+  effect: Stated as a design rule from Corollary 1 (floor increasing in beta0; same-family verifiers should
+    give higher floors). Not directly measured on real models; the synthetic study measures floor vs beta0
+    (0.09 to 0.36 as beta0 sweeps 0.19 to 0.96), not family correlation.
+  direction: supports
+  measured: false
+  locator: §6 Corollary 1; §7 H2 Figure 7b
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Reject on any dissent across a decorrelated verifier ensemble
+  effect: 'Synthetic model only (rho=0.7): measured beta0 0.76 -> 0.40 at m=4 (above the rho^4~0.24 ideal);
+    floor 0.25 -> 0.14; cost m verifier calls per query. Exchange rates are "properties of the synthetic
+    geometry, not portable constants".'
+  direction: supports
+  measured: true
+  locator: §7 H5, Figure 8; §9 limitation 5
+- source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
+    and Planning Tasks", https://arxiv.org/abs/2402.08115
+  date: '2024-02-12'
+  task: Verify by consensus of partial critics
+  effect: Proposal in the conclusion; not evaluated here.
+  direction: supports
+  measured: false
+  locator: Sec. 6
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Sample parallel trajectories and aggregate with a judge
+  effect: 'Internal benchmark, Figure 5: GPT-5.4 65.5% (3.8 min avg runtime) -> 75.7% (8.2 min) with parallel
+    thinking (+10.2pp); all Opus 4.6 73.8% (5.5 min) -> 81.4% (9.5 min) (+7.6pp). Figure 1: N=8 with Opus
+    4.6 raises relative cost 0.23x -> 2.13x. Error bars shown but n not stated.'
+  direction: supports
+  measured: true
+  locator: Parallel Thinking section; Figures 1 and 5
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Score partial plans by progress, bottleneck and potential
+  effect: 'Table 2, RealEHR, GPT-5.4-mini: removing plan evaluation 55.2 -> 44.7 (-10.5pp), the largest
+    ablation.'
+  direction: supports
+  measured: true
+  locator: §3.3 Plan evaluation and selection; §4.3; Table 2
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Pick the next bottleneck that is testable and informative
+  effect: 'Table 2, RealEHR, GPT-5.4-mini: removing plan selection 55.2 -> 53.2 (-2.0pp, about one question
+    of 47).'
+  direction: supports
+  measured: true
+  locator: §3.3; §4.3; Table 2
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Search structured plans instead of repeating independent runs
+  effect: 'Table 3, RealEHR, GPT-5.4-mini, avg LLM calls per query: ReAct 42.9% at 6.3 calls; ReAct x6
+    with the same selector 51.1% at 39.1 calls; GATE 55.2% at 36.0 calls (+4.1pp, fewer calls).'
+  direction: supports
+  measured: true
+  locator: §4.4; Table 3; Appendix B.6
+related:
+- 9.c.iii
+absorbs:
+- legacy_id: P05
+  name: Self-consistency voting
+  group: Prompting Strategies
+  source: master
+  family: workflow
+  sub_type: parallelization
+  categories:
+  - orchestration.extra-compute
+  note: Sample 3-5 paths, majority vote; 3-5x cost for 5-15% accuracy.
+  assessment:
+    detection:
+      static: n > 1 samples per item, temperature > 0, a vote or aggregation function.
+      traces: Multiple samples per item; disagreement rate between them.
+      evals: Accuracy vs n; disagreement as a confidence signal.
+      judge: null
+      probes:
+        what: Items where the model flips between answers.
+        construct: Run candidate items ten times at temperature 1; keep those with 30 to 70 percent agreement.
+      primary:
+      - static
+      - evals
+    qa:
+      unit: Vote aggregation and tie handling.
+      examples: Flip-prone probe set.
+      benchmark: Accuracy vs baseline at equal cost.
+      production: Disagreement rate and cost per item.
+      primary:
+      - benchmark
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: high
+        note: 3x to 5x tokens.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: Disagreement gives a confidence score to gate on.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Cookbook cites 5 to 15 percent accuracy.
+      latency:
+        effect: degrades
+        magnitude: medium
+        note: Medium if sampled in parallel, high if serial.
+      primary:
+      - quality
+      - cost
+- legacy_id: P36
+  name: Inference-time scaling
+  group: Reasoning & Search
+  source: catalog
+  family: workflow
+  sub_type: parallelization
+  categories:
+  - orchestration.extra-compute
+  - prompts.reasoning-effort
+  note: Multiple candidates, longer chains, more passes.
+  assessment:
+    detection:
+      static: n candidates, extended reasoning budget parameters, best-of-n selection.
+      traces: Tokens per item; candidates generated.
+      evals: Quality vs compute curve.
+      judge: Selector quality when picking among candidates.
+      probes:
+        what: Hard items.
+        construct: Items that fail at a low budget and pass at a high one.
+      primary:
+      - evals
+    qa:
+      unit: null
+      examples: Budget-sensitive probes.
+      benchmark: Any, at several budgets.
+      production: Cost per item.
+      primary:
+      - benchmark
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: high
+        note: ''
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Diminishing returns; VeRO's GPQA and MATH were flat at every budget.
+      latency:
+        effect: degrades
+        magnitude: high
+        note: ''
+      primary:
+      - quality
+      - cost
+- legacy_id: P31
+  name: LLM-as-judge
+  group: Testing
+  source: master
+  family: tool
+  sub_type: validation
+  categories:
+  - models.cheap-verifiable
+  - verification.external
+  assessment:
+    detection:
+      static: A judge prompt or rubric; a separate model call for scoring.
+      traces: Judge scores per output.
+      evals: Judge agreement with human labels.
+      judge: This is the judge; a meta-judge checks it.
+      probes:
+        what: Labeled good and bad outputs including ones designed to fool a judge.
+        construct: Human-rated set plus sycophantic or verbose-but-wrong outputs.
+      primary:
+      - evals
+      - probes
+    qa:
+      unit: Judge on the gold set.
+      examples: Adversarial probes.
+      benchmark: Judge-agreement benchmark.
+      production: Sampled judging in production.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: medium
+        note: ''
+      security:
+        effect: mixed
+        magnitude: low
+        note: ''
+      brand:
+        effect: improves
+        magnitude: medium
+        note: Catches embarrassing outputs.
+      governance:
+        effect: improves
+        magnitude: medium
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: ''
+      latency:
+        effect: degrades
+        magnitude: medium
+        note: If inline.
+      primary:
+      - quality
+      - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: parallelization
+  harness_role: control_loop
+  action: tune

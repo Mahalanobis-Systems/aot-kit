@@ -1,0 +1,121 @@
+# 4.c.ii: Skill library evolution
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 4.c.ii
+legacy_id: P58
+slug: skill-library
+name: Skill library evolution
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it adds a reusable skill memory
+  proposed: true
+levers:
+- state
+domains:
+- memory
+evidence_domains:
+- planning
+categories:
+- memory.reuse
+summary: Persist working code as reusable, lazily loaded skills.
+detect:
+  static: A skills directory; a load_skills tool; lazy MCP binding.
+  traces: Skill reuse rate; skills authored per session.
+  evals: Time to solve repeated task families.
+  judge: Review self-authored skills.
+  probes:
+    what: Repeated task families.
+    construct: Five variants of one task; later ones should reuse the skill.
+  primary:
+  - traces
+  - evals
+impact:
+  quality:
+    effect: improves
+    size: medium
+    basis: assessment
+  cost:
+    effect: improves
+    size: medium
+    when: Catalog cites 91 percent token reduction with lazy MCP.
+    basis: assessment
+  performance:
+    effect: improves
+    size: small
+    basis: assessment
+  security:
+    effect: degrades
+    size: small
+    when: Self-authored code.
+    basis: assessment
+  governance:
+    effect: mixed
+    size: medium
+    when: Needs review of skills.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - cost
+  - quality
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Learning group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: 'Wang et al., "Voyager: An Open-Ended Embodied Agent with Large Language Models", https://arxiv.org/abs/2305.16291'
+  date: '2023-05-25'
+  task: An ever-growing library of executable code skills that the agent stores and retrieves
+  effect: '"obtains 3.3x more unique items, travels 2.3x longer distances, and unlocks key tech tree milestones
+    up to 15.3x faster than prior SOTA"'
+  conditions: Minecraft; GPT-4
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Skill loading.
+    examples: Task-family probes.
+    benchmark: null
+    production: Reuse rate.
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: improves
+      magnitude: medium
+      note: Catalog cites 91 percent token reduction with lazy MCP.
+    security:
+      effect: degrades
+      magnitude: low
+      note: Self-authored code.
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: mixed
+      magnitude: medium
+      note: Needs review of skills.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: improves
+      magnitude: low
+      note: ''
+    primary:
+    - cost
+    - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: memory
+  library_group: Learning
+  library_source: catalog

@@ -1,0 +1,411 @@
+# 5.c.ii: Sub-agent architectures with clean contexts
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 5.c.ii
+legacy_id: P20
+slug: isolated-subagent-context
+name: Sub-agent architectures with clean contexts
+kind: pattern
+status: card
+tiers:
+- tier: 4
+  why: it adds sub-agents with their own contexts
+  proposed: true
+levers:
+- context
+domains:
+- general
+evidence_domains:
+- web-research
+- document-extraction
+- retrieval
+- code-generation
+- tool-use
+- conversation
+categories:
+- context.isolate
+summary: 'Hand a context-heavy side task (code search, reading many files, documents or logs) to a sub-agent
+  that starts with a fresh context and only the tools it needs, and have it return a short result or file
+  references so the parent''s context stays small. It pays when the parent would otherwise read far more
+  than it can hold: on legal data rooms of up to 80M tokens, delegating bounded reading raised rubric
+  pass rate from 23.3% to 62.4% across seven models. It is not a default win: on bounded repository questions,
+  delegated exploration scored 46.2% against 65.2% for an indexed single agent at 2.3 times the cost per
+  correct answer, with 41.8% of its failures at the hand-off, mostly silent; generic sub-agent roles and
+  a second level of delegation also lost quality.'
+how: '1. Start from the single agent: run it on your tasks and log peak context, tokens per task and which
+  tool outputs fill the window; if the material is a corpus you can index, try a retriever before delegating
+  (see 8.a.i), since indexed retrieval beat delegated exploration on bounded repository questions. 2. Delegate
+  only side tasks whose raw output is large and not needed again (codebase search, reading many files,
+  documents or logs) and whose result fits a short contract; keep work whose steps share a lot of context
+  in the parent. 3. Define each sub-agent as a task-specific role with an input-output contract: the objective,
+  the inputs it gets, an output schema (findings with file paths, line ranges or document ids, plus what
+  it did not cover) and a length cap; avoid generic lifecycle roles such as requirements, design or code
+  generation. 4. Start it with a fresh context and a self-contained brief, not the parent''s routing messages
+  or whole history, and give it only the tools it needs: read-only search and read tools for exploration,
+  no delegation tool (depth 1), and a turn cap. 5. Protect the hand-off: have it write long outputs to
+  files and return references (see 6.b.iii), have the parent forward or quote its findings instead of paraphrasing
+  them, and require it to list every policy- or risk-relevant fact it found. 6. Measure with a paired
+  eval of the single agent against the delegating one on the same tasks and models: success, cost per
+  correct answer, total and parent tokens, the parent''s peak context and latency; then label failures
+  where the sub-agent''s transcript holds a fact that the parent''s answer lacks.'
+detect:
+  static: 'A sub-agent call with a fresh context, a scoped tool list and a summary or file-reference return;
+    or a single agent that reads large search results, file sets, documents or logs into its own context.
+    Warning signs: generic lifecycle sub-agents, sub-agents that inherit the full history or can delegate
+    further, a parent that paraphrases sub-agent output.'
+  traces: 'Sub-agent spans: tokens consumed inside vs returned; the parent''s peak context; empty returns;
+    facts present in the sub-agent transcript but missing from the parent''s answer (hand-off breakdowns,
+    usually silent); share of the corpus read.'
+  evals: 'Single agent vs delegation (and vs an indexed retriever) on search-heavy tasks: success, cost
+    per correct answer.'
+  judge: 'Summary fidelity against the sub-agent''s full transcript: facts found but not returned, claims
+    returned but not supported.'
+  probes:
+    what: Broad search then synthesis.
+    construct: Multi-document questions where the answer needs facts from several sources.
+  primary:
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: large
+    when: 'Large corpora: +39.1 points rubric pass rate on legal data rooms (Grupen, Sep 2026); folding
+      sub-tasks out of context 0.567 vs 0.540 for a 327K-context agent with the same RL on BrowseComp-Plus,
+      at a 10x smaller active context (Sun, Oct 2025); sub-calls lifted GPT-5 on OOLONG 36.0 to 56.0 but
+      cut Qwen3-Coder on CodeQA 66.0 to 56.0 (Zhang, Dec 2025). Bounded tasks: 46.2% vs 65.2% for an indexed
+      single agent (Oskooei, Aug 2026); task-specific sub-agents +5.91 and +4.46 points, generic ones
+      lower (Hu, Sep 2026); medal rate 45.2% vs 55.7%, CIs overlapping (Brilliantov, Sep 2026); depth
+      2 cost 19 points (Grupen, Sep 2026)'
+    basis: evidence
+  cost:
+    effect: mixed
+    size: large
+    when: 'More total tokens (Piriyakulkij, Sep 2026): 2.3x cost per correct answer for delegated search
+      (Oskooei, Aug 2026), cost up for six of seven models in a delegating harness while Opus 5 fell from
+      ~$18 to ~$7 per data room (Grupen, Sep 2026); single-agent tokens grew with distractor domains while
+      sub-agent setups stayed flat (Fu-Hinthorn, Jun 2025)'
+    basis: evidence
+  performance:
+    effect: mixed
+    size: small
+    when: Each fresh sub-agent must gather its own context; median latency was lower with delegation for
+      two models and higher for two (Oskooei, Aug 2026); RL rollouts slowed from 48 to 74 minutes per
+      step as the trained root sent more sub-agents (Grupen, Sep 2026). Parallel speedups belong to 6.b.iii
+    basis: evidence
+  security:
+    effect: mixed
+    size: medium
+    when: Depends on tool scoping (see 5.c.ii).
+    basis: assessment
+  governance:
+    effect: degrades
+    size: small
+    when: Nested traces.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - cost
+measure:
+- method: experiment
+  tier: 4
+  how: 'Paired eval on the same tasks and models: the single agent against the same agent with a delegated
+    sub-agent (and against an indexed retriever where the corpus allows): success, cost per correct answer,
+    total tokens, the parent''s peak context and latency; code each failure by mechanism, including hand-off
+    breakdowns where the sub-agent found the answer and the parent lost or misreported it.'
+- method: monitor
+  how: 'Per sub-agent call: tokens consumed inside against tokens returned, empty returns, sub-agent count
+    against task size and the share of the corpus read; on a sample, have a judge check whether the facts
+    in the sub-agent''s transcript reach the parent''s answer (fact attenuation).'
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Long-Horizon group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic), "How
+    we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Lead agent delegates to subagents with their own context windows on a research task
+  effect: '"a multi-agent system with Claude Opus 4 as the lead agent and Claude Sonnet 4 subagents outperformed
+    single-agent Claude Opus 4 by 90.2% on our internal research eval"'
+  conditions: Anthropic internal research eval; Claude Opus 4 lead, Claude Sonnet 4 subagents
+  direction: supports
+  measured: true
+  locator: Benefits of a multi-agent system
+- source: Prithvi Rajasekaran, Ethan Dixon, Carly Ryan, Jeremy Hadfield (Anthropic), "Effective context engineering
+    for AI agents", https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+  date: '2025-09-29'
+  task: Sub-agents work in clean context windows and return a distilled summary
+  effect: '"specialized sub-agents can handle focused tasks with clean context windows"; each "might explore extensively,
+    using tens of thousands of tokens or more, but returns only a condensed, distilled summary of its work (often
+    1,000-2,000 tokens)."'
+  direction: supports
+  measured: false
+  locator: Sub-agent architectures
+- source: 'Amirkia Rafiei Oskooei, Bora Ilci, Alperen Kayim, Mehmet Egemen Uzun, Berat Can, Kaan Emre
+    Kara, Ozan Orhan, Mehmet S. Aktas, "Deep Agentic Search for Repository-Level Code Question Answering:
+    An Empirical Study", https://arxiv.org/abs/2608.01507'
+  date: '2026-08-02'
+  task: Planner that delegates repository exploration to an isolated sub-agent returning a condensed result,
+    against a single ReAct agent with semantic search over a pre-built index
+  effect: '"Semantic search answered 65.2% of questions correctly against 46.2% for deep agentic search";
+    pass-rate gap 5.6 (Gemini 2.5 Flash), 10.0 (Gemini 2.5 Pro), 10.6 (Qwen3-235B) and 49.6 (Gemini 3
+    Flash) points, all significant after FDR correction. Pooled cost per correct answer $0.32 vs $0.74,
+    "about 2.3 times more expensive". 68.8% of the delegating agent''s tool calls ran inside the sub-agent.
+    "Coordination breakdown accounted for 41.8% of Deep failures", and "in 91% of these cases the agent
+    still returned a fluent, confidently worded answer". Latency "did not order the two paradigms consistently".'
+  conditions: 'SWE-QA, 15 Python repositories x 48 questions = 720 per condition; Gemini 2.5 Flash, Gemini
+    2.5 Pro, Gemini 3 Flash, Qwen3-235B (same model as planner and sub-agent); LangChain ReAct with 3
+    tools vs LangChain Deep Agents defaults; Claude Sonnet 4.6 judge, Cohen''s kappa 0.74 against a 3-engineer
+    panel on 800 answers. Confound: the delegating arm also replaces index retrieval with grep-style exploration.'
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.1-4.4; §5.1 Table 4; §5.2; §5.3; §6.3-6.4
+- source: 'Bowen Li, Guojun Wang, "Governance at the Boundary: How Agent Decomposition Degrades Policy
+    Compliance", https://arxiv.org/abs/2608.16055'
+  date: '2026-08-17'
+  task: Single loop vs fixed pipeline vs orchestrator-subagent on policy-governed tasks; count facts a
+    component discovered that never reach the component that must act on them
+  effect: 'Fact attenuation at constraint distance 2, conditional on discovery: Qwen2.5-32B 0/16 (0%)
+    single loop, 9/16 (56%) pipeline, 22/26 (85%) orchestrator-subagent; gpt-4.1-mini 0/27 (0%), 1/30
+    (3%), 1/18 (6%). The orchestrator-subagent arm found trigger facts in 27 of 100 episodes vs 16 for
+    the single loop, then attenuated 22 of those 27: "The architecture that is better at finding policy-relevant
+    information is worse at carrying it." Dropped facts caused both under- and over-escalation.'
+  conditions: Fiducia-bench, 100 KYC/AML task variants, 626 episodes; Qwen2.5-32B-Instruct (GPTQ-Int4)
+    and gpt-4.1-mini; 25-step budget; scripted simulator; governed success only 8/596 (1.3%); small counts
+    per cell
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5.1-5.3, Tables 4-5; §6
+- source: 'Haichuan Hu, Quanjun Zhang, Shengcheng Yu, Zhifei Chen, Tianyu Luo, Chunrong Fang, Zhenyu Chen,
+    Liang Xiao, "Beyond the Model: Demystifying Harness Effects in Software Engineering Agents", https://arxiv.org/abs/2609.32459'
+  date: '2026-09-26'
+  task: 'Add sub-agents (fresh history, restricted tool whitelist, structured report, nesting disabled)
+    to a minimal coding harness one component at a time: task-specific roles vs generic software-lifecycle
+    roles'
+  effect: 'Task-specific sub-agents (behavior analysis, differential testing, submission review) gave
+    "the largest single-component gain of 5.91 percentage points" for Qwen3.7-Max and 4.46 for DeepSeek-V4-Pro.
+    "General subagents also underperform" and "degrade performance for both models". Average prompt tokens:
+    task-specific +7.35% and -9.54%, generic +9.91% and +51.86% (Qwen3.7-Max, DeepSeek-V4-Pro).'
+  conditions: ProgramBench, 200 instances; NanoHarness on mini-SWE-agent; Qwen3.7-Max and DeepSeek-V4-Pro;
+    up to 50 sub-agent rounds
+  direction: mixed
+  measured: true
+  locator: §3.1 subagent module; §5.2.1 RQ2.1, Figs 11-12; §5.3.1 Table 7
+- source: Kirill Brilliantov, Alejandro Hernández-Cano, Emmanuel Abbé (EPFL, Apple), "How Much of a Harness
+    Does a Strong Agent Need for Autonomous ML Engineering?", https://arxiv.org/abs/2609.40303
+  date: '2026-09-30'
+  task: Enable background sub-agents through the coding agent's native task tool and encourage their use,
+    on top of a single long coding-agent session
+  effect: 'With delegation vs base (self-select): percentile 63.62 [59.27, 68.26] vs 66.51 [62.46, 69.97];
+    medal rate 45.2% [38.1, 54.8] vs 55.7% [48.2, 62.9]. "The base Malena iteration performs no significantly
+    worse than any intervention tested."'
+  conditions: GLM 5.2 backbone; OpenCode v1.15.6; MLE-bench fixed14 split, 24h budget, 1 A100; 95% bootstrap
+    CIs over seeds. Delegation here also runs in the background, so isolation is not separated from parallelism
+  direction: contradicts
+  measured: true
+  locator: §4.4 Multi-agent orchestration, Table 1; Appendix (intervention D)
+- source: 'Wasu Top Piriyakulkij, Rachel Lawrence, Alicia Curth, Sushrut Karmalkar, Niranjani Prasad (Cornell,
+    Microsoft Research Cambridge), "Subagents vs Agent Skills: Executing Reusable Knowledge for Long-Horizon
+    Agentic Tasks", https://arxiv.org/abs/2609.09233'
+  date: '2026-09-07'
+  task: Run each skill package as a sub-agent in a fresh context instead of loading its instructions into
+    the main agent's context
+  effect: With curated packages lacking input-output contracts, "agent skills match or outperform subagents
+    across all models"; with packages that have explicit contracts, "subagents outperform agent skills,
+    with the gain being largest for smaller models". As distracting tools are added, "subagent execution
+    degrades more gracefully". Sub-agents lowered peak context "on over 80% of tasks" for GPT 5.3 Codex
+    and Kimi K2.6, less or reversed for weaker models; "Subagent execution consumes substantially more
+    tokens overall". Routing nodes inline with leaf skills as sub-agents was "consistently best" (Qwen3.5-9B).
+    Accuracies are reported in figures only.
+  conditions: SkillsBench, 64 of 87 tasks; OpenHands; Qwen3.5 2B/4B/9B, Ministral-3-8B, Gemma-4-12B, GPT-5.x,
+    Mistral-Large-3, Kimi-K2.6
+  direction: mixed
+  measured: true
+  locator: §3.1-3.2; §4 Main results, Figs 2-4; Appendix A.1 Fig 5
+- source: Weiwei Sun, Miao Lu, Zhan Ling, Kang Liu, Xuesong Yao, Yiming Yang, Jiecao Chen (ByteDance Seed,
+    CMU, Stanford), "Scaling Long-Horizon LLM Agent via Context-Folding", https://arxiv.org/abs/2510.11967
+  date: '2025-10-13'
+  task: Agent branches into a sub-trajectory for a sub-task and on return folds it to a short summary,
+    keeping a 32K active context
+  effect: 'Untrained, the folding agent beat 32K ReAct and a summary agent (BrowseComp-Plus 0.420 vs 0.286
+    and 0.386; SWE-Bench Verified 0.492 vs 0.436 and 0.488) but not 327K ReAct (0.478, 0.552). With the
+    same GRPO training: 0.567 vs 0.540 (327K ReAct) and 0.527 (summary) on BrowseComp-Plus; 0.564 vs 0.574
+    and 0.550 on SWE-Bench Verified. With FoldGRPO: 0.620 and 0.580, "using an active context 10× smaller".
+    Parallel branching (0.6133) performed "similarly to the single-branch version".'
+  conditions: Seed-OSS-36B-Instruct; BrowseComp-Plus N=150, SWE-Bench Verified N=500; 32K x 10 branches
+    vs 327K ReAct
+  direction: supports
+  measured: true
+  locator: Abstract; §4.1 Table 1; §4.5.3
+- source: Alex L. Zhang, Tim Kraska, Omar Khattab, "Recursive Language Models", https://arxiv.org/abs/2512.24601
+  date: '2025-12-31'
+  task: Hold the long input as a variable in a REPL and let the root model call sub-models on slices;
+    compare recursion depth 0 (no sub-calls) with depth 1
+  effect: 'GPT-5 root with GPT-5-mini sub-calls, depth 0 vs depth 1: CodeQA 58.0 vs 62.0, BrowseComp+
+    (1K) 88.0 vs 91.3, OOLONG 36.0 vs 56.0, OOLONG-Pairs 43.9 vs 58.0. Qwen3-Coder-480B: 66.0 vs 56.0,
+    46.0 vs 44.7, 43.5 vs 48.0, 17.3 vs 23.1; on CodeQA "the no-sub-calling RLM(depth=0) is able to outperform
+    all sub-calling variants". Sub-calls without offloading the input (CodeAct + sub-calls, GPT-5): OOLONG
+    40.0, OOLONG-Pairs 28.4. "the median RLM run is cheaper than the median base model run, but more expensive
+    on average due to outlier trajectories".'
+  conditions: GPT-5 and Qwen3-Coder-480B-A35B; CodeQA, BrowseComp+ (1K documents, 150 tasks), OOLONG,
+    OOLONG-Pairs; numbers from v3 (May 2026)
+  direction: mixed
+  measured: true
+  locator: v3 Table 1; §4 Observations 2 and 4
+- source: Niko Grupen, Julio Pereyra, Gabe Pereyra, Charlie O'Neill, Mudith Jayasekara, Aaron Ellis-Bloor,
+    Jonathon Liu, Matthew Blau (Harvey), "Post-Training RLM Agents for End-to-End M&A Diligence", https://www.harvey.ai/blog/post-training-rlm-agents-for-m-and-a-diligence
+  date: '2026-09-08'
+  task: Root agent with the data room in a REPL delegates bounded reading to sub-agents in their own context
+    windows; only what the root prints enters its context
+  effect: '"Across seven models, the RLM harness raises mean pass rate from 23.3% to 62.4%, a gain of
+    39.1 percentage points." In the tool loop "no run reads more than 1% of the data room"; with delegation
+    "most read close to all of it". Cost rose for six of seven models; Opus 5 went from ~$18 to ~$7 per
+    data room. The Opus 5 root used 3.8% of input and 1.1% of output tokens. Claude Code and Codex scored
+    17.9 and 4.6 points below the plain tool loop and "neither spawns sub-agents despite having the ability
+    to". Depth 2 (sub-agents that can delegate) improved 4 of 14 rooms, reduced 10, "lowering mean criteria
+    pass rate by 19 percentage points".'
+  conditions: LAB Diligence, data rooms up to 80M tokens, 50-room hold-out (unreleased); seven root models
+    with Qwen3.6-35B-A3B sub-agents at depth 1; depth test on Qwen3.5-122B-A10B, 14 rooms. The REPL and
+    the delegation change together
+  direction: supports
+  measured: true
+  locator: Intro; Figs 5-6; Coverage and Cost; Appendix RLM Recursion Depth
+- source: Will Fu-Hinthorn (LangChain), "Benchmarking Multi-Agent Architectures", https://www.langchain.com/blog/benchmarking-multi-agent-architectures
+  date: '2025-06-10'
+  task: Single agent holding every domain's tools and instructions vs supervisor and swarm setups where
+    each sub-agent sees only its own domain, as distractor domains are added
+  effect: The single agent "falls off sharply when there are two or more distractor domains" and "uses
+    consistently more tokens" as they grow, while supervisor and swarm "remain flat"; with one distractor
+    domain the single agent did slightly better. Supervisor errors came from "translation" (paraphrasing
+    sub-agent replies); removing hand-off messages from the sub-agent's state, a forward_message tool
+    and tool-name changes gave "a nearly 50% increase in performance". Scores in charts only.
+  conditions: gpt-4o; tau-bench retail, first 100 test examples; up to 6 distractor domains of 19 tools
+    plus a wiki each; LangGraph
+  direction: mixed
+  measured: true
+  locator: Score; Cost (Tokens); Improvements to supervisor
+assessment:
+  qa:
+    unit: Sub-agent input and summary schema.
+    examples: Multi-document probes.
+    benchmark: BrowseComp-style.
+    production: Cost per task; sub-agent failure rate.
+    primary:
+    - benchmark
+    - production
+  impact:
+    cost:
+      effect: mixed
+      magnitude: medium
+      note: More total tokens, smaller parent context.
+    security:
+      effect: mixed
+      magnitude: medium
+      note: Depends on tool scoping (see P44).
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: degrades
+      magnitude: low
+      note: Nested traces.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    primary:
+    - quality
+    - cost
+absorbs:
+- legacy_id: P44
+  name: Sub-agent spawning with isolated context
+  group: Multi-Agent
+  source: catalog
+  family: tool
+  sub_type: subagent
+  categories:
+  - context.isolate
+  note: Overlaps P20.
+  assessment:
+    detection:
+      static: Sub-agents receive only listed files and a tool subset.
+      traces: Sub-agent file and tool access vs its allowlist.
+      evals: Quality on parallelisable tasks; isolation test pass rate.
+      judge: null
+      probes:
+        what: Tasks where a sub-agent is tempted to reach outside its scope.
+        construct: Place needed data just outside the allowlist and confirm it is not read.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Allowlist enforcement.
+      examples: Scope probes.
+      benchmark: Multi-file coding.
+      production: Access violations.
+      primary:
+      - unit
+    impact:
+      cost:
+        effect: mixed
+        magnitude: medium
+        note: ''
+      security:
+        effect: improves
+        magnitude: medium
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: medium
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: ''
+      latency:
+        effect: improves
+        magnitude: medium
+        note: When run concurrently.
+      primary:
+      - security
+      - quality
+related:
+- 6.b.iii
+- 5.a.i
+- 8.a.i
+- 4.b.iii
+- 5.c.i
+- 6.b.ii
+- 10.a.i
+- 1.b.i
+- 2.c.i
+- 2.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: subagent
+  library_group: Long-Horizon
+  library_source: master
+caveats: 'The large gains come from very large corpora (data rooms, multi-million-token inputs) and from
+  setups that also change other things (a REPL holding the corpus, RL training), so they do not isolate
+  the sub-agent; on bounded tasks with a strong single agent the gain vanished or reversed (repository
+  questions, MLE-bench, generic roles on ProgramBench). The hand-off is the new failure point: it caused
+  41.8% of delegated-search failures, usually with a confident wrong answer, and a 32B model lost 85%
+  of discovered facts across an orchestrator-subagent boundary, against 3-6% for gpt-4.1-mini. Several
+  studies are small or chart-only (14 data rooms for the depth test, 16-30 facts per cell, SkillsBench
+  accuracies in figures), and Harvey''s hold-out sets are unreleased.'

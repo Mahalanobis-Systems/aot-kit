@@ -1,0 +1,228 @@
+# Ids that are not library entries, and why. Every T/P id in the old catalog is owned exactly
+# once: by an entry (its legacy_id), by a pattern an entry absorbs, or here (tools/validate.py checks this).
+# `archived` keeps whole entries dropped in review, in the technique format they had then.
+
+excluded:
+- id: P29
+  name: Evaluation-driven tool development
+  why: optimizer-side practice (how an agent is optimized), not a change to an agent
+  pattern:
+    id: P29
+    name: Evaluation-driven tool development
+    group: Testing
+    source: master
+    family: other
+    sub_type: other
+    categories: []
+    note: 'Optimizer-side: realistic multi-step eval tasks, iterate on what agents omit.'
+    assessment:
+      detection:
+        static: Evaluation tasks exist per tool in the repo.
+        traces: Tool usage coverage by the eval set.
+        evals: This pattern is the eval.
+        judge: Read transcripts for what agents omit.
+        probes:
+          what: Realistic multi-step tasks.
+          construct: Mine production logs for tasks; avoid single-step pre-specified ones.
+        primary:
+        - evals
+      qa:
+        unit: null
+        examples: Yes, this is the practice.
+        benchmark: Yes.
+        production: Yes.
+        primary:
+        - examples
+        - benchmark
+      impact:
+        cost:
+          effect: improves
+          magnitude: low
+          note: ''
+        security:
+          effect: none
+          magnitude: low
+          note: ''
+        brand:
+          effect: none
+          magnitude: low
+          note: ''
+        governance:
+          effect: improves
+          magnitude: medium
+          note: ''
+        quality:
+          effect: improves
+          magnitude: high
+          note: 'Indirect: it is how every other pattern gets validated.'
+        latency:
+          effect: none
+          magnitude: low
+          note: ''
+        primary:
+        - quality
+        - governance
+- id: P30
+  name: Track accuracy, tool-call counts, tool errors, runtime, tokens
+  why: optimizer-side practice (how an agent is optimized), not a change to an agent
+  pattern:
+    id: P30
+    name: Track accuracy, tool-call counts, tool errors, runtime, tokens
+    group: Testing
+    source: master
+    family: other
+    sub_type: other
+    categories: []
+    note: Optimizer-side metrics.
+    assessment:
+      detection:
+        static: Telemetry code for tokens, tool calls, errors, runtime.
+        traces: Metrics emitted per run.
+        evals: null
+        judge: null
+        probes: null
+        primary:
+        - static
+      qa:
+        unit: Metrics emitted with expected fields.
+        examples: null
+        benchmark: null
+        production: Dashboards and alerts.
+        primary:
+        - production
+      impact:
+        cost:
+          effect: improves
+          magnitude: medium
+          note: Visibility.
+        security:
+          effect: improves
+          magnitude: low
+          note: ''
+        brand:
+          effect: none
+          magnitude: low
+          note: ''
+        governance:
+          effect: improves
+          magnitude: high
+          note: ''
+        quality:
+          effect: improves
+          magnitude: low
+          note: ''
+        latency:
+          effect: none
+          magnitude: low
+          note: ''
+        primary:
+        - governance
+        - cost
+- id: T37
+  name: Unit tests for the harness
+  why: an optimizer practice (test the harness you are changing), not a change to an agent
+- id: O01-O20
+  name: Optimizer-side practices
+  why: practices of whoever optimizes the agent, not changes to an agent (moved 2026-09-23)
+archived:
+- archived_on: '2026-09-23'
+  reason: Dropped from the catalog in review (2026-09-23).
+  entry:
+    id: T49
+    name: Verify a coding patch by reconstructing the problem from the patch alone
+    layer: target
+    origin: observed
+    change_type: workflow
+    sub_type: reflection
+    harness_role: submission
+    action: add
+    categories:
+    - verification.completion
+    summary: 'Before submitting, check the patch in two independent directions: rebuild the repair rationale
+      from the trajectory with the patch withheld, and infer the issue from the patch with the issue withheld;
+      reconcile the two and append a targeted revision plan on mismatch (RETRACE). Unlike model self-review,
+      the verifier never sees what it is checking against.'
+    how: 1. Add a verification call that receives only the patch and must state the issue it addresses.
+      2. Add one that receives the trajectory without the patch and must state the intended fix. 3. Compare
+      both with the real issue; on mismatch, send a revision plan back. 4. Share the prompt prefix across
+      the calls for caching.
+    detect:
+      static: a coding agent that submits its patch with no independent check
+      traces: patches that pass the agent's own tests but fail hidden tests; failure rows labeled satisficing
+        or specification-gaming on coding tasks
+      evals: resolve rate; wrong-fix failures
+    impact:
+      quality:
+        effect: improves
+        size: medium
+        when: +3.6 to +7.0 points on SWE-bench Verified (Aug 2026)
+      cost:
+        effect: improves
+        size: small
+        when: $0.07 to $0.06 per issue because verifier calls share a cached prefix
+      speed:
+        effect: unknown
+    tiers:
+    - tier: 3
+      why: it adds a quality step before submission
+    measure:
+    - method: experiment
+      tier: 3
+      how: paired eval with and without the step
+    evidence:
+    - source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+        Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+      date: '2026-08-09'
+      task: Verify a patch by bidirectional reconstruction before submitting
+      effect: 'SWE-bench Verified, mini-SWE-agent, 500 issues, 1 run: GPT-5 mini 56.2% (281/500) -> 63.2%
+        (316/500), +7.0 pp; MiniMax M2.5 75.8% (379/500) -> 79.4% (397/500), +3.6 pp. OpenHands on 120-issue
+        subset, unmodified scaffold: GPT-5-mini 37.5% -> 56.7% (+19.2); MiniMax M2.5 62.5% -> 70.0% (+7.5).
+        Same backbone used for all verifier stages.'
+      direction: supports
+      measured: true
+      locator: Abstract; Sec. RETRACE; Table 1; Table 3
+    - source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+        Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+      date: '2026-08-09'
+      task: Reconstruct the addressed problem from the patch, issue withheld
+      effect: 'Ablation, 120-issue subset, GPT-5-mini: baseline 50.0% (60/120) -> backward-only 56.7%
+        (68/120). Backward-only and forward-only each resolve 6 issues the other misses. Signal depends
+        on issue quality: vague reports weaken the verdict (Limitations).'
+      direction: supports
+      measured: true
+      locator: Sec. Backward Reconstruction; Issue alignment; Table 2; Figure 2; Limitations
+    - source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+        Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+      date: '2026-08-09'
+      task: Reconstruct the repair rationale from the trajectory, patch withheld
+      effect: 'Ablation, 120-issue subset, GPT-5-mini: baseline 50.0% -> forward-only 56.7% (68/120).
+        Paper attributes forward gains to reorganizing context so flawed editing decisions are corrected.'
+      direction: supports
+      measured: true
+      locator: Sec. Forward Reconstruction; Table 2; Figure 2
+    - source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+        Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+      date: '2026-08-09'
+      task: Diagnose mismatch source and append a targeted revision plan
+      effect: 'Ablation, 120-issue subset, GPT-5-mini: either single stage 56.7% -> full RETRACE with
+        reconciliation 60.8% (73/120). Full retains 66 issues solved by each single-stage variant and
+        resolves 7 that neither variant resolves alone. Revision budget value not reported.'
+      direction: supports
+      measured: true
+      locator: Sec. Forward-Backward Reconciliation; Revision through verification feedback; Table 2;
+        Figure 2
+    - source: Chenglin Li, Yisen Xu, Zehao Wang, Shin Hwei Tan, Tse-Hsun (Peter) Chen, "Independent Patch
+        Verification for Coding Agents with a Bidirectional Reconstruct-and-Verify Framework", https://arxiv.org/abs/2608.08950
+      date: '2026-08-09'
+      task: Share issue and trajectory prefix across verifier calls
+      effect: 'Table 4, average per issue, SWE-bench Verified: GPT-5 mini baseline 26.3K input, 45.6%
+        cache hit, $0.07 vs RETRACE 60.6K input, 90.8% cache hit, $0.06; output tokens 4.2K -> 1.2K. MiniMax
+        M2.5 baseline 123.3K input, 94.6% cache hit, 0.07 vs RETRACE 78.0K, 96.7%, 0.05. Cost ratio below
+        1.0x on both backbones.'
+      direction: supports
+      measured: true
+      locator: Cost analysis; Table 4
+    related:
+    - T43
+    - T44
+    - T63

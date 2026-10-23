@@ -1,0 +1,142 @@
+# 7.b.iv: Track explicit progress: a task list with a status per item, re-injected each turn
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.b.iv
+legacy_id: T62
+slug: track-task-progress
+name: 'Track explicit progress: a task list with a status per item, re-injected each turn'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees each turn
+levers:
+- control-flow
+- context
+domains:
+- planning
+evidence_domains:
+- code-generation
+categories:
+- orchestration.bound
+summary: 'Give the agent a task-list tool (each item with a status, one in progress at a time), ask for
+  the list on the first turn of non-trivial tasks, and re-inject the current list after the system prompt
+  each turn instead of keeping old copies in history. The effect depends on the model: the one controlled
+  study found a large success gain for a weaker model, none for a mid-size one, and a small success loss
+  with a large cost saving for strong ones, whose removed turns were mostly post-edit verification.'
+how: '1. Add the task-list tool and the first-turn requirement. 2. Inject the current list after the system
+  prompt each turn; strip old copies from history. 3. Paired eval per model you run: success, cost and
+  turns. Re-run it when the model changes.'
+detect:
+  static: no task list or todo mechanism in the harness
+  traces: runs ending with no edit or output, and short aimless trajectories (weaker models); long post-edit
+    loops (stronger models); failure rows labeled goal-drift or state-tracking-failure
+  evals: success by trajectory length, per model
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: weaker model +11.6 points on SWE tasks and +4.5 on TerminalBench (a 30B model); no consistent
+      gain at 120B; strong models about -2 points (Fan, Sep 2026)
+    basis: evidence
+  cost:
+    effect: mixed
+    size: medium
+    when: strong models about 30% cheaper (fewer post-edit turns); the weaker model up to 75% dearer,
+      because it now works the task instead of stopping early
+    basis: evidence
+  performance:
+    effect: mixed
+    when: 'follows turns: fewer for strong models, more for the weaker one'
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval with and without the task list, separately for each model in use
+evidence:
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Add a persistent plan tool re-injected each turn
+  effect: 'T4/128k, full tools. Nemotron-3 30B: planning +11.6 pp SWE and +4.5 pp TB at higher cost (TB
+    cost +75%). Without planning its median SWE trajectory is 5 turns (vs 40), and 68.6% of runs end without
+    an edit (vs 27.8%). Nemotron-3 120B: no consistent SR gain; cost up on SWE and down about 26% on TB.
+    Nemotron-3 550B / Mistral: SWE cost down about 30% / 32% with SR -2.0 / -0.4 pp. Median turns 108->74
+    and 68->53, the removed turns being mostly post-edit verification. Mistral TB cost down about 40%.'
+  direction: supports
+  measured: true
+  locator: §2.1; §3.2 'Planning improves success rate for the weaker model...', Fig 6, Table 5; §4 Table
+    6, Figs 8-9; App 7.2 Figs 15-17, App 8.4 Fig 30
+related:
+- 4.b.iii
+- 5.a.i
+absorbs:
+- legacy_id: P25
+  name: Attention recitation
+  group: Production
+  source: master
+  family: workflow
+  sub_type: planning
+  categories: []
+  note: Rewrite the todo list at the end of context to fight goal drift.
+  assessment:
+    detection:
+      static: The todo list is rewritten at the end of each turn.
+      traces: Recitation present; drift between the original goal and late actions.
+      evals: Goal adherence on long tasks.
+      judge: Measure drift between stated goal and actions.
+      probes:
+        what: Long tasks with a constraint stated only at the start.
+        construct: Thirty-plus step tasks with distracting intermediate results and a start-only constraint.
+      primary:
+      - judge
+      - probes
+    qa:
+      unit: null
+      examples: Drift probes.
+      benchmark: Long-horizon.
+      production: Sampled drift judge.
+      primary:
+      - examples
+    impact:
+      cost:
+        effect: degrades
+        magnitude: low
+        note: ''
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Long tasks only.
+      latency:
+        effect: degrades
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: planning
+  harness_role: control_loop
+  action: add
+caveats: Model strength decides the sign. On weaker models the list keeps the agent working the task;
+  on strong models it mainly trades a little success for a lot of cost, by cutting verification turns.
+  Measure it per model, and again after a model upgrade. Keeping the plan in a file only matters when
+  work outlives one context window; that is 4.b.iii.

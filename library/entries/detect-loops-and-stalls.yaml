@@ -1,0 +1,185 @@
+# 7.b.i: Detect stalls and loops: warn, then stop early
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.b.i
+legacy_id: T05
+slug: detect-loops-and-stalls
+name: 'Detect stalls and loops: warn, then stop early'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: 'an execution bound: runaway loops are hard failures'
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- code-generation
+- web-research
+categories:
+- orchestration.bound
+summary: Track repeated identical actions (same tool, same arguments; same search query) and turns with
+  no new information. Inject a warning at a small streak (about 5 identical calls), refuse exact-repeat
+  queries, and end the run early at a longer streak (about 8 identical failures) or when progress has
+  stalled, instead of running to the turn cap. A prompt line telling the agent not to repeat itself is
+  a weak version of the same thing and is not a substitute.
+how: 1. In the loop, hash each tool call (name plus arguments) and each query; keep the last N. 2. On
+  a streak of 5, inject a 'you are repeating; change approach' message; on 8 identical failures, stop
+  with the best answer so far. 3. Define 'stalled' for the task (no new file, result or fact in K turns)
+  and stop on it. 4. Measure loop and turn-cap failures before and after.
+detect:
+  static: no comparison of a tool call or query against previous ones; the loop ends only at a fixed turn
+    cap
+  traces: tool spans with identical name and arguments repeated 3 or more times in a run; the same query
+    string issued twice; runs ending at the turn cap; failure rows labeled redundancy or state-tracking-failure
+  evals: turn-cap and timeout outcomes as a share of failures
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: adaptive termination +5.6% on FACTS; anti-loop prompt line GAIA +0.04, flat on SimpleQA (VeRO)
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    basis: evidence
+  performance:
+    effect: improves
+    size: medium
+    when: the template with query dedup ran about 2x faster, bundled
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: loop and turn-cap failure rate on the same cases; time per case
+evidence:
+- source: paper §A.4
+  task: TerminalBench-2
+  effect: Part of the Filesystem-B=178 commit; contributed to AgentTimeoutError rising 16 to 23 as crashing
+    tasks migrated to timeouts rather than passes.
+- source: cookbook (master-agent-optimization-cookbook, Infinite Loop Prevention)
+  task: library pattern
+  effect: Hash recent tool calls, inject a warning on repeat.
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Detect identical-call streaks; warn, then terminate
+  effect: Held fixed across all conditions. The reminder texts and thresholds are given.
+  direction: supports
+  measured: false
+  locator: §2.4 Stuck detection; §3.1; App 7.4 Fig 20
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Hash repeated tool calls to detect stuck loops
+  effect: Hermes hashes the call signature (SHA-256), "warning after two identical failures and halting
+    after eight—but the hard stop ships disabled"; Gemini CLI aborts on "five identical tool calls or
+    ten identical content chunks"; OpenCode's "three consecutive byte-identical tool calls raise a doom_loop
+    permission ask"; OpenHands StuckDetector covers 5 scenarios.
+  direction: supports
+  measured: false
+  locator: Sec 6.2; Table 5; Table 11 "Stuck Detection"; Recommendation 18
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Add a periodic LLM self-check for loops
+  effect: 'Gemini CLI LoopDetectionService: "after thirty turns in a single prompt an LLM-based self-check
+    runs at an adaptive interval—a two-tier design"; paper calls this a "platform-tier investment".'
+  direction: supports
+  measured: false
+  locator: Sec 6.2 (Gemini CLI); Recommendation 18
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Cap consecutive malformed responses and wall-clock time
+  effect: 'Mini-SWE-Agent v2.4 "added a wall-clock time limit on runs and a cap on consecutive malformed-action
+    responses"; Rec 18: "do ship the cheap caps, which cost a dozen lines."'
+  direction: supports
+  measured: false
+  locator: Sec 6.2 (Mini-SWE-Agent); Sec 10.10; Recommendation 18
+- source: paper Figure 14
+  task: GAIA
+  effect: '"Strengthened anti-loop prompt instructions" took validation 0.26 to 0.30 (best of run).'
+- source: paper Figure 15
+  task: SimpleQA
+  effect: '"Loop/entity prompt guidance" flat (0.86 to 0.85).'
+- source: blog tricks table (Minimal template)
+  task: FACTS
+  effect: +5.6%; "invented adaptive termination to prevent infinite loops".
+- source: blog tricks table (Evidence-Based template)
+  task: GAIA/FACTS/SimpleQA
+  effect: Runtime efficiency; Evidence-Based agents ran about 2x faster than Tool-Centric ones (26.2s
+    vs 56.6s per sample for Knight).
+related:
+- 7.b.iii
+- 5.a.i
+absorbs:
+- legacy_id: P28
+  name: Infinite-loop prevention by hashing recent calls
+  group: Production
+  source: master
+  family: workflow
+  sub_type: termination
+  categories:
+  - orchestration.bound
+  assessment:
+    detection:
+      static: max_iterations; hash of recent calls; loop detector.
+      traces: Repeated identical tool calls; turn count at the cap.
+      evals: Timeout rate; share of tasks hitting the cap.
+      judge: null
+      probes:
+        what: Tasks with an unattainable goal.
+        construct: Ask for a file or fact that does not exist.
+      primary:
+      - static
+      - traces
+    qa:
+      unit: Detector triggers on repetition.
+      examples: Unattainable probes.
+      benchmark: null
+      production: Cap-hit rate; cost outliers.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: Runaway loops are the cost tail.
+      security:
+        effect: improves
+        magnitude: low
+        note: ''
+      brand:
+        effect: improves
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: medium
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: 'VeRO T05 and T22: loop detection and adaptive termination gave +5.6 on FACTS but also pushed
+          crashes into timeouts.'
+      latency:
+        effect: improves
+        magnitude: high
+        note: Tail latency.
+      primary:
+      - cost
+      - latency
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: termination
+  harness_role: control_loop
+  action: add

@@ -1,0 +1,203 @@
+# 2.b.ii: Tell the agent when to use each tool, in context it always sees
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.b.ii
+legacy_id: T09
+slug: tool-use-guidance
+name: Tell the agent when to use each tool, in context it always sees
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- tool-surface
+- prompt
+domains:
+- tool-use
+evidence_domains:
+- reasoning
+- web-research
+- code-generation
+- tool-use
+categories:
+- tools.misuse
+summary: 'For each tool or skill that is under-used or misused, add an explicit trigger rule where the
+  model always sees it (system prompt, AGENTS.md): the situation that calls for the tool, and what to
+  use it instead of (e.g. the dedicated read or edit tool rather than bash). Test the wording, since results
+  swing with it. It will not make a model that rarely calls tools start calling them. The cheapest form
+  is one sentence per tool stating what it is for: that alone recovered most of a 34.7-point loss caused
+  by offering the model an irrelevant tool.'
+how: '1. From traces, list tools with a low call rate on cases where they would have helped, and tools
+  chosen wrongly. 2. For each, write one rule: when to use it, and instead of what. 3. Put the rules in
+  always-loaded context, not in an optional skill. 4. A/B two wordings; keep the one with the higher call
+  rate and pass rate.'
+detect:
+  static: tools or skills whose intended use is stated nowhere the model always sees; overlapping tools
+    with no rule for choosing between them
+  traces: 'tool spans: a tool called on under about 5% of cases where its trigger condition held (e.g.
+    a docs skill never invoked in 56% of runs); bash spans where a dedicated tool exists; failure rows
+    labeled incorrect-tool-selection'
+  evals: failures where the right tool existed but was not called
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'Vercel: pass rate 53% to 79% once told when to invoke the docs skill (Jan 2026); VeRO mixed:
+      -5 and +4.5 points; one sentence of tool scope recovered most of a 34.7-point loss from an irrelevant
+      tool (Paturi et al., Sep 2026)'
+    basis: evidence
+  cost:
+    effect: unknown
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval with and without the rule, plus the tool's call rate in traces
+evidence:
+- source: paper Figure 12 (Orchestrator, Sonnet 4.5; 'Early Peaker')
+  task: MATH
+  effect: 'Phase 3, ''Enhanced tool usage instructions'', added right after phase 2 added a SymPy calculator
+    tool: validation 0.917 to 0.867 (regressed), train flat at 0.813. The figure gives only the label,
+    not the instruction text.'
+- source: paper Figure 15 (Orchestrator, Opus 4.5; 'Best SimpleQA')
+  task: SimpleQA
+  effect: 'Phase 1, ''Improved prompt, tool descriptions'', bundled with prompt changes: validation 0.577
+    to 0.622, train 0.456 to 0.587. Not separable from the description changes (T35).'
+- source: Jude Gao (Vercel), "AGENTS.md outperforms skills in our agent evals", https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals
+  date: '2026-01-27'
+  task: Tell the agent in AGENTS.md when to invoke a skill
+  effect: Trigger rate to 95%+, pass rate 53% -> 79% (+26pp); Build/Lint/Test 95/100/84. Still 21pp below
+    the AGENTS.md index. Vercel calls the wording sensitivity "brittle for production use".
+  direction: supports
+  measured: true
+  locator: Explicit instructions helped, but wording was fragile
+- source: Jude Gao (Vercel), "AGENTS.md outperforms skills in our agent evals", https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals
+  date: '2026-01-27'
+  task: Do not rely on the agent choosing to invoke a skill
+  effect: Skill never invoked in 56% of eval cases; pass rate 53% = baseline 53% (+0pp); on tests 58%
+    vs baseline 63%, lint 89% vs 95%.
+  direction: supports
+  measured: true
+  locator: Skills weren't being triggered reliably
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Prefer dedicated tools over shell in instructions
+  effect: Claude Code "Do NOT use the Bash tool to run commands when a relevant dedicated tool is provided
+    ... allows the user to better understand and review your work."
+  direction: supports
+  measured: false
+  locator: Sec 7.3 "Tool-use philosophy"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Generate tool guidance from the active toolset
+  effect: Pi "each tool contributes promptSnippet/promptGuidelines, so the prompt co-varies with the active
+    toolset"; whole prompt is 30–40 lines.
+  direction: supports
+  measured: false
+  locator: Sec 7.2 (Pi)
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Give explicit tool-selection heuristics in the prompt
+  effect: '"an agent searching the web for context that only exists in Slack is doomed from the start"
+    ... "Bad tool descriptions can send agents down completely wrong paths, so each tool needs a distinct
+    purpose and a clear description."'
+  direction: supports
+  measured: false
+  locator: 'Prompt engineering: Tool design and selection are critical'
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Prompting weak models to search does not make them search
+  effect: 'Same prompt explicitly telling the model to use the tool: Qwen3-32B 0.89-0.94 search calls/q,
+    Search-R1-32B 1.68-1.78, vs gpt-5 / o3 >20. With oracle evidence in context Qwen3-32B reaches 83.25%
+    (gpt-4.1 93.49%), vs 10.36% when it must search.'
+  direction: contradicts
+  measured: true
+  locator: Sec 4.3; Sec 4.6; Sec 4.8.1
+- source: 'Paturi et al., "When Tools Get in the Way: The Effect of Unnecessary Tool Availability on LLM
+    Answering", https://arxiv.org/abs/2609.14157'
+  date: '2026-09-12'
+  task: State in one sentence what each tool is for
+  effect: 'Same setup: a one-sentence instruction stating the tool''s scope recovers most of the lost
+    answers.'
+  direction: supports
+  measured: true
+related:
+- 2.a.ii
+- 2.a.i
+absorbs:
+- legacy_id: P07
+  name: Tool docstrings with use / do-not-use guidance and examples
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: api
+  categories:
+  - tools.misuse
+  note: Documentation is the interface.
+  assessment:
+    detection:
+      static: Parse tool schemas. Lint description length, use-when and do-not-use guidance, per-argument
+        docs with good and bad examples, return format.
+      traces: Wrong-tool selection, invalid arguments, retries after tool errors.
+      evals: Tool error rate and wrong-tool rate per tool.
+      judge: Rate each description for clarity; classify tool-call errors as description-caused or not.
+      probes:
+        what: Tasks at the boundary between two similar tools; arguments with tricky forms.
+        construct: For each pair of overlapping tools write tasks that should route to each; for each
+          argument write inputs at its edges.
+      primary:
+      - static
+      - evals
+    qa:
+      unit: 'Schema lint: every argument documented, examples parse and validate.'
+      examples: Boundary probes.
+      benchmark: Tool-use benchmark.
+      production: Tool error rate and wrong-tool rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: low
+        note: Fewer wasted calls.
+      security:
+        effect: improves
+        magnitude: low
+        note: Fewer misuses.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: Intended use is documented.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: 'VeRO T09 and T35: description edits were mixed on MATH, helped on SimpleQA.'
+      latency:
+        effect: improves
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: instructions
+  harness_role: prompt
+  action: add

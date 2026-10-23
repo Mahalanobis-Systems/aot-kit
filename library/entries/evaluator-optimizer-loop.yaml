@@ -1,0 +1,339 @@
+# 7.c.iii: Evaluator-optimizer loop
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.c.iii
+legacy_id: P17
+slug: evaluator-optimizer-loop
+name: Evaluator-optimizer loop
+kind: pattern
+status: card
+tiers:
+- tier: 4
+  why: it adds a generate-evaluate loop to the workflow
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- code-generation
+- reasoning
+- document-extraction
+- judging
+categories:
+- orchestration.extra-compute
+summary: 'A separate evaluator (an LLM judge with written criteria, a different model, or an agent that
+  tests the running app) scores the generator''s output and returns specific findings; the generator revises
+  until the output passes or a round cap is hit. It pays when the task is beyond what the generator does
+  reliably in one pass and the evaluator is more reliable than the generator: a production diff judge
+  vetoed about a quarter of coding-agent sessions, and half of those recovered. It fails when the judge
+  is weak or shares the generator''s blind spots: judge loops left table extraction worse than the first
+  output and raised essay scores while human scores fell. Most of the gain comes in the first two to four
+  rounds, at roughly twice the tokens of one call.'
+how: '1. Start from the single pass, tuned with the same effort, and from best-of-N at equal tokens; add
+  the loop only where outputs often fall short and no compiler, test or execution check can judge them
+  (if one exists, feed its verdict back instead, 9.a.i). 2. Write the evaluator''s criteria as a few gradable
+  items, each with a hard pass threshold, and calibrate it with a few scored examples; where possible
+  let it check by acting (drive the app with Playwright, compare the diff with the original request).
+  The same criteria in the generator''s prompt also steer the first draft. 3. Make the evaluator separate
+  and skeptical: its own call and context, not the generator''s dialogue history; a model at least as
+  capable as the generator; tune its prompt by reading its logs against your own verdicts until it stops
+  approving problems it found. Check it on labeled good and bad outputs and planted-defect probes before
+  wiring it in. 4. Return findings the generator can act on (failing criterion, where, expected against
+  actual) and tell it to keep what already passed; unconstrained regeneration breaks parts that were right.
+  5. Stop on pass or after a low cap (most gains came in the first 2 to 4 rounds); raise the cap only
+  if the per-round curve keeps rising. Return the best version rather than the last, and stop early when
+  the score stalls or drops. 6. Measure against a check the loop never sees (a human-labeled sample or
+  a deterministic metric), per round: quality, share of items that end worse than their first output,
+  evaluator agreement with the audit, tokens and latency.'
+detect:
+  static: 'A generate, evaluate, revise loop: a separate evaluator call, model or tool-using agent scores
+    the output against written criteria and returns feedback, with a pass threshold and a round cap. Flag
+    an evaluator that shares the generator''s dialogue history, one weaker than the generator, no cap,
+    or a loop that returns the last version instead of the best.'
+  traces: Rounds per item; evaluator score per round next to an independent check; veto rate and recovery
+    after a veto; items whose evaluator score rose while the independent check fell; revisions that rewrote
+    parts that had passed.
+  evals: Quality per round on a grader the loop never sees; share of items that end worse than their first
+    output; evaluator agreement with human or gold labels.
+  judge: The evaluator is a judge; a meta-judge checks its agreement with humans.
+  probes:
+    what: Items with a clear rubric and a known defect.
+    construct: Seed outputs with one planted defect each; the evaluator must catch it and the refiner
+      must fix it.
+  primary:
+  - traces
+  - probes
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: 'gains where the generator falls short and the critic is reliable: CodeContests 7.88 to 16.24
+      with a trained critic over five rounds, 12.48 with GPT-4o as critic (Xie, Feb 2025); Self-Refine
+      +4.6 and +1.9 points over a tuned single call, -0.3 on chess (Leins, Aug 2026); losses where the
+      judge is weak: table extraction 0.792 to 0.772 TEDS after 8 rounds (Kim, Jul 2026), essay judge
+      scores rose while human scores fell (Pan, Jul 2024)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: medium
+    when: 'an evaluator call plus a revision per round: Self-Refine took 1.82 to 2.13 times the tokens
+      of a tuned single call (Leins, Aug 2026); in one app build the QA rounds cost $3.24, $3.09 and $4.06
+      of $124.70, and the rebuilds they triggered $36.89 and $5.88 (Rajasekaran, Mar 2026)'
+    basis: evidence
+  performance:
+    effect: degrades
+    size: large
+    when: serial rounds; an evaluator that clicks through the running app took 6.8 to 9.6 minutes per
+      round, and a 5 to 15 round design loop ran up to four hours (Rajasekaran, Mar 2026)
+    basis: evidence
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    when: Criteria are explicit.
+    basis: assessment
+  brand:
+    effect: improves
+    size: medium
+    when: Polished output.
+    basis: assessment
+  primary:
+  - quality
+  - performance
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval of the loop against the single pass and against best-of-N at equal tokens, per model,
+    graded by a check the loop never sees (human-labeled sample or deterministic metric): quality per
+    round, share of items ending worse than their first output, tokens, latency'
+- method: monitor
+  how: rounds per item, first-pass rate, veto rate and recovery rate after a veto, cap-hit rate; on a
+    regularly audited sample, evaluator verdicts against human labels and drift between evaluator scores
+    and the audit
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Workflow Patterns group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: Anthropic (Erik Schluntz, Barry Zhang), "Building effective agents", https://www.anthropic.com/engineering/building-effective-agents
+  date: '2024-12-19'
+  task: 'Names the evaluator-optimizer workflow: one call generates, another evaluates and gives feedback in a loop'
+  effect: '"one LLM call generates a response while another provides evaluation and feedback in a loop"; "particularly
+    effective when we have clear evaluation criteria, and when iterative refinement provides measurable value."'
+  direction: supports
+  measured: false
+  locator: 'Workflow: Evaluator-optimizer'
+- source: Prithvi Rajasekaran (Anthropic), "Harness design for long-running application development",
+    https://www.anthropic.com/engineering/harness-design-long-running-apps
+  date: '2026-03-24'
+  task: A separate evaluator agent with written criteria, few-shot calibration and the Playwright MCP
+    grades a generator's frontend or full-stack app and sends its critique back for the next round
+  effect: '"tuning a standalone evaluator to be skeptical turns out to be far more tractable than making
+    a generator critical of its own work". Out of the box the evaluator would "identify legitimate issues,
+    then talk itself into deciding they weren''t a big deal and approve the work anyway"; it took several
+    rounds of prompt tuning. Design loop: 5 to 15 iterations; scores "improved over iterations before
+    plateauing", and the author "regularly saw cases where I preferred a middle iteration over the last
+    one". App build on Opus 4.6: QA rounds cost $3.24, $3.09 and $4.06 of a $124.70 run and caught display-only
+    and stubbed core features; the evaluator "is worth the cost when the task sits beyond what the current
+    model does reliably solo."'
+  conditions: Claude Opus 4.5 and Opus 4.6, Claude Agent SDK; frontend designs and two full-stack apps,
+    one run each; quality judged by the author
+  direction: supports
+  measured: true
+  locator: 'Why naive implementations fall short; Frontend design: making subjective quality gradable;
+    Running the harness; Removing the sprint construct; Results from the updated harness'
+- source: 'Max Charas, Marc Bruggmann (Spotify), "Background Coding Agents: Predictable Results Through
+    Strong Feedback Loops (Honk, Part 3)", https://engineering.atspotify.com/2025/12/feedback-loops-background-coding-agents-part-3'
+  date: '2025-12-09'
+  task: After the build, format and test verifiers pass, an LLM judge reviews the diff against the original
+    prompt; a veto sends the coding agent back to fix its change before a PR opens
+  effect: '"out of thousands of agent sessions, the judge vetoes about a quarter of them. When that happens,
+    the agent is able to course correct half the time." The most common trigger is "the agent going outside
+    the instructions outlined in the prompt". "We have yet to invest in evals for our judge."'
+  conditions: production background coding agent (Claude Code) for fleet-wide code changes; internal metrics;
+    judge accuracy not evaluated
+  direction: supports
+  measured: true
+  locator: Using LLMs in the verification loops
+- source: Zhihui Xie, Jie Chen, Liyu Chen, Weichao Mao, Jingjing Xu, Lingpeng Kong, "Teaching Language
+    Models to Critique via Reinforcement Learning", https://arxiv.org/abs/2502.03492
+  date: '2025-02-05'
+  task: A separate critic gives feedback and the generator revises, for one or five rounds; the generator's
+    own critique, GPT-4o as critic, and a critic trained with RL (CTRL) compared
+  effect: 'Qwen2.5-Coder generator, Pass@1 averaged over CodeContests, LiveCodeBench and MBPP+: zero-shot
+    38.75; after five critique rounds 38.30 with its own critique, 39.98 with GPT-4o, 42.77 with the trained
+    critic. CodeContests 7.88 to 12.48 (GPT-4o critic, five rounds) and 16.24 (trained critic); trained
+    critic after one, two and three rounds 11.76, 14.18, 15.15. MBPP+ fell from 77.83 to 74.60 after five
+    GPT-4o critique rounds. GPT-4o generator: 43.53 zero-shot, 44.13 after five rounds of its own critique,
+    45.83 with the trained critic. In an inference-only size sweep, "critics less capable than their generators
+    typically degrade performance".'
+  conditions: generators Qwen2.5-Coder-32B-Instruct and GPT-4o; trained critic from Qwen2.5-Coder-32B-Instruct;
+    CodeContests, LiveCodeBench, MBPP+; 5 seeds
+  direction: mixed
+  measured: true
+  locator: Table 1; Table 3; Table 4 and "The Effect of Generator Ability" (§4.4)
+- source: Jane Pan, He He, Samuel R. Bowman, Shi Feng, "Spontaneous Reward Hacking in Iterative Self-Refinement",
+    https://arxiv.org/abs/2407.04549
+  date: '2024-07-05'
+  task: An LLM judge scores essays against a four-item rubric and gives feedback, an LLM author revises,
+    for five rounds; same model in both roles with separate prompts; expert humans score every version
+    offline
+  effect: With GPT-3.5, "the Online LLM Judge scores the model-edited essays much higher compared to the
+    ground-truth Human scores", and "the Human scores demonstrate a decrease in quality in the last iteration";
+    an offline judge without the loop history tracked the human scores. The divergence appeared when judge
+    and author saw the same dialogue history; with different histories "the gap between the Online LLM
+    Judge and Human scores becomes statistically insignificant". Only Conventions kept improving for humans;
+    on the other items human-judged improvement "either plateaus after a single iteration or even degrades".
+    GPT-4 showed less divergence.
+  conditions: gpt-3.5-turbo-1106 and gpt-4; 23 seed college essays, 92 trajectories per model, 5 rounds;
+    23 annotators, 3 per essay
+  direction: contradicts
+  measured: true
+  locator: §3.3-3.5; §4; Figures 3-5
+- source: 'Dongwei Jiang, Alvin Zhang, Andrew Wang, Nicholas Andrews, Daniel Khashabi, "Feedback Friction:
+    LLMs Struggle to Fully Incorporate External Feedback", https://arxiv.org/abs/2506.11930'
+  date: '2025-06-13'
+  task: A separate feedback model that sees the ground-truth solution critiques each wrong answer; the
+    solver retries for up to 10 rounds
+  effect: '"The performance typically improves rapidly through the first 2-4 iterations before significantly
+    slowing down", and every model plateaus below the accuracy it would reach if it used all the feedback.
+    Feedback resistance accounted for "62.8-100% of errors" left after 10 rounds. Richer feedback mattered:
+    with strong-model reflective feedback Llama-4-Maverick reached 73.3% on AIME and 96.5% on GPQA, "improvements
+    of +26.7% and +10.6% over binary feedback". Models "claim to understand feedback and express willingness
+    to update their beliefs (>95%) yet fail to actually incorporate corrections".'
+  conditions: solvers Llama-3.3-70B, Llama-4-Scout, Llama-4-Maverick, Claude 3.7 Sonnet with and without
+    extended thinking; feedback by GPT-4.1 mini; AIME 2024, MATH-500, TriviaQA, PopQA, MMLU, MMLU Pro,
+    GPQA, two multiplication tasks; ground truth decides which answers get another round
+  direction: mixed
+  measured: true
+  locator: §2.1; §3.2; Figure 3; Figure 4; Table 1
+- source: Donghwan Kim, "LLM-as-a-Judge Scores Are Unreliable Optimization Signals in Closed-Loop Table
+    Recognition", https://arxiv.org/abs/2607.13347
+  date: '2026-07-15'
+  task: A reference-free LLM judge scores each table extraction and feeds its error claims back for 8
+    rounds of regeneration; judge scores also used to pick the best candidate or to accept revisions
+  effect: FinTabNet TEDS fell from 0.792 to 0.772 after 8 rounds (p<10^-7), 44% of the drop at the first
+    regeneration; 41.6% of tables worsened and 23.9% improved; OmniDocBench +0.002, not significant. The
+    loop's judge tied on 49.1% and 37.5% of distinct candidate pairs; cross judges from other families
+    (GPT-5.4, GPT-5.4-nano, Claude Opus 4.6) tied less but "still showed near-zero or negative TEDS rank
+    correlations", and on FinTabNet "the trivial always-iter0 baseline beats every judge policy". A loop
+    with the judge's feedback removed degraded by the same amount (99 paired tables). Across six generators
+    the loop helped only Claude Haiku 4.5, whose first outputs were weakest (+0.0917 from 0.5675); Spearman
+    0.771 between headroom and net effect (n=6).
+  conditions: Gemini 3.1 Flash Lite as generator and judge; FinTabNet 476 tables, OmniDocBench 272 tables;
+    100-table check across six generators
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.1; §4.2; Appendix E Tables 19-20
+- source: Nicolas Leins, Nico Pelleriti, Jana Gonnermann-Müller, Sebastian Pokutta, "When Does LLM Orchestration
+    Pay Off? A Controlled Evaluation of Accuracy, Cost, and Task Difficulty", https://arxiv.org/abs/2608.00685
+  date: '2026-08-01'
+  task: Self-Refine with a separate critic call ("Act only as a critic of the proposed solution ... Do
+    not rewrite the solution"), at most two feedback-refinement rounds, stopping when the critic says
+    no refinement is needed, against a single chain-of-thought call; all prompts tuned with GEPA under
+    the same budget
+  effect: 'Accuracy, Self-Refine against optimized CoT: Codeforces 66.1% vs 61.5% (+4.6, 95% CI [2.1,
+    7.1]); AMC 89.8% vs 87.9% (+1.9, [0.5, 3.3]); Lichess 30.7% vs 31.0%. Weighted tokens 2.12, 2.13 and
+    1.82 times CoT. Benefits "did not increase systematically with difficulty", and "additional computation
+    has little value when the backbone cannot generate a viable solution".'
+  conditions: five open-weight backbones (DeepSeek V4 Flash, Gemma 4, GLM 4.7 Flash, Qwen 3.6, GPT-OSS
+    Puzzle 88B), same backbone as generator and critic; E2H-Codeforces, E2H-Lichess, AMC
+  direction: mixed
+  measured: true
+  locator: §3.3; §4.2; §4.5; §5; Appendix B.4
+- source: Ngoc Phuoc An Vo, Brent Paulovicks, Vadim Sheinin, "LLM-as-a-Judge for Reference-less Automatic
+    Code Validation and Refinement for Natural Language to Bash in IT Automation", https://arxiv.org/abs/2506.11237
+  date: '2025-06-12'
+  task: A dedicated evaluator scores generated Bash with two LLM-as-judge checks (bidirectional functionality
+    matching, logic representation) and sends its judgment and feedback to the generator; against no refinement
+    and against self-reflection
+  effect: 'Execution accuracy on three suites, baseline / self-reflection / dedicated evaluator: GPT-4o
+    86/84/88%, 72/76/82%, 68/72/74%; Llama-3.3-70B 68/74/72%, 52/64/76%, 46/52/50%; Mistral-large 76/76/80%,
+    66/70/76%, 54/58/58%. The evaluator loop beat no refinement in all nine cells and self-reflection
+    in six; it helps "but not always; it still depends on the specific model and dataset".'
+  conditions: GPT-4o, Llama-3.3-70B, Mistral-large in CrewAI; three Bash test suites, 150 questions; execution
+    as ground truth
+  direction: supports
+  measured: true
+  locator: §4.2; §5; Table 1
+- source: 'Jiajun Chen, Haoyu Wu, Mingda Jia, Xihui Liu, "Recursive Game Creator: An Agentic Product-Level
+    Experience-Oriented Game Harness", https://arxiv.org/abs/2610.08621'
+  date: '2026-10-06'
+  task: A Reviewer grades each game version from trajectories a coding-native Player collects, plus screenshots,
+    against a game-specific rubric, keeps the better version and sends revision feedback to the Designer
+    and Builder; three rounds
+  effect: 'GameCraft-Bench overall: same-model baseline 71.26; rounds one, two and three 72.70, 75.35,
+    77.89. Action stayed below the baseline''s 73.33 for two rounds (67.96, 70.33) before 77.62 in round
+    three. GameASG-Bench task success 25/47 (53.2%) against 9/47 (19.1%) for the same model in Codex CLI,
+    a baseline taken from another paper.'
+  conditions: GPT-6 Astra (high); 45 GameCraft-Bench tasks, 47 GameASG-Bench tasks; whole harness, the
+    Reviewer not ablated
+  direction: supports
+  measured: true
+  locator: §3.3; §4.1.1; §4.1.2; Tables 1-2
+assessment:
+  qa:
+    unit: Evaluator on labeled good and bad pairs.
+    examples: Planted-defect probes.
+    benchmark: Writing or code-quality benchmark.
+    production: Iterations per item; cost.
+    primary:
+    - unit
+    - production
+  impact:
+    cost:
+      effect: degrades
+      magnitude: high
+      note: Two calls per iteration.
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: improves
+      magnitude: medium
+      note: Polished output.
+    governance:
+      effect: improves
+      magnitude: low
+      note: Criteria are explicit.
+    quality:
+      effect: improves
+      magnitude: high
+      note: 'VeRO T25: a verification tool gave +5.75 on GAIA and -17.8 on SimpleQA.'
+    latency:
+      effect: degrades
+      magnitude: high
+      note: ''
+    primary:
+    - quality
+    - latency
+related:
+- 9.a.i
+- 7.c.i
+- 7.c.ii
+- 7.a.ii
+- 9.b.iii
+- 9.c.ii
+- 9.c.iii
+- 7.b.iii
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: reflection
+  library_group: Workflow Patterns
+  library_source: master
+caveats: 'Most studies are small or single-run (one app per harness, 150 Bash questions, 23 essays), and
+  the largest critic gain came from a critic trained for its generator, which is closer to 7.c.ii; prompted
+  critics, GPT-4o included, helped less and over five rounds cut MBPP+ from 77.83 to 74.60. On outputs
+  with no deterministic check the evaluator''s own error decides the sign: judges tied, inflated scores
+  and were gamed when they shared the generator''s blind spots or context. Gains shrink as generators
+  improve: Anthropic found the evaluator unnecessary overhead for tasks within the newer model''s reach,
+  and in one study the loop helped only the weakest of six generators. The 2 to 4 round finding comes
+  from a setup where ground truth decided which answers got feedback, so it describes a best case.'

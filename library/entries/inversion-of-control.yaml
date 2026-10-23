@@ -1,0 +1,118 @@
+# 7.d.ii: Inversion of control
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.d.ii
+legacy_id: P50
+slug: inversion-of-control
+name: Inversion of control
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it changes who owns the control flow
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains: []
+categories:
+- orchestration.loop
+summary: Goal plus tools; humans supply guardrails at the ends.
+detect:
+  static: Minimal orchestration code; the agent decides the sequence.
+  traces: Variety of action sequences across tasks.
+  evals: Quality on open-ended tasks.
+  judge: Rate whether autonomy was used well.
+  probes:
+    what: Open-ended tasks.
+    construct: Tasks with no obvious procedure.
+  primary:
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: 'VeRO: Knight did best with the least prescriptive template.'
+    basis: assessment
+  cost:
+    effect: degrades
+    size: medium
+    basis: assessment
+  performance:
+    effect: degrades
+    size: medium
+    basis: assessment
+  security:
+    effect: degrades
+    size: small
+    basis: assessment
+  governance:
+    effect: degrades
+    size: medium
+    when: Less predictable.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Simon Willison, "I think “agent” may finally have a widely enough agreed upon definition to be useful
+    jargon now", https://simonwillison.net/2025/Sep/18/agents/
+  date: '2025-09-18'
+  task: Defines an agent as the model choosing which tools to run, in a loop, toward a goal
+  effect: '"An LLM agent runs tools in a loop to achieve a goal."'
+  direction: supports
+  measured: false
+  locator: Opening
+assessment:
+  qa:
+    unit: null
+    examples: Open-ended probes.
+    benchmark: Agentic benchmark.
+    production: Cost per task; outcome quality.
+    primary:
+    - benchmark
+  impact:
+    cost:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    security:
+      effect: degrades
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: degrades
+      magnitude: medium
+      note: Less predictable.
+    quality:
+      effect: mixed
+      magnitude: medium
+      note: 'VeRO: Knight did best with the least prescriptive template.'
+    latency:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    primary:
+    - quality
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: control_flow
+  library_group: Control Flow
+  library_source: catalog

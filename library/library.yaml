@@ -1,0 +1,44 @@
+# VeRO's pattern library ("the Cookbook", paper Table 6): the cookbook files the 61 patterns were
+# taken from, and its anti-patterns. The patterns themselves are entries, or absorbed by one.
+
+pattern_sources:
+- file: master-agent-optimization-cookbook.md
+  compiled_from:
+  - anthropic-building-effective-agentic-systems
+  - anthropic-effective-context-engineering-for-AI-agents
+  - anthropic-prompting-best-practices
+  - anthropic-writing-tools-for-agents
+  - chatgpt-ai-agents-cookbook
+  - claude-ai-agents-cookbook
+  - gemini-ai-agents-cookbook
+  - manus-lessons-from-building-manus
+  - perplexity-ai-agents-cookbook
+  - prompting-guide.com-context-engineering-guide
+- file: agentic-patterns-catalog.md
+  compiled_from:
+  - https://github.com/nibzard/awesome-agentic-patterns
+anti_patterns:
+- problem: Timestamp at prompt start
+  why: kills KV cache
+  fix: move to end or inject conditionally
+- problem: Dynamic tool add/remove
+  why: invalidates cache and confuses the model
+  fix: mask via logits
+- problem: Hiding errors
+  why: removes the learning signal
+  fix: keep failures in context
+- problem: Uniform action format
+  why: few-shot mimicry and drift
+  fix: structured variation
+- problem: Full file rewrites
+  why: token cost and truncation risk
+  fix: diffs or search-replace
+- problem: Vague tool descriptions
+  why: wrong tool selection
+  fix: '"Tool to X. Use when Y." plus examples'
+- problem: Relative paths
+  why: errors after directory change
+  fix: require absolute paths
+- problem: No iteration limit
+  why: infinite loops and runaway cost
+  fix: max_iterations plus loop detection

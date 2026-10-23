@@ -1,0 +1,271 @@
+# 7.a.ii: Prompt chaining with gate checks
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.a.ii
+legacy_id: P13
+slug: prompt-chaining-with-gates
+name: Prompt chaining with gate checks
+kind: pattern
+status: card
+tiers:
+- tier: 4
+  why: it decomposes one call into a gated chain
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- structured-output
+- retrieval
+- data-analysis
+- code-generation
+- reasoning
+- incident-response
+categories:
+- orchestration.route
+summary: 'Split a task that decomposes cleanly into fixed steps into a chain of model calls, one goal
+  per call, with a gate between steps: a schema check, an assertion, or a run against the real system,
+  and an LLM check only for subjective criteria. On a gate failure, rerun only the failed step with its
+  output and the error. The trade is latency and tokens for accuracy and inspectable intermediate outputs;
+  it pays on tasks beyond what one call does reliably, and less as models improve.'
+how: '1. Start from a single call tuned with the same effort; chain only if the task splits cleanly into
+  fixed steps. 2. Give each step one goal and a handoff the next step can validate against a schema. 3.
+  Gate in code first: schema validation or assertions; where you can, run the output against the real
+  system (execute the query) instead of asking the model whether it is valid; use an LLM check with hard
+  thresholds only for subjective criteria. 4. On a failure, rerun only the failed step with its previous
+  output and the error message; cap retries, then stop or continue with a warning; keep outputs that already
+  passed. 5. Run new gates in warn-only mode first and review each halt for false alarms. 6. Log each
+  step''s output and gate result; compare the chain with the single call on success, tokens and latency,
+  per model.'
+detect:
+  static: A fixed sequence of model calls with checks between them rather than one prompt.
+  traces: Stage outputs; gate failures; retries per stage; the whole chain rerun when one step fails.
+  evals: Per-stage and end-to-end quality.
+  judge: Rate each stage's output.
+  probes:
+    what: Inputs that should fail at each gate.
+    construct: One adversarial input per gate condition.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'tasks beyond what one call does reliably: well-formatted JSON 37.6% to 98.8% with assertions
+      and retry (DSPy Assertions, 2023); over a tuned single call, orchestration gained at most 4.6 points
+      (Leins, Aug 2026); 37% of gate halts were false alarms in one study (Elina, Sep 2026)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: medium
+    when: 'more calls: orchestration took about 2 to 4 times the tokens of a single call (Leins, Aug 2026);
+      a fixed chain that reran downstream steps cost 1,632 tokens per retry against 904 for one prompt,
+      and 436 when only the failed step reran (Asthana, May 2026)'
+    basis: evidence
+  performance:
+    effect: degrades
+    size: medium
+    when: serial calls; with gates, one model got faster and the other markedly slower (Dhage, Aug 2026)
+    basis: evidence
+  security:
+    effect: improves
+    size: small
+    when: Gates can check policy.
+    basis: assessment
+  governance:
+    effect: improves
+    size: medium
+    when: Checkpoints are auditable.
+    basis: assessment
+  brand:
+    effect: improves
+    size: small
+    basis: assessment
+  primary:
+  - quality
+  - governance
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval of the chain against a single call tuned with the same effort, per model: success,
+    tokens, latency'
+- method: monitor
+  how: gate failure and retry rate per step; false-alarm rate on reviewed halts; each error traced to
+    the step that caused it
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Workflow Patterns group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: Anthropic (Erik Schluntz, Barry Zhang), "Building effective agents", https://www.anthropic.com/engineering/building-effective-agents
+  date: '2024-12-19'
+  task: Describes prompt chaining with programmatic gates between steps
+  effect: '"You can add programmatic checks (see "gate" in the diagram below) on any intermediate steps
+    to ensure that the process is still on track." Use it when "the task can be easily and cleanly decomposed
+    into fixed subtasks"; "The main goal is to trade off latency for higher accuracy, by making each LLM
+    call an easier task." No measurement.'
+  direction: supports
+  measured: false
+  locator: 'Workflow: Prompt chaining'
+- source: 'Tongshuang Wu, Michael Terry, Carrie J. Cai, "AI Chains: Transparent and Controllable Human-AI Interaction
+    by Chaining Large Language Model Prompts", https://arxiv.org/abs/2110.01691'
+  date: '2021-10-04'
+  task: Introduces chaining LLM steps so each output feeds the next
+  effect: '"In a 20-person user study, we found that Chaining not only improved the quality of task outcomes, but
+    also significantly enhanced system transparency, controllability, and sense of collaboration."'
+  conditions: 20-person user study
+  direction: supports
+  locator: Abstract
+- source: 'Singhvi et al., "DSPy Assertions: Computational Constraints for Self-Refining Language Model
+    Pipelines", https://arxiv.org/abs/2312.13382'
+  date: '2023-12-20'
+  task: Assertions between pipeline modules; on failure, backtrack and retry the failing module with the
+    erring output and error message in its prompt
+  effect: Well-formatted JSON quizzes 37.6% to 98.8% with assertions and backtracking; valid quiz questions
+    30.5% to 87.2% with all assertion-driven optimizations. Across four case studies, constraints passed
+    "up to 164% more often" and responses were "up to 37% more higher-quality".
+  conditions: gpt-3.5-turbo; HotPotQA-based tasks, 500 test examples
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §5
+- source: Sun et al., "Prompt Chaining or Stepwise Prompt? Refinement in Text Summarization", https://arxiv.org/abs/2406.00507
+  date: '2024-06-01'
+  task: Draft, critique and refine as three chained prompts against the same steps in one stepwise prompt
+  effect: Chained refinement with GPT-4 won 77 of 100 comparisons against a one-step GPT-4 summary; the
+    stepwise prompt won 53. The authors suggest the stepwise prompt "might produce a simulated refinement
+    process".
+  conditions: InstruSum, 100 items; GPT-3.5 and GPT-4; LLM judge
+  direction: supports
+  measured: true
+  locator: Abstract; Table 1
+- source: Prithvi Rajasekaran (Anthropic), "Harness design for long-running application development",
+    https://www.anthropic.com/engineering/harness-design-long-running-apps
+  date: '2026-03-24'
+  task: Fixed planner, generator and evaluator steps with hard-threshold gates per sprint, against one
+    agent
+  effect: 'Each criterion "had a hard threshold, and if any one fell below it, the sprint failed". One
+    app: solo 20 min and $9, full harness 6 hr and $200, with better output judged by the author. The
+    sprint breakdown was later removed for a stronger model; the evaluator "is worth the cost when the
+    task sits beyond what the current model does reliably solo."'
+  conditions: Claude Opus 4.5; one prompt, one run each
+  direction: mixed
+  measured: true
+  locator: Running the harness; Removing the sprint construct
+- source: 'Ijaz, "SQL Query Engine: A Self-Healing LLM Pipeline for Natural Language to PostgreSQL Translation",
+    https://arxiv.org/abs/2604.16511'
+  date: '2026-04-15'
+  task: Two-stage text-to-SQL pipeline gated by executing the query; on failure or an empty result, retry
+    with the database error
+  effect: The retry loop "yields up to +9.3pp accuracy gains with zero regressions on the best model (Llama
+    4 Scout 17B, 57.3%)". Passing queries are accepted without re-evaluation, and the best partial result
+    is kept across retries.
+  conditions: five LLM backends; synthetic benchmark, 75 questions, three databases
+  direction: supports
+  measured: true
+  locator: Abstract
+- source: Asthana, Zhang, DeLuca, Patel, et al., "Runtime-Structured Task Decomposition for Agentic Coding
+    Systems", https://arxiv.org/abs/2605.15425
+  date: '2026-05-14'
+  task: One prompt against a fixed-step chain and against steps with schema-validated outputs where only
+    failed steps rerun
+  effect: 'Retry cost on Kubernetes root cause analysis: 1,632 ± 145 tokens for the fixed chain against
+    904 ± 17 for one prompt, "because failures forced reruns of downstream subtasks"; 436 ± 132 when only
+    failed subtasks reran. Multi-file debugging: 933, 703 and 460 tokens.'
+  conditions: two software engineering workloads; 10 runs per configuration
+  direction: mixed
+  measured: true
+  locator: Abstract
+- source: Leins, Pelleriti, Gonnermann-Müller, Pokutta, "When Does LLM Orchestration Pay Off? A Controlled
+    Evaluation of Accuracy, Cost, and Task Difficulty", https://arxiv.org/abs/2608.00685
+  date: '2026-08-01'
+  task: Self-Refine (draft, critique, refine), Best-of-N and Debate against single calls, each tuned with
+    GEPA under the same budget
+  effect: Averaged across backbones, the largest gain was 4.6 points over optimized chain-of-thought and
+    4.5 over task-only inference, "while requiring approximately 2 to 4 times the mean total tokens";
+    gains were benchmark-dependent and did not grow with task difficulty.
+  conditions: five LLM backbones; competitive programming, chess puzzles, mathematics
+  direction: mixed
+  measured: true
+  locator: Abstract; §4
+- source: 'Dhage, "Harness Engineering for Predictable Agentic Systems: An Empirical Study of Deterministic
+    Execution Constraints", https://arxiv.org/abs/2608.26197'
+  date: '2026-08-25'
+  task: Wrap an agent in fixed states, output validation, bounded retry, then a schema check on the plan
+    before any tool runs
+  effect: Validation and bounded retry alone improved reproducibility in one of four model-task cells
+    and degraded it in two. With the plan checked against a schema, three of four cells reached a reproducibility
+    rate of 1.000 and task success of 100%. Token cost fell in every cell; latency fell for one model
+    and rose markedly for the other.
+  conditions: Qwen-2.5-7B-Instruct, Gemma-3-27B; synthetic finance and legal tasks; N=100 per cell
+  direction: mixed
+  measured: true
+  locator: Abstract; §6
+- source: 'Elina, "Maat: Independent Deterministic Contract-Based Governance for Multi-Agent LLM Workflows",
+    https://arxiv.org/abs/2609.34017'
+  date: '2026-09-27'
+  task: Check every agent-to-agent handoff against a workflow contract in code, with no model in the check
+  effect: On paired trials, rubric score +7.7% to +29.1% in five workflows and flat in one; model-call
+    cost fell 17-53% where halts came early. Of 94 halts, 35 (37%) were false alarms from validator defects;
+    counting them as failed work, the gated runs scored below ungated ones in four of six workflows.
+  conditions: Claude Haiku 4.5; six workflows of 6-15 agents, 522 trials, injected data defects
+  direction: mixed
+  measured: true
+  locator: Abstract; §6
+assessment:
+  qa:
+    unit: Each stage in isolation with fixtures; gate logic.
+    examples: Per-gate probes.
+    benchmark: End-to-end benchmark.
+    production: Gate failure rate per stage.
+    primary:
+    - unit
+    - production
+  impact:
+    cost:
+      effect: degrades
+      magnitude: low
+      note: More calls, each smaller.
+    security:
+      effect: improves
+      magnitude: low
+      note: Gates can check policy.
+    brand:
+      effect: improves
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: medium
+      note: Checkpoints are auditable.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Trades latency for accuracy.
+    latency:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    primary:
+    - quality
+    - governance
+related:
+- 9.a.i
+- 7.c.iii
+- 5.c.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  library_group: Workflow Patterns
+  library_source: master
+caveats: 'Chains cost latency and tokens, and a fixed chain that reruns downstream steps on a failure
+  can cost more per retry than one prompt; rerun only the failed step. Gates misfire: in one study 37%
+  of halts were false alarms, enough to turn a gain into a loss. The benefit depends on the model and
+  shrinks as models improve: Anthropic dropped a step-by-step breakdown when a stronger model arrived,
+  and tuned single calls came within a few points of orchestration. Several studies are small (one app,
+  one run).'

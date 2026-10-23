@@ -1,0 +1,336 @@
+# The library's vocabulary: the two axes every optimization is placed on, the finer categories
+# under each lever, and the four tiers. Every entry uses only the terms defined here.
+#
+# - levers: where in the agent a change lands, in any domain.
+# - domains: what the agent is doing (capability domains). An entry lists the domains it is
+#   specific to, or [general]; its evidence_domains say where it has actually been shown to work.
+# - categories: the original ten-family scheme (2026-09-23), kept as the finer level under a lever.
+#   Each family has a stable `number` and each sub-category a stable `letter` (2.a); entries'
+#   library numbers (2.a.ii) are built on them, so never renumber or reletter. Add new ones at the end.
+#   (A family's older `letter`, a-j, is the 2026-09-23 scheme's.)
+#   Every sub-item names its lever. They used to mix both axes: memory.*, retrieval.* and tools.*
+#   read like domains but are levers (state, knowledge-access, tool-surface).
+# - tiers: what evidence a change needs before it can be recommended.
+
+levers:
+- id: model
+  name: Model
+  covers: Model choice, routing, cascades, reasoning effort
+- id: prompt
+  name: Prompt
+  covers: System prompt, instructions, few-shot examples, prompt optimization, skill content
+- id: context
+  name: Context
+  covers: 'What enters and stays in the window: compaction, filtering, isolation, cache layout'
+- id: tool-surface
+  name: Tool surface
+  covers: Tool names, schemas, descriptions, return size, typed tools vs code execution
+- id: control-flow
+  name: Control flow
+  covers: 'The harness loop: orchestration, multi-agent topology, budgets, stop rules, verify-and-retry'
+- id: state
+  name: State
+  covers: 'Externalized state: plans, progress files, checkpoints, memory stores'
+- id: knowledge-access
+  name: Knowledge access
+  covers: Connecting sources, query formulation, retriever choice, ranking
+- id: guardrails
+  name: Guardrails
+  covers: Sandboxes, permissions, approval policies, data containment
+- id: post-training
+  name: Post-training
+  covers: 'Changing the weights: fine-tuning, RL, distillation'
+- id: serving
+  name: Serving
+  covers: 'Inference infrastructure: quantization, kernels, serving engines, gateways'
+domains:
+- id: retrieval
+  name: Retrieval
+  covers: 'Fetching knowledge the model lacks: RAG, search over docs, knowledge bases, customer systems'
+- id: memory
+  name: Memory
+  covers: 'Remembering across turns and sessions: memory stores, cheatsheets, episodic memory'
+- id: tool-use
+  name: Tool use
+  covers: Choosing and calling tools, APIs and MCP servers correctly
+- id: code-generation
+  name: Code generation
+  covers: Writing, editing, repairing software
+- id: data-analysis
+  name: Data analysis
+  covers: 'Querying structured data: text-to-SQL, semantic layers, BI, spreadsheets'
+- id: document-extraction
+  name: Document extraction
+  covers: 'Reading documents: contracts, legal review, PDFs, forms'
+- id: web-research
+  name: Web research
+  covers: Browsing the open web to answer or research
+- id: computer-use
+  name: Computer use
+  covers: Operating GUIs, browsers, operating systems
+- id: conversation
+  name: Conversation
+  covers: 'Multi-turn dialogue with end users: customer support, CRM assistants'
+- id: planning
+  name: Planning
+  covers: Long-horizon, multi-step execution; staying coherent over many steps
+- id: reasoning
+  name: Reasoning
+  covers: Math, proofs, science, abstract puzzles
+- id: judging
+  name: Judging
+  covers: 'Evaluating, grading, verifying outputs: LLM-as-judge, graders, decision models'
+- id: safety-classification
+  name: Safety classification
+  covers: 'Guardrail classifiers: injection, jailbreak, content safety'
+- id: incident-response
+  name: Incident response
+  covers: 'On-call and SRE work: triage, root cause, remediation'
+- id: decisioning
+  name: Decisioning
+  covers: 'Choosing per-user actions: personalization, recommendation, bandits'
+- id: structured-output
+  name: Structured output
+  covers: Schema-valid typed output
+- id: voice
+  name: Voice
+  covers: Speech and realtime audio
+- id: security-research
+  name: Security research
+  covers: Finding vulnerabilities; cyber capability
+- id: commerce
+  name: Commerce
+  covers: Transacting autonomously
+- id: robotics
+  name: Robotics
+  covers: Physical control
+categories:
+- id: models
+  number: 1
+  letter: a
+  name: Models
+  items:
+  - id: models.workload-fit
+    letter: a
+    name: Benchmarking workloads
+    summary: Analyze workloads and test models across each
+    lever: model
+  - id: models.specialists
+    letter: b
+    name: Finding specialists
+    lever: model
+  - id: models.cheap-verifiable
+    letter: c
+    name: Using cheaper models
+    summary: Cheaper models with verifiable outputs
+    lever: model
+- id: tools
+  number: 2
+  letter: b
+  name: Tools
+  items:
+  - id: tools.refactor
+    letter: a
+    name: Refactoring
+    summary: 'Refactor & combine'
+    lever: tool-surface
+  - id: tools.misuse
+    letter: b
+    name: Avoiding misuse
+    lever: tool-surface
+  - id: tools.lean-returns
+    letter: c
+    name: Trimming results
+    summary: Return only what the model needs
+    lever: tool-surface
+- id: prompts
+  number: 3
+  letter: c
+  name: Prompts
+  items:
+  - id: prompts.structure
+    letter: a
+    name: Structuring
+    summary: Clarify structure and intent
+    lever: prompt
+  - id: prompts.caching
+    letter: b
+    name: Caching
+    summary: Design for caching and reuse
+    lever: context
+  - id: prompts.reasoning-effort
+    letter: c
+    name: Sizing reasoning effort
+    summary: Match reasoning effort to the task
+    lever: model
+- id: memory
+  number: 4
+  letter: d
+  name: Memory
+  items:
+  - id: memory.externalize
+    letter: a
+    name: Externalizing state
+    summary: Externalize state beyond the context window
+    lever: state
+  - id: memory.resume
+    letter: b
+    name: Resuming
+    summary: Recover and resume rather than restart
+    lever: state
+  - id: memory.reuse
+    letter: c
+    name: Reusing work
+    summary: Reuse prior work across runs
+    lever: state
+- id: context
+  number: 5
+  letter: e
+  name: Context
+  items:
+  - id: context.lean-window
+    letter: a
+    name: Compacting
+    summary: Keep the window lean as the task grows
+    lever: context
+  - id: context.filter-input
+    letter: b
+    name: Filtering input
+    summary: Filter what enters the context
+    lever: context
+  - id: context.isolate
+    letter: c
+    name: Isolating subtasks
+    summary: Isolate sub-tasks in their own contexts
+    lever: context
+- id: topologies
+  number: 6
+  letter: f
+  name: Topologies
+  items:
+  - id: topologies.escalate
+    letter: a
+    name: Escalating
+    summary: Escalate from cheap to capable models
+    lever: model
+  - id: topologies.parallel
+    letter: b
+    name: Parallelizing
+    summary: Decompose work across parallel agents
+    lever: control-flow
+  - id: topologies.trust
+    letter: c
+    name: Separating privileges
+    summary: Separate roles by trust and privilege
+    lever: guardrails
+- id: orchestration
+  number: 7
+  letter: g
+  name: Orchestration
+  items:
+  - id: orchestration.route
+    letter: a
+    name: Routing
+    summary: Route work to the right path up front
+    lever: control-flow
+  - id: orchestration.bound
+    letter: b
+    name: Bounding execution
+    summary: Bound execution and fail gracefully
+    lever: control-flow
+  - id: orchestration.extra-compute
+    letter: c
+    name: Scaling compute
+    summary: Spend extra compute only where it pays
+    lever: control-flow
+  - id: orchestration.loop
+    letter: d
+    name: Shaping the loop
+    summary: Choose the shape of the agent loop
+    lever: control-flow
+- id: retrieval
+  number: 8
+  letter: h
+  name: Retrieval
+  summary: 'Retrieval & knowledge access'
+  items:
+  - id: retrieval.sources
+    letter: a
+    name: Expanding sources
+    summary: Connect and expand the sources the task needs
+    lever: knowledge-access
+  - id: retrieval.query
+    letter: b
+    name: Querying precisely
+    lever: knowledge-access
+  - id: retrieval.results
+    letter: c
+    name: Ranking results
+    summary: Return what is relevant and trustworthy
+    lever: knowledge-access
+- id: verification
+  number: 9
+  letter: i
+  name: Verification
+  items:
+  - id: verification.external
+    letter: a
+    name: Checking externally
+    summary: Check work against sound external signals
+    lever: control-flow
+  - id: verification.completion
+    letter: b
+    name: Confirming completion
+    summary: Confirm the task is actually done before stopping
+    lever: control-flow
+  - id: verification.spend
+    letter: c
+    name: Sizing verification
+    summary: Match verification effort to what it catches
+    lever: control-flow
+- id: safety
+  number: 10
+  letter: j
+  name: Safety
+  items:
+  - id: safety.sandbox
+    letter: a
+    name: Sandboxing
+    summary: Constrain what the agent can touch
+    lever: guardrails
+  - id: safety.approval
+    letter: b
+    name: Gating risky actions
+    summary: Gate risky actions behind policy or a human
+    lever: guardrails
+  - id: safety.data
+    letter: c
+    name: Containing data
+    summary: Keep sensitive data and untrusted input contained
+    lever: guardrails
+tiers:
+- tier: 1
+  name: Hygiene
+  objective: 'Remove waste and defects that can be seen without measuring quality at scale: no-regret
+    changes that cannot alter what the model sees or decides.'
+  gate: An instrumented agent and about 10 hand-labeled cases.
+  default_measure: verify-fix
+- tier: 2
+  name: Reliability
+  objective: Remove hard failures (crashes, timeouts, tool failures, injection, runs that exhaust their
+    budget and return nothing) so the agent finishes, safely, under real load.
+  gate: Failure evidence (traces, a load-test stream or safety-eval results) with enough occurrences to
+    measure before and after.
+  default_measure: before-after
+- tier: 3
+  name: Tuning
+  objective: 'Improve quality, speed and cost by changing components within the existing design: model,
+    prompt, context, tools. Real trade-offs, so every change is measured against a baseline.'
+  gate: A calibrated eval (about 200 human-validated cases across the agent's main workflows) and a baseline.
+  default_measure: experiment
+- tier: 4
+  name: Restructuring
+  objective: 'Change the structure of the agent: how many agents, how work flows between them, where state
+    lives, which harness it runs on.'
+  gate: Production-scale cost baselines and a production test (A/B or blue/green).
+  default_measure: production-test

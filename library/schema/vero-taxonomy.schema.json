@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VeRO edit taxonomies",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["paper_change_types", "harness_roles"],
+  "properties": {
+    "paper_change_types": {
+      "type": "object",
+      "required": ["source", "actions", "types"],
+      "properties": {
+        "actions": {"type": "array", "items": {"type": "string"}},
+        "types": {"type": "array", "items": {"type": "object", "required": ["id", "description", "sub_types"], "properties": {"id": {"type": "string"}, "sub_types": {"type": "array", "items": {"type": "string"}}}}}
+      }
+    },
+    "harness_roles": {
+      "type": "object",
+      "required": ["source", "roles", "actions"],
+      "properties": {
+        "roles": {"type": "array", "minItems": 16, "maxItems": 16, "items": {"type": "object", "required": ["id", "rubric", "runs_touching"]}},
+        "actions": {"type": "array", "minItems": 8, "maxItems": 8}
+      }
+    }
+  }
+}

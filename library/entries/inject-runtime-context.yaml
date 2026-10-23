@@ -1,0 +1,225 @@
+# 3.a.iii: Dynamic context injection
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.a.iii
+legacy_id: P02
+slug: inject-runtime-context
+name: Dynamic context injection
+kind: pattern
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+  proposed: true
+levers:
+- prompt
+- context
+domains:
+- general
+evidence_domains:
+- conversation
+- reasoning
+- code-generation
+categories:
+- prompts.structure
+summary: 'Put the runtime facts the model cannot know into its context each run: today''s date and timezone,
+  the working directory, OS and git state, the tools available, the user and locale. Inject them after
+  the cached prefix, as a date rather than a timestamp, and refresh them when they change. The measured
+  gains are on time-sensitive work: absolute dates beat relative ones, and stating the time remaining
+  each turn raised deal closure under deadlines. On tasks that do not depend on time, the date only adds
+  variance.'
+how: '1. List the runtime facts your tasks depend on: date and IANA timezone, working directory, OS and
+  shell, git status, the tools or skills available, the user and locale. 2. Inject them after the cached
+  prefix, in a trailing block or a message in the conversation, never under a cache breakpoint; keep the
+  date to the day, and serve time of day through a clock tool or the shell. 3. State dates as absolute
+  values, and resolve relative dates ("last quarter") to absolute ones before the model sees them. 4.
+  Refresh on change: resend the block when a value changes and after compaction or resume; if the run
+  has a deadline, inject the time remaining each turn. 5. Fix the date in evals and report it; run a time-sensitive
+  slice with and without the injection, and watch cache-read tokens.'
+detect:
+  static: Prompt templates contain runtime placeholders (date, time, user, locale, tool availability).
+    Absence where tasks are time- or user-sensitive is the signal.
+  traces: Model guesses the date or year, asks the user for information the system already has, builds
+    queries with stale dates.
+  evals: Failures concentrated on time-sensitive or user-specific items.
+  judge: Flag outputs that assume stale state.
+  probes:
+    what: Tasks whose answer depends on today's date, relative dates, locale or the current user.
+    construct: Take a template task and parametrize it on 'today', 'last quarter', user timezone and defaults;
+      the correct answer changes with the injected value.
+  primary:
+  - static
+  - probes
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: 'time-sensitive work: deal closure 0.04 to 0.32 with the time remaining stated each turn (Sehgal,
+      Jan 2026); answers 24-35% worse with relative than with absolute dates (Wallat, 2024). On tasks
+      that do not depend on time, the date moved scores by up to 14% with no good date to fix (Sanz-Guerrero,
+      Sep 2026)'
+    basis: evidence
+  cost:
+    effect: none
+    when: if the block sits after the cached prefix; a date in the system prompt cost Claude Code cache
+      hits until it was moved out (Feb 2026)
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: mixed
+    size: small
+    when: Injected state is a small injection surface.
+    basis: assessment
+  governance:
+    effect: mixed
+    size: small
+    when: User data in the prompt needs retention rules.
+    basis: assessment
+  brand:
+    effect: improves
+    size: small
+    when: Fewer obviously wrong dates.
+    basis: assessment
+  primary:
+  - quality
+measure:
+- method: before-after
+  tier: 3
+  how: run a time-sensitive slice with and without the injected block, with the date fixed; compare cache-read
+    tokens per call before and after
+- method: monitor
+  how: questions asking the user for facts the system holds, date errors in outputs, cache-hit rate
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Context Engineering group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: Anthropic, "System Prompts" (release notes), https://docs.claude.com/en/release-notes/system-prompts
+  task: Anthropic injects runtime state such as the current date into the system prompt of its own apps
+  effect: Claude's web and mobile apps "use a system prompt to provide up-to-date information, such as the current
+    date, to Claude at the start of every conversation."
+  direction: supports
+  measured: false
+  locator: Page intro
+- source: 'Zhao, Brumbaugh, Wang, Hajishirzi, Smith, "Set the Clock: Temporal Alignment of Pretrained
+    Language Models", https://arxiv.org/abs/2402.16797'
+  date: '2024-02-26'
+  task: State the reference year in the prompt ("As of year 2022") for time-sensitive questions
+  effect: F1 on questions about 2022 rose from 17.2 to 24.4 with the year in a 5-shot prompt. The authors
+    also note that "prompting LMs to be aligned to a more recent year could lead to more QA errors."
+  conditions: LLaMa2-70B; time-sensitive QA, target years 2021 and 2022
+  direction: supports
+  measured: true
+  locator: App. A, Table 6
+- source: Wallat, Jatowt, Anand, "Temporal Blind Spots in Large Language Models", https://arxiv.org/abs/2401.12078
+  date: '2024-01-22'
+  task: Ask with relative time references ("3 years ago") instead of absolute years
+  effect: Performance dropped 24-35% for text-davinci-003 and 23-30% for alpaca-7B with relative references;
+    both models answered 2021 when asked what year it is.
+  conditions: 27k ArchivalQA question-answer pairs
+  direction: supports
+  measured: true
+  locator: Figure 2 and surrounding text
+- source: Sehgal, Guntuku, Ungar, "Real-Time Deadlines Reveal Fragile Temporal Adaptation in LLM Strategic
+    Dialogues", https://arxiv.org/abs/2601.13206
+  date: '2026-01-19'
+  task: Inject the time remaining into each turn of deadline-bound negotiations between agents
+  effect: Deal closure rose from 0.04 (12/300) to 0.32 (97/300) for GPT-5.1; offers were over six times
+    more likely to be accepted (OR = 6.38). GPT-4.1 went from 44.7% to 72.0%. "only 5 of 10 comparisons
+    reach Bonferroni-corrected significance."
+  conditions: GPT-5.1-chat-latest, N=300 per condition; several other models; revised 2026-08-30
+  direction: supports
+  measured: true
+  locator: Figure 2; Table 2
+- source: 'Sanz-Guerrero, Bui, Mager, von der Wense, "Dating the Model: Hidden Dates in System Prompts
+    Affect LLM Evaluation", https://arxiv.org/abs/2609.36931'
+  date: '2026-09-29'
+  task: Vary the current date in the system prompt on benchmarks that do not depend on time
+  effect: 'Performance "varies solely with the current date, with deltas of up to 6% on MCQA, 14% on math
+    reasoning, 7% on code generation, and 2.84 BLEU"; "chain-of-thought even amplifies it". With no date,
+    scores fall within the range seen across dates: the date adds variance, and there is no good date
+    to fix.'
+  conditions: 9 LLMs, 6 datasets, every date in 2024
+  direction: mixed
+  measured: true
+  locator: Abstract; Table 3; App. B
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Inject environment, OS and git state into the prompt
+  effect: Mini-SWE-Agent template "includes OS-specific instructions (e.g., sed -i '' for macOS)"; Mistral
+    Vibe Git context block "(output of git log --oneline -N --decorate and git status --porcelain, cached)";
+    Hermes keeps "a date-only timestamp" so the prefix stays byte-identical.
+  direction: supports
+  measured: false
+  locator: Sec 7.2
+- source: Anthropic, Claude Code changelog, version 2.1.42, https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md
+  date: '2026-02-13'
+  task: Move the date out of the system prompt
+  effect: '"Improved prompt cache hit rates by moving date out of system prompt." No numbers.'
+  direction: supports
+  measured: false
+  locator: Version 2.1.42
+- source: 'OpenAI Codex CLI, "feat: add local date/timezone to turn environment context", https://github.com/openai/codex/pull/12947'
+  date: '2026-02-26'
+  task: Add the local date and IANA timezone to the per-turn environment context
+  effect: Adds current_date and timezone to the environment_context block and "treats date/timezone changes
+    as environment updates, so prompt caching and context refresh logic do not silently reuse stale time
+    context."
+  direction: supports
+  measured: false
+  locator: PR description
+assessment:
+  qa:
+    unit: Template renders with injected values; no placeholder text survives.
+    examples: Probe set above.
+    benchmark: Time-sensitive subset of the task benchmark.
+    production: Rate of clarification questions and date errors.
+    primary:
+    - unit
+    - examples
+  impact:
+    cost:
+      effect: degrades
+      magnitude: low
+      note: Breaks the KV cache if injected at the prefix (conflicts with P22); place at the end.
+    security:
+      effect: mixed
+      magnitude: low
+      note: Injected state is a small injection surface.
+    brand:
+      effect: improves
+      magnitude: low
+      note: Fewer obviously wrong dates.
+    governance:
+      effect: mixed
+      magnitude: low
+      note: User data in the prompt needs retention rules.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Only on tasks that depend on runtime state.
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+related:
+- 3.b.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: context
+  library_group: Context Engineering
+  library_source: master
+caveats: 'Few studies isolate the date on agent tasks; the measured support is indirect: a stated year,
+  absolute against relative dates, the time remaining in a negotiation. On tasks that do not depend on
+  time the date only adds variance, and chain-of-thought amplifies it, so fix the date in evals. Some
+  providers already add a date server-side, so check the model is not seeing two. Any per-request value
+  placed before the cached prefix turns every call into a cache write (3.b.i).'

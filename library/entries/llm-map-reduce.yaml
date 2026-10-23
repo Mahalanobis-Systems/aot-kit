@@ -1,0 +1,118 @@
+# 6.b.ii: LLM map-reduce
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.b.ii
+legacy_id: P45
+slug: llm-map-reduce
+name: LLM map-reduce
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it decomposes the task across parallel calls
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains: []
+categories:
+- topologies.parallel
+summary: LLM map-reduce
+detect:
+  static: Chunking, a sandboxed model per chunk with a constrained output schema, a deterministic reducer.
+  traces: Per-chunk outputs conform to schema.
+  evals: Injection containment; recall vs monolithic.
+  probes:
+    what: One injected chunk among clean chunks.
+    construct: A canary instruction in one chunk; the reduce output must be unaffected.
+  primary:
+  - static
+  - probes
+impact:
+  quality:
+    effect: mixed
+    size: small
+    when: Constrained outputs lose nuance.
+    basis: assessment
+  cost:
+    effect: degrades
+    size: medium
+    basis: assessment
+  performance:
+    effect: improves
+    size: medium
+    when: Parallel map.
+    basis: assessment
+  security:
+    effect: improves
+    size: large
+    basis: assessment
+  governance:
+    effect: improves
+    size: medium
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - security
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Beurer-Kellner et al., "Design Patterns for Securing LLM Agents against Prompt Injections", https://arxiv.org/abs/2506.08837
+  date: '2025-06-10'
+  task: 'Names the LLM map-reduce pattern: isolated sub-agents process each piece of untrusted data, and a reduce
+    step combines their constrained outputs'
+  effect: Proposed as a design pattern with "provable resistance to prompt injection"; analyzed for trade-offs and
+    case studies, not benchmarked.
+  direction: supports
+  measured: false
+  locator: Sec 3.1 (3) The LLM Map-Reduce Pattern
+assessment:
+  qa:
+    unit: Schema enforcement per chunk; reducer.
+    examples: Injected-chunk probes.
+    benchmark: Long-document QA.
+    production: Schema violation rate.
+    primary:
+    - unit
+    - examples
+  impact:
+    cost:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    security:
+      effect: improves
+      magnitude: high
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: medium
+      note: ''
+    quality:
+      effect: mixed
+      magnitude: low
+      note: Constrained outputs lose nuance.
+    latency:
+      effect: improves
+      magnitude: medium
+      note: Parallel map.
+    primary:
+    - security
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: parallelization
+  library_group: Multi-Agent
+  library_source: catalog

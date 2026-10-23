@@ -1,0 +1,398 @@
+# 2.a.ii: Rewrite the tool surface: names, schemas, descriptions
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.a.ii
+legacy_id: T35
+slug: rewrite-tool-surface
+name: 'Rewrite the tool surface: names, schemas, descriptions'
+kind: technique
+status: card
+tiers:
+- tier: 1
+  why: when the hand-labeled set shows behavior unchanged
+- tier: 3
+  why: otherwise, since it changes what the model sees
+levers:
+- tool-surface
+domains:
+- tool-use
+evidence_domains:
+- tool-use
+- code-generation
+- web-research
+categories:
+- tools.refactor
+- tools.misuse
+summary: 'Change what the model sees of each tool without touching its implementation: a distinct name,
+  a strict schema (enums, required fields), and a description with fixed sections (what it is for and
+  when to use it versus sibling tools, defaults and limits, error modes, side effects), plus a usage example
+  for complex parameters. Write for the model: distinctive terms, since search finds tools by them; error
+  messages that say what to do next. One rewrite fed the misrouted cases matches hand-tuning; richer descriptions
+  add steps, so slim them after. Where two tools genuinely overlap, rewording cannot separate them: consolidate
+  instead (2.a.i).'
+how: 1. From traces, collect misrouted cases per tool (called when it should not have been, and not called
+  when it should). 2. Audit descriptions for missing purpose, missing when-to-use, and duplicate names.
+  3. Rewrite once with an LLM, given the misrouted cases; add a usage example for complex parameters.
+  4. Slim the result and check step count. 5. Replay the hand-labeled set, or run the paired eval; pairs
+  that stay confused go to 2.a.i for consolidation.
+detect:
+  static: descriptions that do not state the tool's purpose (56% of audited MCP tools) or when to use
+    it; duplicate or overlapping names; schemas without enums or required fields; no example for complex
+    parameters
+  traces: misrouted cases per tool (false positives and false negatives); failure rows labeled incorrect-tool-selection,
+    malformed-arguments or suboptimal-arguments; per-tool error rate and retries (Datadog tracks these
+    per tool and server)
+  evals: failures attributed to tool selection or arguments; step count per task after a description change
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: +5.85 pp median success (Feb 2026); complex-parameter accuracy 72% to 90% with examples (Anthropic);
+      a compliant description picked 72% vs 20% among equivalents
+    basis: evidence
+  cost:
+    effect: mixed
+    size: medium
+    when: augmented descriptions added 67% more steps; slim variants keep most of the gain
+    basis: evidence
+  performance:
+    effect: mixed
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: verify-fix
+  tier: 1
+  how: replay the hand-labeled set
+- method: experiment
+  tier: 3
+  how: paired eval, old against new descriptions
+evidence:
+- source: repo figure_01
+  task: five follow-up benchmarks
+  effect: 7 to 18 of 20 runs per benchmark.
+- source: paper Table 11
+  task: GAIA/FACTS/SimpleQA
+  effect: The Tool-Centric template is built around docstring guidance and parameter design.
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Give explicit tool-selection heuristics in the prompt
+  effect: '"an agent searching the web for context that only exists in Slack is doomed from the start"
+    ... "Bad tool descriptions can send agents down completely wrong paths, so each tool needs a distinct
+    purpose and a clear description."'
+  direction: supports
+  measured: false
+  locator: 'Prompt engineering: Tool design and selection are critical'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Use a tool-testing agent to rewrite tool descriptions
+  effect: '"This process for improving tool ergonomics resulted in a 40% decrease in task completion time
+    for future agents using the new description, because they were able to avoid most mistakes." (no benchmark,
+    n or model beyond "Claude 4 models")'
+  direction: supports
+  measured: true
+  locator: 'Prompt engineering: Let agents improve themselves'
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Document each tool with When/Protocol/Errors/Side-effects
+  effect: Every tool description in the study uses this template. Not ablated.
+  direction: supports
+  measured: false
+  locator: App 8, Figs 21-31
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Rewrite and compress tool documentation for retrieval
+  effect: Described as reducing token overhead and redundant calls. No numbers are quoted.
+  direction: supports
+  measured: false
+  locator: §4.1 External Retriever; §4.2 Cost-Aware Tool Calling
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Prefer dedicated tools over shell in instructions
+  effect: Claude Code "Do NOT use the Bash tool to run commands when a relevant dedicated tool is provided
+    ... allows the user to better understand and review your work."
+  direction: supports
+  measured: false
+  locator: Sec 7.3 "Tool-use philosophy"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Generate tool guidance from the active toolset
+  effect: Pi "each tool contributes promptSnippet/promptGuidelines, so the prompt co-varies with the active
+    toolset"; whole prompt is 30–40 lines.
+  direction: supports
+  measured: false
+  locator: Sec 7.2 (Pi)
+- source: Guo et al., "Learning to Rewrite Tool Descriptions for Reliable LLM-Agent Tool Use (Trace-Free+)",
+    https://arxiv.org/abs/2602.20426
+  date: '2026-02-23'
+  task: Rewrite tool descriptions with a trained rewriter
+  effect: 'StableToolBench with 150+ candidate tools: a curriculum-trained description rewriter, needing
+    no per-tool traces, cuts the accuracy lost as the catalog grows by 29.23% and raises average query-level
+    success by 60.89%; complementary to agent fine-tuning. Requires training the rewriter.'
+  direction: supports
+  measured: true
+- source: 'Wang et al., "From Docs to Descriptions: Smell-Aware Evaluation of MCP Server Descriptions",
+    https://arxiv.org/abs/2602.18914'
+  date: '2026-02-21'
+  task: 'Fix description defects: purpose, functionality and accuracy'
+  effect: '18 description smells audited over 10,831 MCP servers; 73% have repeated tool names. Controlled
+    mutations: functionality and accuracy defects shift selection most (+11.6%, +8.8%, p<0.001). Among
+    functionally equivalent servers, a standard-compliant description is picked 72% of the time against
+    a 20% baseline.'
+  direction: supports
+  measured: true
+- source: Hasan et al., "Model Context Protocol (MCP) Tool Descriptions Are Smelly!", https://arxiv.org/abs/2602.14878
+  date: '2026-02-16'
+  task: Augment tool descriptions, then slim them
+  effect: '856 tools on 103 MCP servers: 97.1% of descriptions have at least one smell; 56% do not state
+    their purpose. Augmented descriptions: +5.85 pp median success, +15.12% partial completion, but +67.46%
+    execution steps and 16.67% of cases worse. Slimmer variants keep most of the gain.'
+  direction: mixed
+  measured: true
+- source: 'Zhou et al., "A Single Rewrite Suffices: Empirical Lessons from Production Skill Description
+    Optimization", https://arxiv.org/abs/2606.30775'
+  date: '2026-06-29'
+  task: Rewrite descriptions once from misrouted cases
+  effect: 'Production router (9 skills, 372 test cases) and ToolBench (16k tools): one LLM rewrite fed
+    the false-positive and false-negative cases reaches 79.2% F1 against 79.4% hand-tuned, at 32x less
+    effort. Iteration budget, feedback mix and training-set size each move F1 by under 0.5%.'
+  direction: supports
+  measured: true
+- source: 'Zhou et al., "A Single Rewrite Suffices: Empirical Lessons from Production Skill Description
+    Optimization", https://arxiv.org/abs/2606.30775'
+  date: '2026-06-29'
+  task: Consolidate tools whose scopes genuinely overlap
+  effect: 'Same study: where two skills genuinely overlap in scope, rewording cannot separate them; the
+    paper gives a signal for detecting such pairs, which need consolidation instead.'
+  direction: mixed
+  measured: true
+- source: Bin Wu et al. (Anthropic), "Introducing advanced tool use on the Claude Developer Platform",
+    https://www.anthropic.com/engineering/advanced-tool-use
+  date: '2025-11-24'
+  task: Add usage examples to tool definitions
+  effect: 'Internal testing: examples in tool definitions raised accuracy on complex parameters from 72%
+    to 90%.'
+  direction: supports
+  measured: true
+- source: Rizel Scarlett (Block), "8 Things You Didn't Know About Code Mode", https://goose-docs.ai/blog/2026/02/06/8-things-you-didnt-know-about-code-mode/
+  date: '2026-02-06'
+  task: Use code mode for multi-tool tasks only
+  effect: About 30% fewer tokens on identical tasks (one author's test, Opus 4.5); little benefit on single-tool
+    tasks; model-dependent. A description mentioning 'long-running task' pulled in the wrong extension;
+    explicit imports prevented it.
+  direction: supports
+  measured: false
+- source: Guillaume Lebedel (StackOne), "Comparing BM25, TF-IDF, and Hybrid Search for MCP Tool Discovery",
+    https://www.stackone.com/blog/mcp-tool-search-bm25-tfidf-hybrid/
+  date: '2026-02-17'
+  task: Choose the tool-search method by how many results the agent sees
+  effect: '270 tools, 2,700 queries: top-1 retrieval BM25 14%, hybrid 21%, embeddings 38%; top-5 85-90%
+    for all three. Whether a tool is found depends on distinctive terms in its description. Retrieval
+    only, not task success.'
+  direction: supports
+  measured: true
+- source: Sattanathan, Byrro and Tahler (Arcade.dev), "54 Patterns for Building Better MCP Tools", https://www.arcade.dev/blog/mcp-tool-patterns/
+  date: '2026-02-09'
+  task: Write descriptions and parameters for the model; errors that say what to do next
+  effect: 'From building 8,000+ tools, not measured: descriptions and parameter names written for the
+    model, lenient input handling, error messages that tell the agent what to do next, consistent response
+    shapes, batch operations instead of one call per item.'
+  direction: supports
+  measured: false
+- source: Lily Chen et al. (Datadog), "Gain end-to-end visibility into MCP clients with Datadog Agent
+    Observability", https://www.datadoghq.com/blog/mcp-client-monitoring/
+  date: '2025-12-01'
+  task: Trace tool listing and calls, linked to the model call that chose them
+  effect: Traces tools/list and call_tool, each linked to the LLM call that chose the tool; per-tool and
+    per-server error rate, retries and p95 latency; large registries add latency. No wrong-tool or unused-tool
+    metric. Not measured.
+  direction: supports
+  measured: false
+related:
+- 2.b.ii
+- 2.a.i
+absorbs:
+- legacy_id: P08
+  name: Low-friction tool input formats
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: api
+  categories:
+  - tools.misuse
+  note: old_content / new_content over unified diffs.
+  assessment:
+    detection:
+      static: Tool arguments that require diffs with line counts, escaped JSON, or deep nesting.
+      traces: Malformed arguments, parse failures, retries.
+      evals: Argument error rate per tool.
+      judge: Rate each input format for closeness to natural text.
+      probes:
+        what: Edits and inputs with special characters, long content, unicode.
+        construct: 'Inputs that stress escaping: quotes, newlines, tabs, non-ASCII.'
+      primary:
+      - static
+      - traces
+    qa:
+      unit: Parser round-trips on the stress inputs.
+      examples: Stress probes.
+      benchmark: Coding benchmark if edits are involved.
+      production: Argument error rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: low
+        note: Fewer retries.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Anthropic's SWE-bench edit-format result.
+      latency:
+        effect: improves
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+- legacy_id: P09
+  name: Poka-yoke tool design
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: validation
+  categories:
+  - tools.misuse
+  note: Enums, absolute paths, strict validation, loud failure.
+  assessment:
+    detection:
+      static: Schemas use enums and required fields; absolute-path checks; validation code with clear
+        error messages.
+      traces: Invalid calls that succeeded silently; relative-path errors after a directory change.
+      evals: Silent-failure rate; validation rejection rate.
+      judge: Inspect tool results for silently wrong behavior.
+      probes:
+        what: Deliberately invalid and edge inputs.
+        construct: Fuzz each argument at its type boundaries; relative paths; out-of-range numbers; empty
+          strings.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Validation rejects bad inputs with actionable messages.
+      examples: Fuzz probes.
+      benchmark: null
+      production: Validation rejection rate per tool.
+      primary:
+      - unit
+    impact:
+      cost:
+        effect: improves
+        magnitude: low
+        note: ''
+      security:
+        effect: improves
+        magnitude: medium
+        note: Input validation is a security control.
+      brand:
+        effect: improves
+        magnitude: low
+        note: Fewer silent wrong results.
+      governance:
+        effect: improves
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: 'VeRO T01: type guards on the parser were the most reliably discovered fix.'
+      latency:
+        effect: none
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+      - security
+- legacy_id: P12
+  name: Tool namespacing
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: api
+  categories:
+  - tools.refactor
+  note: browser_*, shell_* prefixes; enables prefill-constrained tool groups.
+  assessment:
+    detection:
+      static: Tool names share a group prefix; consistency of prefixes.
+      traces: Wrong-group tool selection.
+      evals: Wrong-tool rate.
+      judge: null
+      probes:
+        what: Tasks spanning several tool groups.
+        construct: Tasks where the right group is implied by context, not named.
+      primary:
+      - static
+    qa:
+      unit: Naming lint.
+      examples: Cross-group probes.
+      benchmark: null
+      production: Wrong-tool rate.
+      primary:
+      - unit
+    impact:
+      cost:
+        effect: none
+        magnitude: low
+        note: ''
+      security:
+        effect: improves
+        magnitude: low
+        note: Prefixes allow constraining to a group.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: low
+        note: Judgment; no direct evidence.
+      latency:
+        effect: none
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: api
+  harness_role: tool_surface
+  action: reword

@@ -1,0 +1,273 @@
+# 7.d.iii: ReAct loop
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.d.iii
+legacy_id: P04
+slug: react-loop
+name: ReAct loop
+kind: pattern
+status: card
+tiers:
+- tier: 4
+  why: it changes the control loop
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- computer-use
+- web-research
+- tool-use
+- conversation
+- data-analysis
+- code-generation
+- retrieval
+- planning
+categories:
+- orchestration.loop
+summary: 'Run the agent as a loop: the model reasons, calls a tool, reads the result and picks the next
+  step, until it answers or hits a cap. The loop is the common default for tasks that need several dependent
+  tool calls; the 2022 text template (Thought/Action/Observation lines in a few-shot prompt) is not. On
+  current models, use native tool calling, carry the model''s reasoning across tool calls, bound the whole
+  feedback path, and keep the per-step preamble small: with the model fixed, the harness around the loop
+  moved cost per task by up to 3x and pass rate by less than the noise.'
+how: '1. Use the provider''s native tool calling, not a text Thought/Action/Observation template. 2. Loop:
+  call the model, run every tool call it returns, append each result to the history (errors included,
+  as observations), and call again; stop on a final answer or an explicit finish tool. 3. Let the model
+  reason before each action (interleaved or adaptive thinking; a think tool on models without it), and
+  pass its reasoning back unchanged across tool calls. 4. Cap steps, cost and wall time on the whole feedback
+  path, retries and handoffs included; count a cap hit as a failure (7.b.iii sizes the caps, 7.b.i catches stalls).
+  5. Keep the per-step preamble (system prompt and tool schemas) small; it is re-sent every step. 6. Paired
+  eval against the current design (one call or a fixed workflow), per model: success, steps, cost per
+  task, cap-hit rate.'
+detect:
+  static: A loop that alternates model call and tool dispatch, feeds results back, and has a max-iteration
+    guard; check that the guard bounds the whole feedback path (retries, handoffs), not just the outer
+    loop.
+  traces: Thought before each action; observations used in the next thought; loops that ignore results.
+  evals: Success on tool-use tasks; steps per task; tool error rate.
+  judge: Do thoughts inform the next action or are they boilerplate.
+  probes:
+    what: Tasks needing two to four dependent tool calls.
+    construct: 'Chain lookups: find X, then use X to fetch Y; the second call cannot be guessed.'
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'tasks that need several dependent tool calls: text-to-SQL 45.9 to 72.2 on EHR-SQL over a single
+      shot, but 78.5 to 79.1 on BIRD (Lu, Aug 2026); ALFWorld 71 against 45 for acting without reasoning
+      (Yao, 2022)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: medium
+    when: one model call per step, each re-sending the preamble and history; with the model fixed, cost
+      per task differed by up to 3x across harnesses (Liu and Han, Oct 2026)
+    basis: evidence
+  performance:
+    effect: degrades
+    size: medium
+    when: serial round trips, one per step
+    basis: evidence
+  security:
+    effect: mixed
+    size: medium
+    when: Autonomous tool actions need scoping.
+    basis: assessment
+  governance:
+    effect: mixed
+    size: medium
+    when: Every action must be logged to be auditable.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - performance
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval of the loop against the current design, per model: success, steps, cost per task,
+    cap-hit rate; use the full task pool, since 45 tasks catch a 12.9-point gap only half the time'
+- method: monitor
+  how: steps per task, cap-hit rate, tool error rate, cost per task
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Prompting Strategies group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: 'Yao et al., "ReAct: Synergizing Reasoning and Acting in Language Models", https://arxiv.org/abs/2210.03629'
+  date: '2022-10-06'
+  task: Interleave reasoning traces with actions, against acting only, chain-of-thought, and imitation
+    or RL agents
+  effect: ALFWorld success 71 (best of 6) against 45 for acting only and 37 for BUTLER; WebShop success
+    40.0 against 30.1 (acting only), 29.1 (IL) and 28.7 (IL+RL). HotpotQA EM 27.4 against 29.4 for chain-of-thought,
+    35.1 when ReAct falls back to CoT-SC; FEVER 60.9 against 56.3 for chain-of-thought.
+  conditions: PaLM-540B, few-shot prompts (one or two examples on ALFWorld and WebShop), greedy decoding
+  direction: supports
+  measured: true
+  locator: Abstract; Table 1, Table 3, Table 4
+- source: Verma, Bhambri, Kambhampati, "On the Brittle Foundations of ReAct Prompting for Agentic Large
+    Language Models", https://arxiv.org/abs/2405.13966
+  date: '2024-05-22'
+  task: 'Vary ReAct''s few-shot prompt on ALFWorld: move the reasoning out of the loop, change its content,
+    change the examples'
+  effect: Reasoning given once before acting, instead of interleaved, beat base ReAct for GPT-3.5-Instruct
+    (44.7 to 61.9) and GPT-4 (23.3 to 43.3), not for Claude-Opus (56.6 to 50). Performance is "minimally
+    influenced by the 'interleaving reasoning trace with action execution'" and driven by how similar
+    the examples are to the query.
+  conditions: ALFWorld, six task types; few-shot text prompting
+  direction: contradicts
+  measured: true
+  locator: Abstract; Table 1
+- source: 'Yao, Shinn, Razavi, Narasimhan, "τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World
+    Domains", https://arxiv.org/abs/2406.12045'
+  date: '2024-06-17'
+  task: Native function calling against text-formatted ReAct and Act agents
+  effect: '"natively supported function calling consistently outperforms text-formatted agent methods
+    with the state-of-the-art models. For text-formatted agent methods, adding reasoning traces still
+    consistently helps." A "think" function added to function-calling agents "did not boost performance".'
+  conditions: τ-bench retail and airline; gpt-4o and other API models
+  direction: mixed
+  measured: true
+  locator: Method comparison; Figure 3
+- source: 'Trivedi et al., "AppWorld: A Controllable World of Apps and People for Benchmarking Interactive
+    Coding Agents", https://arxiv.org/abs/2407.18901'
+  date: '2024-07-26'
+  task: ReAct against plan-then-execute and other agent methods on everyday app tasks
+  effect: 'Task goal completion, normal / challenge test sets: GPT-4o ReAct 48.8 / 30.2 against plan-then-execute
+    44.6 / 19.7; GPT-4-Turbo ReAct 26.8 / 17.5 against 32.7 / 11.0. GPT-4o cost about $0.7 per example
+    with ReAct and $1.33 with plan-then-execute.'
+  conditions: GPT-4o, GPT-4-Turbo; greedy decoding
+  direction: mixed
+  measured: true
+  locator: Table 3; App. E.8
+- source: 'Anthropic, The "think" tool: Enabling Claude to stop and think in complex tool use situations,
+    https://www.anthropic.com/engineering/claude-think-tool'
+  date: '2025-03-20'
+  task: Give the model a think tool to reason between tool calls
+  effect: τ-bench airline pass^1 0.570 with the think tool and an optimized prompt against 0.370 baseline;
+    retail 0.812 against 0.783; SWE-bench +1.6% on average. A Dec 2025 update recommends extended thinking
+    "instead of a dedicated think tool in most cases".
+  conditions: Claude 3.7 Sonnet; SWE-bench n=30 with the tool, 144 without
+  direction: supports
+  measured: true
+  locator: Evaluation sections; Dec 15, 2025 update note
+- source: OpenAI, "GPT-5 prompting guide", https://cookbook.openai.com/examples/gpt-5/gpt-5_prompting_guide
+  date: '2025-08-07'
+  task: Pass the model's previous reasoning items back across tool calls (Responses API) instead of dropping
+    them
+  effect: '"Tau-Bench Retail score increases from 73.9% to 78.2% just by switching to the Responses API
+    and including previous_response_id to pass back previous reasoning items into subsequent requests."'
+  conditions: GPT-5; vendor-reported, no sample size given
+  direction: supports
+  measured: true
+  locator: Responses API paragraph
+- source: 'Lu, Yu, Xiong, Zhang, "Iteration Without Elaboration: A Simple ReAct Architecture Suffices
+    for Text-to-SQL Generation", https://arxiv.org/abs/2608.22651'
+  date: '2026-08-23'
+  task: Add a ReAct loop (SQL actions with execution feedback) to a zero-shot single-shot baseline, then
+    a typed DSL of 15 operations
+  effect: 'Single shot to loop: EHR-SQL 45.9 to 72.2, BIRD 78.5 to 79.1; with the typed DSL, 73.9 and
+    84.5. Matches more elaborate pipelines while running up to 8x faster.'
+  conditions: Gemini-2.5-Flash; corrected BIRD mini-dev and EHR-SQL
+  direction: supports
+  measured: true
+  locator: Abstract; Table 4
+- source: Liu, Han, "What Does a Harness Buy? Tokens, Mostly", https://arxiv.org/abs/2610.04433
+  date: '2026-10-03'
+  task: 'Hold the model fixed and swap the harness around the loop: Claude Code, OpenCode, and the bash-only
+    mini-SWE-agent'
+  effect: Claude Code and mini-SWE-agent "are equivalent within five points" (-1.8 and -1.4 points on
+    two models). Cost per task differed by up to 3x across harnesses, set by the per-step preamble (16k
+    tokens in Claude Code, 7k in OpenCode, under a thousand in mini-SWE-agent) times the number of steps.
+    Switching thinking off cost mini-SWE-agent 11 points on one model and moved the other two by less
+    than the noise.
+  conditions: SWE-bench Verified, 447 tasks, two models; a 45-task hard subset, five models
+  direction: supports
+  measured: true
+  locator: Abstract; Table 1; §4.4; App. J
+- source: 'Hou, Wang, Zhao, Wang, "When Agents Do Not Stop: Uncovering Infinite Agentic Loops in LLM Agents",
+    https://arxiv.org/abs/2607.01641'
+  date: '2026-07-02'
+  task: Scan agent code for feedback paths that can repeat costly operations without an effective bound
+  effect: 68 confirmed infinite agentic loops across 47 projects, from 6,549 agent repositories scanned
+    (91.9% precision). Developers "omit them, misuse them, configure them with ineffective bounds, or
+    place them outside the actual feedback path."
+  conditions: open-source LLM agent repositories; static analysis with manual review
+  direction: supports
+  measured: true
+  locator: Abstract; §1
+- source: Piet et al., "Web Agents Should Adopt the Plan-Then-Execute Paradigm", https://arxiv.org/abs/2605.14290
+  date: '2026-05-14'
+  task: 'Position paper: whether web agents should default to ReAct or to plan-then-execute'
+  effect: Argues ReAct is "the wrong default for web agents" because untrusted page content flows into
+    every next-action decision. All WebArena tasks are compatible with plan-then-execute, and 80% can
+    be done with a purely programmatic plan.
+  conditions: WebArena task analysis; no agent success rates
+  direction: contradicts
+  measured: false
+  locator: Abstract
+assessment:
+  qa:
+    unit: Loop terminates; max_turns respected; tool result is appended to the next prompt.
+    examples: Chain-lookup probe set.
+    benchmark: GAIA or TAU-Bench style.
+    production: Steps per task, tool error rate, cap-hit rate.
+    primary:
+    - unit
+    - benchmark
+  impact:
+    cost:
+      effect: degrades
+      magnitude: medium
+      note: Many turns; turn budget is the most-edited constant in VeRO's corpus (T29).
+    security:
+      effect: mixed
+      magnitude: medium
+      note: Autonomous tool actions need scoping.
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: mixed
+      magnitude: medium
+      note: Every action must be logged to be auditable.
+    quality:
+      effect: improves
+      magnitude: high
+      note: Baseline for tool-use tasks; VeRO's biggest lifts are on these.
+    latency:
+      effect: degrades
+      magnitude: high
+      note: Serial round trips.
+    primary:
+    - quality
+    - latency
+related:
+- 7.b.iii
+- 7.b.i
+- 2.a.iii
+- 6.c.ii
+- 10.c.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: control_flow
+  library_group: Prompting Strategies
+  library_source: master
+caveats: 'The 2022 gains came from few-shot text prompting on PaLM-540B, and ReAct alone trailed chain-of-thought
+  on HotpotQA; a 2024 study found the interleaved reasoning in that template mattered little next to the
+  choice of examples. Whether reasoning between calls helps depends on the model and harness: switching
+  thinking off cost one harness 11 points and moved two others by less than the noise. Every tool result
+  feeds the next action, so untrusted content can steer the loop: contain it (10.c.i) or commit to a plan
+  before reading it (6.c.ii). Harness comparisons need large task pools.'

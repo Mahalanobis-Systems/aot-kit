@@ -1,0 +1,45 @@
+name: Evidence or a new optimization
+description: A source that supports, contradicts or changes an optimization, or a change to agents that isn't in the library yet
+labels: [evidence]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. See "What makes good evidence" in [CONTRIBUTING.md](https://github.com/Mahalanobis-Systems/aot-kit/blob/main/CONTRIBUTING.md#what-makes-good-evidence): the primary source, with its own numbers.
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: Link to the paper, post, benchmark or changelog itself (not a thread about it). For your own result, say so here.
+    validations:
+      required: true
+  - type: input
+    id: entry
+    attributes:
+      label: Optimization it bears on
+      description: The skill name or library id (e.g. `bound-tool-output`, 2.c.i), or "new".
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: What it found
+      description: The change that was tried and what happened, in the source's own numbers, with the conditions (model, benchmark, n) and where in the source they are.
+    validations:
+      required: true
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Does it support the entry?
+      options:
+        - Supports it
+        - Contradicts it
+        - Mixed, or it depends
+        - It's a new optimization
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What should change
+      description: Optional. How the entry's advice, caveats or impact should change, if at all.

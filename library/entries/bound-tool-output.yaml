@@ -1,0 +1,185 @@
+# 2.c.i: Bound tool output: cap it, or write it to a file the agent can read
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.c.i
+legacy_id: T02
+slug: bound-tool-output
+name: 'Bound tool output: cap it, or write it to a file the agent can read'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- tool-surface
+- context
+domains:
+- general
+evidence_domains:
+- code-generation
+- tool-use
+categories:
+- tools.lean-returns
+- context.filter-input
+summary: Cap the characters of tool output kept per call (VeRO settled near 15-20 KB on TerminalBench),
+  or, better, write long output to a file and return its path with a short head, so the agent can read
+  more if it needs to. When the agent runs code, filter and aggregate results inside the execution environment
+  and return only the slice it needs.
+how: 1. From traces, find the largest tool results and the share of context they take. 2. Set a cap from
+  the distribution of results on successful cases; or switch to file offload for that tool. 3. Re-run
+  cases that previously overflowed or truncated.
+detect:
+  static: tool results passed to the model whole, with no cap or file offload
+  traces: a single tool result over about 10% of the context window; context-overflow outcomes; a truncated
+    result followed by re-running the same command
+  evals: context-overflow outcomes as a share of failures
+impact:
+  quality:
+    effect: mixed
+    size: small
+    when: a cap can drop what the agent needed; file offload avoids that (Cursor, unmeasured)
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: 'VeRO: overflow errors 13 to 1 with a lower cap'
+    basis: evidence
+  performance:
+    effect: improves
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval at the old and new cap, or cap against file offload; count overflow failures
+evidence:
+- source: paper §A.4
+  task: TerminalBench-2
+  effect: 30KB to 15KB (Tools-B=89), 20KB (Filesystem-B=178), 17KB (Tools-B=178, after probing 15KB on
+    16 samples and seeing some tasks needed more). Filesystem run cut ContextLengthExceeded from 13 to
+    1.
+- source: repo figure_04 (100 runs, five benchmarks)
+  task: mixed
+  effect: MAX_TOOL_OUTPUT_CHARS lowered 16 times, raised 13. The only frequently-touched constant lowered
+    more often than raised.
+- source: Jediah Katz (Cursor), "Dynamic context discovery", https://cursor.com/blog/dynamic-context-discovery
+  date: '2026-01-06'
+  task: Write long tool outputs to files, don't truncate
+  effect: Truncation "can lead to data loss"; the file approach "has resulted in fewer unnecessary summarizations
+    when reaching context limits." No number.
+  direction: supports
+  measured: false
+  locator: 1. Turning long tool responses into files
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Filter and aggregate tool results in code
+  effect: 'Illustrative: a 10,000-row sheet filtered to pending orders; "The agent sees five rows instead
+    of 10,000." Not measured.'
+  direction: supports
+  measured: false
+  locator: 'Benefits: Context efficient tool results'
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Pass data between tools in code, not context
+  effect: 'With direct calls "the full call transcript flows through twice. For a 2-hour sales meeting,
+    that could mean processing an additional 50,000 tokens" (estimate). Also: "models may be more likely
+    to make mistakes when copying data between tool calls."'
+  direction: supports
+  measured: false
+  locator: Intermediate tool results consume additional tokens; Privacy-preserving operations
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Express loops, polling and conditionals in code
+  effect: '"more efficient than alternating between MCP tool calls and sleep commands through the agent
+    loop" and "saves on ''time to first token'' latency: rather than having to wait for a model to evaluate
+    an if-statement".'
+  direction: supports
+  measured: false
+  locator: 'Benefits: More powerful and context-efficient control flow'
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Chain actions by writing and executing code
+  effect: Cites CodeAct and Anthropic, "highlighting the token savings benefit because the agent does
+    not process the intermediate tool results."
+  direction: supports
+  measured: false
+  locator: Multi-Layer Action Space
+caveats: Samples 16, 17 and 47 regressed under every run; output-length changes are the usual suspect.
+related:
+- 5.a.i
+- 2.a.iii
+absorbs:
+- legacy_id: P11
+  name: Token-efficient tool responses
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: transformation
+  categories:
+  - tools.lean-returns
+  - context.filter-input
+  note: Pagination, truncation, ~25K token default cap, semantic ids, response_format param.
+  assessment:
+    detection:
+      static: Tools return unbounded lists; no limit or page argument; UUIDs in output; no truncation
+        or response_format.
+      traces: Tool output sizes; context-length errors; output caps hit.
+      evals: Context-length-exceeded rate; tokens per task.
+      judge: Rate output relevance density; token accounting is direct.
+      probes:
+        what: Queries that match many results; large files.
+        construct: Inputs guaranteed to produce more than 25K tokens of tool output.
+      primary:
+      - traces
+      - evals
+    qa:
+      unit: Truncation, pagination and format parameters.
+      examples: Large-output probes.
+      benchmark: Any benchmark with long documents.
+      production: Tokens per tool call; context-error rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: Tool output dominates context in agent loops.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: medium
+        note: 'VeRO T02: caps cut context errors but three tasks regressed under every cap change.'
+      latency:
+        effect: improves
+        magnitude: medium
+        note: ''
+      primary:
+      - cost
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: transformation
+  harness_role: tool_impl
+  action: tune

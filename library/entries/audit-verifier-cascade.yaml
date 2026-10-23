@@ -1,0 +1,207 @@
+# 9.c.iii: Audit a verifier-gated cascade against a gold sample the verifier never sees
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.c.iii
+legacy_id: T48
+slug: audit-verifier-cascade
+name: Audit a verifier-gated cascade against a gold sample the verifier never sees
+kind: technique
+status: card
+tiers:
+- tier: 4
+  why: it governs an escalation topology, which only a production test can judge
+levers:
+- control-flow
+- model
+domains:
+- general
+evidence_domains:
+- reasoning
+categories:
+- verification.spend
+- topologies.escalate
+summary: 'When a cheap model''s outputs are accepted or escalated by a verifier, measure true error on
+  a small gold-labeled sample outside the verifier: metrics measured through the verifier showed about
+  3% error while true error was 14-32%. A frontier verifier cuts misses but escalates more than the true
+  error rate, erasing the saving. Never train the cheap model on verifier rejects or accepted outputs.'
+how: 1. Label a rolling sample (e.g. 100 cases a week) by hand or by the environment. 2. Score the cascade's
+  delivered answers on it, separately from the verifier's own accept rate. 3. Alert when true error diverges
+  from verifier-measured error.
+detect:
+  static: a cheap model whose outputs are accepted or escalated by a verifier model, with error measured
+    only through the verifier
+  traces: escalation rate against the eval's true error rate
+  evals: no gold-labeled sample scored independently of the verifier
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'reveals hidden error: ~3% through the verifier against 14-32% true (Sep 2026)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    when: labeling the audit sample
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: monitor
+  how: true error on a rolling gold-labeled sample
+- method: production-test
+  tier: 4
+  how: A/B of the cascade against the single strong model
+evidence:
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Audit cascades with a small gold-labeled sample outside the verifier
+  effect: 'Qwen2.5-7B student, gpt-4o-mini verifier, GSM8K corrective loop: verifier-estimated error of
+    the delivered stream flat near 3% across rounds while gold user-facing error swung 14% to 32% (5-11x
+    gap, 95% intervals separate from round 1, n=300). Synthetic (rho=0.7, 20 seeds): dashboard 4.6% vs
+    gold 24.9%. The paper calls an independent gold-labeled audit channel "not optional instrumentation
+    but the only instrument that can see the effect" (recommendation, not itself measured as an intervention).'
+  direction: supports
+  measured: true
+  locator: §5 Figure 2; §6 Corollary 2; §7 Figure 5; §10 Implications
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Do not assume a cheap LLM verifier catches a capable student
+  effect: 'GSM8K, fixed gpt-4o-mini verifier: blind-spot rate beta rises from 0.12 (CI 0.08-0.17) at Qwen2.5-0.5B
+    to 0.55 (CI 0.44-0.66) at 14B; 7B-32B plateau around 0.35-0.65. Hard MATH, fixed 7B student: beta
+    0.42 (CI 0.32-0.53) with gpt-4o-mini vs 0.05-0.09 with gpt-4.1 / gpt-5-mini. Static, training-free
+    sweep, so it holds for any plain cascade.'
+  direction: supports
+  measured: true
+  locator: §5 Figures 3-4
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Expect a frontier verifier to eat the cascade saving
+  effect: 'Hard MATH L4-5, Qwen2.5-7B student: gpt-4.1 verifier beta ~0.05 but escalation rate 0.46 (CI
+    0.39-0.53, n=200) against a 0.39 true error rate, i.e. frontier price on nearly half of traffic. "Low
+    blind spot and low cost are not simultaneously available from a fixed verifier."'
+  direction: supports
+  measured: true
+  locator: §5 Figure 4; §1 findings
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Do not fine-tune the cheap model on verifier rejects
+  effect: 'Qwen2.5-1.5B and 7B students, GSM8K corrective loop, teachers gpt-4o-mini, gpt-4o (cross-family)
+    and Qwen2.5-32B (same-family): naive LoRA fine-tuning on rejects degraded the student in every case
+    and cumulatively collapsed it (raw error rising to 1 as output format broke). Frozen control stayed
+    near 13% error. Single-seed runs.'
+  direction: supports
+  measured: true
+  locator: §5 "The loop degrades the student"; §1
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Never recycle verifier-accepted outputs as training labels
+  effect: 'Synthetic model only (rho=0.7, 20 seeds, 8 rounds): self-training user-facing error 0.296 vs
+    corrective 0.249 (raw error 0.356 vs 0.304); frozen 0.334; oracle-in-loop 0.000. Predicted rise above
+    q0*beta0 was not observed.'
+  direction: supports
+  measured: true
+  locator: §6 H3; §7 Table 1, Figure 7a
+- source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
+    Cascades", https://arxiv.org/abs/2609.01345'
+  date: '2026-09-01'
+  task: Random oracle audits are cheap but shallow
+  effect: 'Synthetic model only (rho=0.7): auditing 40% of items lowers the corrective floor from 0.25
+    to 0.22, vs 0.14 for a 4-verifier ensemble; neither reaches the oracle floor (0) in the tested budget.'
+  direction: supports
+  measured: true
+  locator: §7 H5, Figure 8
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Pair a weak generator with a strong verifier
+  effect: 'Math, difficulty [0.7,0.8), 181 problems, GPT-4o verifier, 64 samples: Gemma2-9B vs Gemma2-27B
+    gap shrinks from 10.3% to 2.5% after verification (75.7% closed); across whole domains most weak/strong
+    pairs see 30-50% gap reduction. Case study (same 181 problems): Qwen3-4B generator + GPT-4o verifier
+    pass rate 0.954 vs GPT-4o generator alone 0.952, with GPT-4o tokens per prompt 193 vs 482 (about 2.5x
+    fewer).'
+  direction: supports
+  measured: true
+  locator: §5.1 Figure 7; Appendix C.5 Figure 19; Appendix D.5 Table 2
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Pick verifier by validation balanced accuracy gap
+  effect: 'GPT-4o vs Qwen2.5-7B, difficulty-stratified math, 50/50 validation/test split: on the hardest
+    bin the validation gap was small and the test TTS accuracy difference was small (pick 7B); on the
+    hard bin the gap was clear and GPT-4o gave substantially better test TTS accuracy. Figures only; no
+    single headline number.'
+  direction: supports
+  measured: true
+  locator: Appendix D.2.2, Figures 28-29
+- source: 'Zhou et al., "Variation in Verification: Understanding Verification Dynamics in Large Language
+    Models", https://arxiv.org/abs/2509.17995'
+  date: '2025-09-22'
+  task: Pick generator size by verified validation accuracy
+  effect: 'Gemma2-2B/9B/27B with Qwen3-32B or GPT-4o verifier, 64 samples, FLOPs=2*N*tokens: selection
+    picked 2B on easy [0.9,1.0), 9B on medium [0.7,0.8), 27B on hard [0.3,0.4), and consistently matched
+    the compute-efficient choice on the test split (pass rate and majority vote). Without verification
+    the largest model was usually preferred.'
+  direction: supports
+  measured: true
+  locator: Appendix D.2.1, Figures 24-27
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Fine-tune the verifier on filtered strong-model rationales
+  effect: 'Llama-3.1-8B on MATH: GenRM-FT reaches the same success rate as prompted GenRM-Base with up
+    to 16x less compute and outperforms it overall. Data: 7,500 MATH train problems x 4 solutions x 4
+    GPT-4o verifications, LoRA 3 epochs.'
+  direction: supports
+  measured: true
+  locator: §2 GenRM-Finetuning; §5.1 Impact of Verifier Quality; Figure 3b; Appendix C, E
+- source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
+    Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
+  date: '2025-04-01'
+  task: Use a smaller, cheaper verifier than the generator
+  effect: 'Llama-3-70B solutions on MATH: Llama-3-8B GenRM-FT verifier (verification cost 0.228x a solution)
+    reduces compute to match SC from 8x to 4x vs a 70B GenRM-Base verifier, but still does not beat SC
+    at low budgets.'
+  direction: supports
+  measured: true
+  locator: Appendix F, Figure 7
+- source: 'Zhao et al., "Sample, Scrutinize and Scale: Effective Inference-Time Search by Scaling Verification",
+    https://arxiv.org/abs/2502.01839'
+  date: '2025-02-03'
+  task: Verify a strong generator's samples with a cheaper model
+  effect: 'Pro generates + Flash verifies (Verification@200): AIME 7/15, MATH 456/500, LiveBench Math
+    119/200, Reasoning 84/140, vs Pro Consistency@200 4/15, 460, 118, 75 and Pro end-to-end Verification
+    8, 467, 135, 97. Compute about that of Consistency@500. Flash end-to-end Verification@200 (5/15, 445,
+    104, 84) is competitive with Pro Consistency@200.'
+  direction: supports
+  measured: true
+  locator: §4.1 Table 5
+- source: Saad-Falcon et al., "Shrinking the Generation-Verification Gap with Weak Verifiers", https://arxiv.org/abs/2506.18203
+  date: '2025-06-22'
+  task: 'Weak-to-strong: small generator plus small-verifier ensemble'
+  effect: 'Llama 3.1 8B + <=8B verifiers: average 57.2% (majority vote) -> 70.0% with Weaver (+12.8),
+    within 1.6 points of 70B majority vote (71.6%). 70B + <=72B verifiers: 71.6% -> 87.6% (+16.0; GPQA
+    +27.3), vs o3-mini 86.7%.'
+  direction: supports
+  measured: true
+  locator: §5.2 (2) Table 3; Appendix Table 20
+related:
+- 6.a.i
+- 9.c.ii
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: other
+  harness_role: other
+  action: add

@@ -1,0 +1,119 @@
+# 7.c.i: Reflection loop
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.c.i
+legacy_id: P37
+slug: reflection-loop
+name: Reflection loop
+kind: pattern
+status: outline
+tiers:
+- tier: 3
+  why: it adds a refine step graded against a metric
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- conversation
+- reasoning
+categories:
+- orchestration.extra-compute
+summary: Generate, grade against a metric, refine.
+detect:
+  static: A self-critique call and a threshold; refinement loop.
+  traces: Iterations per item; whether critiques change the output.
+  evals: Gain per iteration.
+  judge: Rate critiques for specificity.
+  probes:
+    what: Outputs with detectable defects.
+    construct: Plant one defect per output (missing citation, off-by-one).
+  primary:
+  - traces
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'VeRO T26: Knight''s reflect tool is part of a much stronger baseline.'
+    basis: assessment
+  cost:
+    effect: degrades
+    size: medium
+    basis: assessment
+  performance:
+    effect: degrades
+    size: medium
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: none
+    basis: assessment
+  brand:
+    effect: improves
+    size: small
+    basis: assessment
+  primary:
+  - quality
+  - cost
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Feedback & Iteration group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: 'Madaan et al., "Self-Refine: Iterative Refinement with Self-Feedback", https://arxiv.org/abs/2303.17651'
+  date: '2023-03-30'
+  task: The same model generates, critiques its output and refines it iteratively
+  effect: '"improving by ~20% absolute on average in task performance" over one-step generation'
+  conditions: 7 tasks from dialog response generation to math reasoning; GPT-3.5, ChatGPT, GPT-4
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Threshold and iteration cap.
+    examples: Planted-defect probes.
+    benchmark: Writing or reasoning benchmark.
+    production: Iterations per item.
+    primary:
+    - examples
+    - production
+  impact:
+    cost:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: improves
+      magnitude: low
+      note: ''
+    governance:
+      effect: none
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: 'VeRO T26: Knight''s reflect tool is part of a much stronger baseline.'
+    latency:
+      effect: degrades
+      magnitude: medium
+      note: ''
+    primary:
+    - quality
+    - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: reflection
+  library_group: Feedback & Iteration
+  library_source: catalog

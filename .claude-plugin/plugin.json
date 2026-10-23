@@ -1,0 +1,22 @@
+{
+  "name": "aot-kit",
+  "displayName": "AOT Kit",
+  "version": "0.1.0",
+  "description": "Part of AOT, the Agent Optimization Toolkit, a Mahal Systems offering. One skill per researched agent optimization: what the change is, the signals in code, traces and evals that say it applies, its tier and evidence gate, and how to measure it. Skills are placeholders for now.",
+  "author": {
+    "name": "Mahal Systems",
+    "email": "ops@mahalsystems.ai",
+    "url": "https://mahalsystems.ai"
+  },
+  "keywords": [
+    "agents",
+    "optimization",
+    "harness",
+    "prompts",
+    "tools",
+    "context-engineering"
+  ],
+  "homepage": "https://mahalsystems.ai",
+  "repository": "https://github.com/Mahalanobis-Systems/aot-kit",
+  "license": "Apache-2.0"
+}

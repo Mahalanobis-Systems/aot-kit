@@ -1,0 +1,117 @@
+# 4.b.i: Filesystem-based agent state and checkpoints
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 4.b.i
+legacy_id: P54
+slug: filesystem-checkpoints
+name: Filesystem-based agent state and checkpoints
+kind: pattern
+status: outline
+tiers:
+- tier: 2
+  why: 'operational hardening: checkpoint and resume'
+  proposed: true
+levers:
+- state
+domains:
+- general
+evidence_domains: []
+categories:
+- memory.resume
+summary: Filesystem-based agent state and checkpoints
+detect:
+  static: Checkpoint writes with metadata; resume logic on start.
+  traces: Resume events; steps skipped on resume.
+  evals: Recovery from injected failure.
+  probes:
+    what: Kill mid-run and resume.
+    construct: Terminate after an expensive step and confirm it is not redone.
+  primary:
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: small
+    basis: assessment
+  cost:
+    effect: improves
+    size: medium
+    basis: assessment
+  performance:
+    effect: improves
+    size: small
+    basis: assessment
+  security:
+    effect: mixed
+    size: small
+    when: State files persist.
+    basis: assessment
+  governance:
+    effect: improves
+    size: medium
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - cost
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Context & Memory group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Each session leaves a progress log and git commits so the next session can resume from a known state
+  effect: The initializer sets up "an init.sh script, a claude-progress.txt file that keeps a log of what agents
+    have done, and an initial git commit"; later sessions "make incremental progress, then leave structured updates."
+  direction: supports
+  measured: false
+  locator: The long-running agent problem
+assessment:
+  qa:
+    unit: Checkpoint round-trip.
+    examples: Kill-and-resume probes.
+    benchmark: null
+    production: Redo rate after failures.
+    primary:
+    - unit
+    - examples
+  impact:
+    cost:
+      effect: improves
+      magnitude: medium
+      note: ''
+    security:
+      effect: mixed
+      magnitude: low
+      note: State files persist.
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: medium
+      note: ''
+    quality:
+      effect: improves
+      magnitude: low
+      note: ''
+    latency:
+      effect: improves
+      magnitude: low
+      note: ''
+    primary:
+    - cost
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: memory
+  library_group: Context & Memory
+  library_source: catalog

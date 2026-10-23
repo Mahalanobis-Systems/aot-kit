@@ -1,0 +1,87 @@
+# 9.b.i: Make the final answer reliably extractable: state the format, extract robustly, force an answer at the limit
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.b.i
+legacy_id: T32
+slug: extractable-final-answer
+name: 'Make the final answer reliably extractable: state the format, extract robustly, force an answer
+  at the limit'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: 'graceful degradation: always return a usable answer'
+levers:
+- control-flow
+- prompt
+domains:
+- structured-output
+evidence_domains:
+- code-generation
+- reasoning
+- web-research
+categories:
+- verification.completion
+- prompts.structure
+summary: 'State the required answer format in the prompt, and make the harness extract it robustly: strip
+  markers, normalize numbers, detect refusals, and force a best-effort answer when the loop ends on a
+  budget rather than returning nothing. The format reminder alone was mixed on GPQA (train up, test down);
+  the harness side is what stops right work being lost.'
+how: 1. From traces, list runs whose working was right but whose returned answer was missing, malformed
+  or a refusal. 2. Add the format section to the prompt (3.a.iv). 3. Harden extraction and add the forced-answer
+  path at the turn cap. 4. Measure no-answer and malformed-answer rates.
+detect:
+  static: no answer-format statement; extraction that assumes a marker; no forced answer when the loop
+    ends on a budget
+  traces: runs ending with no extractable answer; refusals returned as answers; numbers in the wrong format;
+    runs ending at the turn cap with a correct value in context (in one image-labeling agent, 71 items
+    returned all-unknown)
+  evals: failures where the working was right but the submitted answer was not (instruction-grader-mismatch)
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: estimate; in an image-labeling agent we measured, a salvage turn at the limit cut all-unknown
+      items from 71 to 1
+    basis: evidence
+  cost:
+    effect: none
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: no-answer, malformed-answer and refusal rates on the same cases
+evidence:
+- source: repo taxonomy.py role hints
+  task: five follow-up benchmarks
+  effect: Symbols such as _submit, _answer_payload, _scale_variants, _format_number, _extract_answer are
+    common enough to get deterministic role hints.
+- source: repo figure_01
+  task: SWE-Atlas-QnA
+  effect: 15/20 runs touched submission.
+- source: paper Figure 13
+  task: GPQA
+  effect: Train recovered 0.54 to 0.60 in phase 2; test 0.54 (below the 0.61 baseline).
+- source: repo figure_01
+  task: SWE-Atlas-QnA, GAIA-Shell
+  effect: Submission-path edits in 15/20 and 18/20 runs; 2/20 on Terminal-Bench, where the verifier does
+    not read an answer string.
+related:
+- 3.a.iv
+- 9.b.iii
+- 7.b.ii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: parsing
+  harness_role: submission
+  action: fix

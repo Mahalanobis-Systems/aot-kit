@@ -1,0 +1,115 @@
+# 6.b.i: Parallel tool execution for read-only calls
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.b.i
+legacy_id: P52
+slug: parallel-read-only-tools
+name: Parallel tool execution for read-only calls
+kind: pattern
+status: outline
+tiers:
+- tier: 3
+  why: it changes execution order and latency
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- tool-use
+categories:
+- topologies.parallel
+summary: Parallel tool execution for read-only calls
+detect:
+  static: Tools classified read-only or mutating; concurrent dispatch for read-only batches.
+  traces: Overlapping tool spans; ordering violations.
+  evals: Latency; race-condition failures.
+  probes:
+    what: Batches mixing reads and writes.
+    construct: A read that depends on a write in the same batch.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: small
+    when: 'Races if misclassified. VeRO T36: shell concurrency was only ever raised.'
+    basis: assessment
+  cost:
+    effect: none
+    basis: assessment
+  performance:
+    effect: improves
+    size: large
+    basis: assessment
+  security:
+    effect: mixed
+    size: small
+    basis: assessment
+  governance:
+    effect: none
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - performance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Kim et al., "An LLM Compiler for Parallel Function Calling", https://arxiv.org/abs/2312.04511
+  date: '2023-12-07'
+  task: Plan function calls as a dependency graph and run independent calls in parallel
+  effect: '"latency speedup of up to 3.7x, cost savings of up to 6.7x, and accuracy improvement of up to ~9% compared
+    to ReAct"'
+  conditions: vs ReAct, across function-calling benchmarks
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Mutating calls serialized; read-only concurrent.
+    examples: Mixed-batch probes.
+    benchmark: null
+    production: p95 latency; race errors.
+    primary:
+    - unit
+    - production
+  impact:
+    cost:
+      effect: none
+      magnitude: low
+      note: ''
+    security:
+      effect: mixed
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: none
+      magnitude: low
+      note: ''
+    quality:
+      effect: mixed
+      magnitude: low
+      note: 'Races if misclassified. VeRO T36: shell concurrency was only ever raised.'
+    latency:
+      effect: improves
+      magnitude: high
+      note: ''
+    primary:
+    - latency
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: parallelization
+  library_group: Control Flow
+  library_source: catalog

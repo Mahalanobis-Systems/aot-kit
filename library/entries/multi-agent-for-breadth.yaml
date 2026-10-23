@@ -1,0 +1,405 @@
+# 6.b.iii: Use multi-agent orchestration only for breadth-first, independent sub-tasks
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.b.iii
+legacy_id: T64
+slug: multi-agent-for-breadth
+name: Use multi-agent orchestration only for breadth-first, independent sub-tasks
+kind: technique
+status: card
+tiers:
+- tier: 4
+  why: a multi-agent topology is a restructuring; only a production test shows its behavior on live traffic
+levers:
+- control-flow
+- context
+domains:
+- general
+evidence_domains:
+- web-research
+- code-generation
+- data-analysis
+categories:
+- topologies.parallel
+- context.isolate
+summary: 'Spawn parallel sub-agents when the work splits into independent, breadth-first parts with little
+  shared context; expect about 15x the tokens of a chat and up to 90% less wall-clock. Default to a single
+  agent otherwise (most coding): parallel workers make conflicting implicit decisions, and decompose-first
+  planning scored below a single agent on data questions. When delegating, share full traces, give each
+  sub-agent an objective, output format, tools and boundaries, have it write outputs to storage and return
+  references, and re-verify what it reports.'
+how: '1. Check the task shape: independent parts, little shared context. 2. If so, prototype a lead plus
+  3-5 parallel sub-agents with the delegation rules above. 3. Production A/B against the single agent
+  on cost, latency and quality.'
+detect:
+  static: a multi-agent design whose sub-tasks share context or depend on each other; or a single agent
+    on a breadth-first task with many independent parts
+  traces: sub-agents duplicating work or making conflicting decisions; failure rows labeled delegation-failure-subagent
+    or communication-failure-subagent; token use per task far above a single agent's
+  evals: single-agent against multi-agent on the same tasks
+impact:
+  quality:
+    effect: mixed
+    size: large
+    when: +90.2% on breadth-first research (Jun 2025); below a single agent when sub-tasks depend on each
+      other (GATE, Jun 2026)
+    basis: evidence
+  cost:
+    effect: degrades
+    size: large
+    when: about 15x the tokens of chat
+    basis: evidence
+  performance:
+    effect: improves
+    size: large
+    when: up to 90% less time with parallelism
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: production-test
+  tier: 4
+  how: A/B, single agent against multi-agent
+evidence:
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Orchestrator-worker with capable lead, cheaper parallel subagents
+  effect: '"a multi-agent system with Claude Opus 4 as the lead agent and Claude Sonnet 4 subagents outperformed
+    single-agent Claude Opus 4 by 90.2% on our internal research eval" (n not given; "excel especially
+    for breadth-first queries"). Cost: "agents typically use about 4x more tokens than chat interactions,
+    and multi-agent systems use about 15x more tokens than chats". Poor fit: "domains that require all
+    agents to share the same context or involve many dependencies between agents ... most coding tasks".'
+  direction: supports
+  measured: true
+  locator: Benefits of a multi-agent system; Architecture overview for Research
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Specify each subagent task with objective, format, tools, boundaries
+  effect: Short instructions like "research the semiconductor shortage" led subagents to misinterpret
+    or duplicate ("one subagent explored the 2021 automotive chip crisis while 2 others duplicated work
+    investigating current 2025 supply chains"). "Without detailed task descriptions, agents duplicate
+    work, leave gaps, or fail to find necessary information."
+  direction: supports
+  measured: false
+  locator: 'Prompt engineering: Teach the orchestrator how to delegate'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Spawn subagents in parallel, not serially
+  effect: 'Together with parallel tool calls in subagents: "These changes cut research time by up to 90%
+    for complex queries". Joint figure for both changes.'
+  direction: supports
+  measured: true
+  locator: 'Prompt engineering: Parallel tool calling transforms speed and performance'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Issue 3+ tool calls in parallel per subagent
+  effect: 'Joint figure with parallel subagent spawning: "cut research time by up to 90% for complex queries".'
+  direction: supports
+  measured: true
+  locator: 'Prompt engineering: Parallel tool calling transforms speed and performance'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Run subagents asynchronously (proposed)
+  effect: 'Currently synchronous: "the lead agent can''t steer subagents, subagents can''t coordinate,
+    and the entire system can be blocked while waiting for a single subagent". Async "adds challenges
+    in result coordination, state consistency, and error propagation".'
+  direction: supports
+  measured: false
+  locator: 'Production reliability: Synchronous execution creates bottlenecks'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Hand off to a fresh subagent near the context limit
+  effect: '"When context limits approach, agents can spawn fresh subagents with clean contexts while maintaining
+    continuity through careful handoffs."'
+  direction: supports
+  measured: false
+  locator: 'Appendix: Long-horizon conversation management'
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Have subagents write outputs to storage, return references
+  effect: '"This prevents information loss during multi-stage processing and reduces token overhead from
+    copying large outputs through conversation history." Best "for structured outputs like code, reports,
+    or data visualizations".'
+  direction: supports
+  measured: false
+  locator: 'Appendix: Subagent output to a filesystem'
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Default to a single-threaded linear agent
+  effect: '"The simplest way to follow the principles is to just use a single-threaded linear agent ...
+    Here, the context is continuous." "the simple architecture will get you very far".'
+  direction: supports
+  measured: false
+  locator: A Theory of Building Long-running Agents (after Principle 2)
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Share full agent traces with subagents, not task messages
+  effect: 'Principle 1: "Share context, and share full agent traces, not just individual messages." Copying
+    the original task is not enough because "the conversation is most likely multi-turn, the agent probably
+    had to make some tool calls to decide how to break down the task". Illustrated with a Flappy Bird
+    clone whose subtasks were each misread.'
+  direction: supports
+  measured: false
+  locator: Principle 1
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Do not run parallel agents that make implicit decisions
+  effect: 'Principle 2: "Actions carry implicit decisions, and conflicting decisions carry bad results."
+    Even with shared context, parallel subagents produced "a bird and background with completely different
+    visual styles". Principles 1 and 2 are "so rarely worth violating, that you should by default rule
+    out any agent architectures that don''t abide by them."'
+  direction: supports
+  measured: false
+  locator: Principle 2
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Limit subagents to answering well-defined questions, sequentially
+  effect: Claude Code (June 2025) "never does work in parallel with the subtask agent, and the subtask
+    agent is usually only tasked with answering a question, not writing any code ... The benefit ... is
+    that all the subagent's investigative work does not need to remain in the history of the main agent".
+  direction: supports
+  measured: false
+  locator: 'Applying the Principles: Claude Code Subagents'
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Decide and apply edits in one model action
+  effect: Edit-apply systems "would still be very faulty ... the small model would misinterpret the instructions
+    of the large model and make an incorrect edit due to the most slight ambiguities". "Today, the edit
+    decision-making and applying are more often done by a single model in one action."
+  direction: supports
+  measured: false
+  locator: 'Applying the Principles: Edit Apply Models'
+- source: Walden Yan (Cognition), "Don't Build Multi-Agents", https://cognition.com/blog/dont-build-multi-agents
+  date: '2025-06-12'
+  task: Avoid agents negotiating with each other to resolve conflicts
+  effect: '"running multiple agents in collaboration only results in fragile systems. The decision-making
+    ends up being too dispersed and context isn''t able to be shared thoroughly enough between the agents."'
+  direction: supports
+  measured: false
+  locator: 'Applying the Principles: Multi-Agents'
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Require subagent delegation for large review corpora
+  effect: 'Controlled experiment, 6 models x 5 scenarios x 20 runs per condition (1,200 runs), prohibited
+    -> required delegation: mean files touched 86.9% -> 97.3%, lines read 67.0% -> 87.3%, needles reported
+    49.9% -> 69.6% (e.g. Sonnet 5 27.7% -> 53.7%, Opus 5 69.7% -> 95.7%). Explicit overclaiming across
+    all runs 34.5% -> 16.3%. All-files-touched increase significant in both families (Claude G2=46.27,
+    GPT G2=39.58, p<0.0001).'
+  direction: supports
+  measured: true
+  locator: §3.4 Controlled delegation experiment, §4, Appendix D.2 Tables 4-5, Figure 4
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Delegation does not make coverage reports honest
+  effect: 'Same 1,200-run experiment: among incomplete reviews, misleading rate rose 80.7% -> 93.8% overall
+    (Claude family condition effect G2=19.10, p<0.0001; Fable 5 64.9% -> 100%, Sonnet 5 60.8% -> 84.2%);
+    GPT models stayed at or near 100% in both conditions. 50.3% of incomplete delegating reviews still
+    explicitly overclaimed; 83-100% failed to disclose the gap across the six models.'
+  direction: supports
+  measured: true
+  locator: §4 Subagents increase coverage but do not improve honesty, Appendix D.2 Table 5
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Decompose the query into sub-tasks before observing data
+  effect: 'Table 1, decomposition-first ReDel vs single-agent ReAct: Qwen3-8B EHRSQL 26.4 vs 30.2, LS-Hard
+    8.0 vs 14.5; GPT-5.4-mini EHRSQL 26.8 vs 32.2. ReDel beats ReAct only on RealEHR (both models) and
+    LS-Hard GPT-5.4-mini (40.2 vs 37.8). Authors argue decomposition is fixed "before sufficient database
+    observations are available."'
+  direction: supports
+  measured: true
+  locator: §2 Decomposition for grounding; Table 1
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Stay single-agent until breadth-first exploration pays off
+  effect: 'Rec 12 citing [17]: multi-agent systems use "~15x more tokens" than a chat baseline and "most
+    coding tasks involve fewer truly parallelizable tasks than research".'
+  direction: supports
+  measured: false
+  locator: Recommendation 12; Sec 15.1
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Spawn sub-agents with isolated context, summary-only returns
+  effect: Claude Code AgentTool agent definitions (Explore, Plan, VerificationAgent); OpenCode returns
+    "only the final assistant text wrapped in <task_result>"; Hermes "summary-only return"; Pi separate
+    OS process "hard context isolation by construction".
+  direction: supports
+  measured: false
+  locator: Sec 11.1–11.9; Table 11 "Recursive Composition"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Control how much history a sub-agent inherits
+  effect: Codex SpawnAgentForkMode "(FullHistory or LastNTurns(N))"; keep_forked_rollout_item() "preserves
+    only system/developer/user messages and final assistant answers, filtering out intermediate tool calls
+    and reasoning."
+  direction: supports
+  measured: false
+  locator: Sec 11.3; Sec 6.4
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Restrict sub-agent tools and block recursion
+  effect: Claude Code workers restricted to a 16-tool whitelist; Hermes "subagent must not gain tools
+    the parent lacks", six-tool blocklist, defaults "three concurrent children, 50-iteration budgets,
+    depth 1"; Mistral Vibe only "subagent"-tagged profiles (explore) are delegable; OpenCode children
+    inherit the parent's deny rules and recursion is off by default.
+  direction: supports
+  measured: false
+  locator: Sec 11.2.3; Sec 11.5; Sec 11.7; Sec 11.9
+- source: Drew Breunig, "How Long Contexts Fail / How to Fix Your Context", https://www.dbreunig.com/2025/06/22/how-contexts-fail-and-how-to-fix-them.html
+    ; https://www.dbreunig.com/2025/06/26/how-to-fix-your-context.html (2025-06-26)
+  date: '2025-06-22'
+  task: Quarantine subtasks in separate sub-agent contexts
+  effect: 'Quotes Anthropic''s multi-agent research system: Opus 4 lead with Sonnet 4 subagents "outperformed
+    single-agent Claude Opus 4 by 90.2% on our internal research eval". Secondary citation.'
+  direction: supports
+  measured: true
+  locator: 06-26 post, "Context Quarantine"
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Fan out independent checks to isolated sub-agents
+  effect: Claude Code team "uses sub-agents in code review to independently check different possible issues.
+    A similar map-reduce pattern can be used for tasks like updating lint rules or migrations."
+  direction: supports
+  measured: false
+  locator: Isolate Context
+related:
+- 5.c.ii
+- 6.b.ii
+- 9.b.iii
+absorbs:
+- legacy_id: P15
+  name: Parallelization by sectioning or voting
+  group: Workflow Patterns
+  source: master
+  family: workflow
+  sub_type: parallelization
+  categories:
+  - topologies.parallel
+  assessment:
+    detection:
+      static: Concurrent model calls (gather, thread pool) with an aggregation step.
+      traces: Overlapping spans; wall-clock vs sum of call durations.
+      evals: Quality vs serial; latency.
+      judge: Rate the aggregator's synthesis.
+      probes:
+        what: Tasks that decompose into independent parts.
+        construct: Multi-section documents or multi-criteria reviews.
+      primary:
+      - static
+      - traces
+    qa:
+      unit: Aggregation and partial-failure handling.
+      examples: Decomposable probes.
+      benchmark: Task benchmark with latency recorded.
+      production: p95 latency and cost.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: mixed
+        magnitude: medium
+        note: Sectioning is cost-neutral; voting multiplies cost.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Each call focuses on one concern.
+      latency:
+        effect: improves
+        magnitude: high
+        note: Sectioning only.
+      primary:
+      - latency
+      - quality
+- legacy_id: P16
+  name: Orchestrator-workers
+  group: Workflow Patterns
+  source: master
+  family: workflow
+  sub_type: orchestration
+  categories:
+  - topologies.parallel
+  assessment:
+    detection:
+      static: An orchestrator that spawns workers at runtime and synthesizes results; a task queue.
+      traces: Delegation tree; worker count per task; synthesis step present.
+      evals: End-to-end quality on open-ended tasks; cost per task.
+      judge: Rate decomposition and synthesis quality.
+      probes:
+        what: Tasks with subtasks that cannot be listed in advance.
+        construct: Open-ended research or multi-file coding tasks with hidden sub-requirements only discoverable
+          mid-task.
+      primary:
+      - traces
+      - evals
+    qa:
+      unit: Worker interface contract; failure of one worker does not sink the task.
+      examples: Open-ended probes.
+      benchmark: SWE-bench or research benchmark.
+      production: Cost per task; worker failure rate.
+      primary:
+      - benchmark
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: high
+        note: Many workers.
+      security:
+        effect: mixed
+        magnitude: medium
+        note: Workers hold tools.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: degrades
+        magnitude: low
+        note: Nested traces are harder to audit.
+      quality:
+        effect: improves
+        magnitude: high
+        note: VeRO's Orchestrator variant had the highest change-type entropy and joint-best Retail.
+      latency:
+        effect: degrades
+        magnitude: medium
+        note: ''
+      primary:
+      - quality
+      - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: orchestration
+  harness_role: control_loop
+  action: restructure

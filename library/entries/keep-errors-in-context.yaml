@@ -1,0 +1,363 @@
+# 7.b.ii: Keep errors in context
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.b.ii
+legacy_id: P26
+slug: keep-errors-in-context
+name: Keep errors in context
+kind: pattern
+status: card
+tiers:
+- tier: 2
+  why: 'error recovery: failures stay visible to the model'
+  proposed: true
+levers:
+- control-flow
+- context
+domains:
+- general
+evidence_domains:
+- tool-use
+- code-generation
+- planning
+categories:
+- orchestration.bound
+summary: 'Return every failed action to the model as an error it can read (the call, the cause, a capped
+  trace) instead of swallowing the exception, retrying silently, returning an empty result or deleting
+  the failed attempt, and collapse each error once it is resolved. Failures that surface as explicit errors
+  were recovered from far more often than failures that look like valid output (37 points more on average
+  across nine models on one benchmark), and a linter that shows its errors and rejects the bad edit raised
+  SWE-bench Lite from 15.0% to 18.0% on one model. The limits: in 135M-1.7B models the verbatim failed
+  call made exact repeats more likely (though deleting it was worse), a model''s own unflagged mistakes
+  in its context raise its later error rate, and on HumanEval restarting fresh after 2-3 failed fixes
+  beat continuing; so keep the diagnosis, cap it, and don''t let failures pile up.'
+how: '1. Start from the harness as it is and find every place a failure is hidden from the model: exceptions
+  swallowed, silent retries, a failed attempt deleted before the retry, a generic "operation failed" in
+  place of the cause, or an empty or default result returned on failure. Inject a few failures (a tool
+  that fails on first use, a silent wrong result, a third-party error message) and record recovery and
+  repeated failed calls. 2. Return every failed action to the model in the next turn as a tool result
+  marked as an error: the call (tool and arguments), the error type, the cause message and the exit code.
+  Never turn a failure into an empty or plausible-looking result; on one benchmark agents recovered from
+  silent failures 37 points less often than from explicit ones. Keeping the loop alive when a tool raises
+  is 2.b.i. 3. Cap what goes in: keep the exception type and message, the frames in the agent''s own code
+  and the last lines of output; write the full trace or log to a file and give the path (2.c.i); make test
+  and lint runs print a few lines, with ERROR and the reason on one line. Write the errors you own so
+  they name the fix, and strip sentences from third-party error text that ask for steps the agent cannot
+  take (a terminal command, a config change, a web page); in one study a one-sentence filter prompt raised
+  recovery on expired credentials from 45% to 82%. 4. Do not retry from a context with the failure deleted:
+  under greedy decoding that was the harness that repeated most. If the agent re-emits a failed call verbatim
+  (measured in small models), replace the earlier verbatim call with a short harness-written note of what
+  failed and why, or refuse exact repeats (7.b.i); keep the diagnosis either way. 5. Drop errors once they
+  are resolved: when a later call succeeds or the tests pass, collapse the old error observation to a
+  one-line stub, keep only the first of a run of identical format errors, and carry only unresolved errors
+  through compaction (5.a.i). Don''t let failures pile up: after 2-3 failed fixes of the same error, restart
+  from the original task (optionally with a one-line note of what failed) or hand off, since non-thinking
+  models make more mistakes as their own uncorrected errors accumulate in context. 6. Measure with paired
+  runs on the same tasks and injected failures, the harness as is against errors kept, capped and dropped
+  once resolved, per model: task success, recovery rate per injected failure by type (the agent''s own
+  call, credentials, permissions, rate limits, silent wrong results), exact and canonical repeat rate
+  of failed calls, runs ending in a loop, steps and tokens. Re-run after a model change: the repetition
+  effect shrank with model size, and thinking models did not self-condition.'
+detect:
+  static: Exceptions swallowed or retried silently; failures returned as empty or default results; a generic
+    "operation failed" in place of the cause; failed attempts deleted before a retry; full stack traces
+    or test logs passed untruncated; third-party error text passed through with steps the agent cannot
+    take (a terminal command, a config change, a web page).
+  traces: Errors absent from the next model input; exact repeats of a call that already failed; runs of
+    failed fixes of the same error; agents stopping after error text that asks for a step they cannot
+    take; error observations thousands of lines long.
+  evals: Recovery rate per injected failure and repeat rate of failed calls, alongside task success.
+  probes:
+    what: A tool that fails deterministically on first use.
+    construct: Inject a deterministic first-use failure, a silent failure (a plausible but wrong result)
+      and a developer-facing error message; check that the error reaches the next turn, and compare recovery
+      and repeats with the error kept verbatim, kept as a short description, and removed.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: recovery from silent failures 37.15 points below explicit errors, averaged over nine models
+      (Zhu, Jun 2026); lint errors shown with the bad edit rejected 18.0% vs 15.0% on SWE-bench Lite (Yang,
+      May 2024); in 135M-1.7B models a kept verbatim failed call raised repeat probability from 0.06 to
+      0.54, while deleting it raised exact repeats from 31% to 80% (Gumaan, Aug 2026); wrong answers in
+      a model's own history lowered later accuracy in non-thinking models of every size tested (Sinha,
+      Sep 2025); fresh starts after 2-3 failed debug attempts beat continuing, e.g. 72.56% to 82.82% (Adnan,
+      Jun 2025); a developer-facing step in the error text cut recovery from 82% to 45% (Xu, Sep 2026)
+    basis: evidence
+  cost:
+    effect: mixed
+    size: small
+    when: error text and full traces add tokens unless capped (Carlini, Feb 2026); masking old observations,
+      errors included, cut cost per instance by more than half in most configurations against the full
+      history (Lindenbauer, Aug 2025); fresh starts used similar or fewer tokens, e.g. 108,289 to about
+      89,000 (Adnan, Jun 2025); filtering 949 error messages with a prompt cost $0.09 (Xu, Sep 2026)
+    basis: evidence
+  performance:
+    effect: unknown
+    when: no study times error retention directly; LLM summaries that may hide failure signals lengthened
+      Gemini 2.5 Flash runs to 52 turns against 44 with observation masking (Lindenbauer, Aug 2025)
+  security:
+    effect: mixed
+    size: small
+    when: Stack traces may leak internals.
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    basis: assessment
+  brand:
+    effect: mixed
+    size: small
+    basis: assessment
+  primary:
+  - quality
+measure:
+- method: experiment
+  tier: 2
+  how: 'paired runs on a fixed task set with failures injected at fixed steps (a tool that fails deterministically
+    on first use, a silent failure that returns a plausible but wrong result, a third-party error that
+    names a step the agent cannot take): the harness as is against failures returned as error results
+    with capped traces and collapsed once resolved, and optionally against a harness-written note in place
+    of the verbatim failed call; per model: task success, recovery rate per injected failure, exact and
+    canonical repeat rate of failed calls, runs ending in a loop, steps and tokens'
+- method: monitor
+  how: 'in production traces: the share of failed tool calls whose error text reaches the next model input;
+    exact repeats of a call that already failed; consecutive failed attempts on the same error; the size
+    of error observations; and recovery after errors by failure type (the agent''s own call against credentials,
+    permissions and rate limits)'
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Production group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: 'Yichao ''Peak'' Ji (Manus), "Context Engineering for AI Agents: Lessons from Building Manus", https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus'
+  date: '2025-07-18'
+  task: Leave failed actions and their errors in the context instead of cleaning up the trace
+  effect: '"one of the most effective ways to improve agent behavior is deceptively simple: leave the wrong turns
+    in the context." No numbers.'
+  direction: supports
+  measured: false
+  locator: Keep the Wrong Stuff In
+- source: 'Akshit Sinha, Arvindh Arun, Shashwat Goel, Steffen Staab, Jonas Geiping, "The Illusion of Diminishing
+    Returns: Measuring Long Horizon Execution in LLMs", https://arxiv.org/abs/2509.09677'
+  date: '2025-09-11'
+  task: Counterfactually inject a chosen rate of wrong answers into the model's own earlier turns of a
+    long, fully specified execution task (a running sum over key lookups) and measure accuracy at turn
+    100; test thinking, a self-verification prompt and a sliding context window as fixes
+  effect: '"as we increase the rate of injected errors into the context, accuracy at turn 100 consistently
+    degrades further." Frontier non-thinking models (Kimi-K2, DeepSeek-V3, Qwen3-235B-Instruct-2507) "remain
+    susceptible to self-conditioning"; Qwen3 thinking models "do not self-condition—the accuracy of the
+    models at turn 100 remains stable, regardless of the error rate in its context." "Prompting to self-verify
+    does not suffice to fix the self-conditioning effect completely"; keeping only the most recent turns
+    (a sliding window) improved performance "significantly" on Gemma3 12B. From a manual reading of annotated
+    agent failures the authors "estimate that roughly 20% of GAIA, 48% of ALFWorld, 33% of WebShop failures
+    are similar to self-conditioning." The text gives no per-model numbers for the injection experiment
+    (plotted in Figure 5 only).'
+  conditions: Qwen3 4B-32B and Gemma3 4B-27B, plus frontier models via OpenRouter; synthetic key-value
+    task, 100 samples; the injected errors are unflagged wrong answers in the model's own turns, not tool
+    error messages; the sliding window suits only tasks without long-range dependencies
+  direction: contradicts
+  measured: true
+  locator: §3.2 Results 3-5, Figures 5-6; Appendix A; Appendix C.1-C.2, Figures 9-10
+- source: 'Esmail Gumaan, "Feedback That Backfires: Why Small Language Model Agents Repeat the Call They
+    Just Watched Fail", https://arxiv.org/abs/2608.23651'
+  date: '2026-08-24'
+  task: Measure whether a failed tool call and its error message in the transcript make the model less
+    likely to emit the same call again; compare harnesses that keep the transcript verbatim, add a do-not-repeat
+    instruction, delete the failed step (clean restart), replace the failed call with a runtime-generated
+    description of the failure, or block previously failed strings at the decoder
+  effect: 'Keeping the failed call and its error made a repeat more likely for all 6 models: "Over a fixed
+    candidate set the probability of repeating the failed call rises from 0.06 to 0.54"; "the failed call''s
+    surface form accounts for 83% of the damage, while the semantic contribution of marking it failed
+    is small and inconsistent in sign". The runtime description "removes 76% of the inversion at no token
+    cost". In rollouts (Qwen2.5-0.5B, 24 tasks) success and exact-repeat rate were 0.42 and 31% verbatim,
+    0.33 and 80% with the failed step deleted, 0.33 and 16% with the description, 0.42 and 8% with the
+    decoder ban, 0.58 and 24% with a do-not-repeat instruction; deleting the failed attempt "is the worst
+    harness we measured for repetition".'
+  conditions: 6 instruction-tuned checkpoints, 135M-1.7B, 4 families; the author's own synthetic tool-calling
+    environment and MBPP program repair (real Python tracebacks, which quote the failing line); greedy
+    decoding; single author; within each family the effect shrinks with model size and is untested above
+    1.7B; the description and the ban cut repeats but did not raise task success
+  direction: mixed
+  measured: true
+  locator: Abstract; §6.1 Table 3; §6.4-6.5; §8.3 Table 8; §10-11
+- source: 'Tobias Lindenbauer, Igor Slinko, Ludwig Felder, Egor Bogomolov, Yaroslav Zharov, "The Complexity
+    Trap: Simple Observation Masking Is as Efficient as LLM Summarization for Agent Context Management",
+    https://arxiv.org/abs/2508.21433'
+  date: '2025-08-29'
+  task: Replace environment observations older than a window with a placeholder while keeping all reasoning
+    and actions (observation masking), or summarize old turns with an LLM, against the full raw history
+  effect: 'Observation masking "halves cost relative to the Raw Agent while matching, and sometimes slightly
+    exceeding, the solve rate of LLM-Summary" (Qwen3-Coder 480B: 53.4% raw, 54.8% masking, 53.8% summary;
+    Gemini 2.5 Flash with thinking: 40.4%, 36.4%, 31.4%). Summaries lengthened runs (Gemini 2.5 Flash:
+    52 turns against 44 with masking and 50 raw), "suggesting they mask failure signals that would otherwise
+    prompt earlier termination." On error content: "SWE-agent directly elides retries due to syntax errors
+    from the dialog history. However, OpenHands retains such retry turns", so OpenHands needed a larger
+    masking window.'
+  conditions: SWE-agent on SWE-bench Verified, five model configurations (Qwen3-32B with and without thinking,
+    Qwen3-Coder 480B, Gemini 2.5 Flash with and without thinking); OpenHands probe on 50 instances; masks
+    all old observations, not errors specifically; the failure-signal reading is the authors' interpretation
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1 Table 1; §4.4 Figure 4; §5.1
+- source: 'John Yang, Carlos E. Jimenez, Alexander Wettig, Kilian Lieret, Shunyu Yao, Karthik Narasimhan,
+    Ofir Press, "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering", https://arxiv.org/abs/2405.15793'
+  date: '2024-05-06'
+  task: Lint every edit, discard edits that introduce errors and show the agent the lint errors with the
+    file before and after; after a run of malformed outputs keep only the first error message; collapse
+    observations older than the last 5 to one line
+  effect: Edit with linting 18.0% against 15.0% without on SWE-bench Lite; keeping the last 5 observations
+    18.0% against 15.0% for the full history. For malformed generations, "Once received, all past error
+    messages except the first are omitted." 51.7% of trajectories had one or more failed edits; "Any attempt
+    at editing has a 90.5% chance of eventually being successful. This probability drops off to 57.2%
+    after a single failed edit."
+  conditions: GPT-4 Turbo; ablations on SWE-bench Lite (300); the linting condition bundles showing the
+    error with rejecting the bad edit; failed-edit statistics over the full SWE-bench test set (2,294)
+  direction: supports
+  measured: true
+  locator: §3 (Context management); §5.1 Table 3; §5.2 (Editing remains challenging)
+- source: Xiaonan Xu, Wenjing Wu, "MCP Error Messages Written for Developers Hurt the Most Capable Agents
+    Most", https://arxiv.org/abs/2609.35381
+  date: '2026-09-28'
+  task: Return different error texts for the same failed call (a generic notice, the cause only, the cause
+    plus a correct next step, the cause plus a step the agent cannot take) and, on the harness side, strip
+    next-step sentences from the error text with a one-sentence prompt before the model reads it
+  effect: On expired credentials, recovery was 61% with "Operation failed.", 82% with the cause, and 45%
+    with the cause plus a terminal command; "deleting the step with a one-sentence prompt before the model
+    reads it raised recovery on expired credentials to 82%" (+37.5 points), and where the removed step
+    had been correct recovery changed by -1.7 to -0.8 points, intervals including zero. For failures in
+    the agent's own call (wrong unit or format, missing field, wrong tool, missing resource) recovery
+    "stayed within four points" of the generic notice under every text. On a rate limit the cause alone
+    left 5% recovered; naming the call to repeat gave 88%.
+  conditions: Five OpenAI models (GPT-5.5, GPT-5.6 Sol, GPT-6 Sol, GPT-6 Astra, GPT-6 Luna), reasoning
+    effort high; BFCL multi-turn tasks, seven failure types, 15,120 trials plus 1,440 for the filter;
+    agents limited to the task's tools; survey of 3,001 error messages in 150 MCP servers
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.2-4.3; §5.3; §5.4 Table 6; §6
+- source: 'Dongsheng Zhu, Xuchen Ma, Yucheng Shen, Xiang Li, Yukun Zhao, Shuaiqiang Wang, Lingyong Yan,
+    Dawei Yin, "When Tools Fail: Benchmarking Dynamic Replanning and Anomaly Recovery in LLM Agents",
+    https://arxiv.org/abs/2606.05806'
+  date: '2026-06-04'
+  task: Inject tool failures at fixed nodes of multi-step tool tasks, either explicit (machine-readable
+    exceptions such as HTTP 404) or implicit (structurally valid but semantically wrong output), transient
+    or permanent, and measure how often agents recover
+  effect: Recovery from implicit failures was lower than from explicit ones for every model; the gap was
+    "averaging 37.15% overall (53.75% for transient and 20.54% for permanent conditions)", which the authors
+    attribute to over-trust in "semantically perturbed tool outputs". A failure-aware prompt yielded "improvements
+    ranging from +1.5% to +20.8%" but success under perturbation stayed "substantially lower" than without
+    it.
+  conditions: Nine models (GLM-5.1, DeepSeek-V4-Pro, MiniMax-M2.7, Qwen3.5-35B-A3B, Qwen3.5-397B-A17B,
+    Qwen3.6-27B, GPT-5.5, Gemini-3.1-Pro-Preview, Claude-Sonnet-4-6); 2,000 instances from 400 synthesized
+    tasks over 270 tools; at most 25 steps; an implicit failure stands in for a harness that hides an
+    error, it is not a harness ablation
+  direction: supports
+  measured: true
+  locator: Abstract; §3.2; §4.1-4.2; §4.3 (The implicit–explicit trust gap), Figure 6
+- source: 'Muntasir Adnan, Carlos C. N. Kuhn, "The Debugging Decay Index: Rethinking Debugging Strategies
+    for Code LLMs", https://arxiv.org/abs/2506.18403'
+  date: '2025-06-23'
+  task: Debug generated code on test feedback in one conversation for up to six attempts, against clearing
+    the conversation and restarting from the problem statement alone at the attempt where debugging effectiveness
+    has decayed by 50% or 80%
+  effect: '"most models lose 60-80% of their debugging capability within just 2-3 attempts". Iterative
+    debugging itself raised llama3.1:8b from 56.707% at the first attempt to 72.561% within six; with
+    fresh starts at the computed points, "Of the six models evaluated, all showed performance improvements":
+    llama3.1:8b 72.56% to 82.82%, deepseek-coder-v2:16b 84.1% to 92.1%, Mistral:Instruct 54.3% to 62.8%
+    and 57.3%, at the same six-attempt budget with similar or fewer tokens.'
+  conditions: HumanEval (164 problems); decay fitted for 18 models, fresh starts tested on 6, mostly small
+    open models; the paper frames a fresh start as a shift "from exploitation to exploration", so the
+    gain is not attributed to removing errors alone
+  direction: contradicts
+  measured: true
+  locator: Abstract; RQ3; Table 1; Table 2 and its discussion
+- source: Nicholas Carlini (Anthropic), "Building a C compiler with a team of parallel Claudes", https://www.anthropic.com/engineering/building-c-compiler
+  date: '2026-02-05'
+  task: 'Keep test-harness output short for long-running autonomous agents: print a few lines, log the
+    rest to files, and make errors greppable'
+  effect: '"The test harness should not print thousands of useless bytes. At most, it should print a few
+    lines of output and log all important information to a file so Claude can find it when needed. Logfiles
+    should be easy to process automatically: if there are errors, Claude should write ERROR and put the
+    reason on the same line so grep will find it." No measured comparison.'
+  conditions: Claude Opus 4.6 agent teams, nearly 2,000 Claude Code sessions over two weeks; the author's
+    own project
+  direction: supports
+  measured: false
+  locator: 'Lessons from programming with Claude agent teams: Put yourself in Claude''s shoes (Context
+    window pollution)'
+- source: 'Ryan Lopopolo (OpenAI), "Harness engineering: leveraging Codex in an agent-first world", https://openai.com/index/harness-engineering/'
+  date: '2026-02-11'
+  task: Enforce architecture and taste rules with custom linters and structural tests whose error messages
+    are written for the agent
+  effect: '"Because the lints are custom, we write the error messages to inject remediation instructions
+    into agent context." No measured comparison.'
+  conditions: Codex agents building an internal product of about a million lines over five months; the
+    team's own report
+  direction: supports
+  measured: false
+  locator: Enforcing architecture and taste
+assessment:
+  qa:
+    unit: Error text appears in the next prompt.
+    examples: Failing-tool probes.
+    benchmark: null
+    production: Repeat-failure rate.
+    primary:
+    - unit
+    - production
+  impact:
+    cost:
+      effect: improves
+      magnitude: low
+      note: ''
+    security:
+      effect: mixed
+      magnitude: low
+      note: Stack traces may leak internals.
+    brand:
+      effect: mixed
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: improves
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+related:
+- 2.b.i
+- 7.b.i
+- 2.c.i
+- 5.a.i
+- 9.a.i
+- 2.a.ii
+- 7.c.i
+- 9.b.iii
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: state_management
+  library_group: Production
+  library_source: master
+caveats: 'No study isolates keeping versus hiding an error on a frontier agent: the closest measurements
+  are a bundled linter change on one model (+3 points on SWE-bench Lite), a benchmark that compares explicit
+  with silent tool failures, and a single-author study of 135M-1.7B models in which the verbatim failed
+  call raised repeats while deleting it was worse. Failures that accumulate hurt: wrong answers in a model''s
+  own history lowered its later accuracy in non-thinking models (not fixed by scale, absent in one thinking
+  family), and on HumanEval restarting fresh after 2-3 failed fixes beat continuing for all six models
+  tested. What the error says matters as much as whether it is shown: a step the agent cannot take cut
+  recovery from 82% to 45%, and for failures in the agent''s own call the wording barely mattered.'

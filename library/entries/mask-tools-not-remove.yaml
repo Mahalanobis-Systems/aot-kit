@@ -1,0 +1,350 @@
+# 3.b.ii: Mask tools instead of removing them
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 3.b.ii
+legacy_id: P23
+slug: mask-tools-not-remove
+name: Mask tools instead of removing them
+kind: pattern
+status: card
+tiers:
+- tier: 3
+  why: it changes which tools the model can choose
+  proposed: true
+levers:
+- context
+- tool-surface
+domains:
+- general
+evidence_domains:
+- tool-use
+- web-research
+- code-generation
+categories:
+- prompts.caching
+- tools.misuse
+summary: 'When the tools an agent may use change mid-task (by mode, phase or permission), declare every
+  tool once, keep the definitions byte-stable, and restrict the choice another way: OpenAI''s allowed_tools
+  or tool_choice "none", Anthropic''s appended tool_removal and tool_addition blocks, a decode-time logit
+  mask or grammar on self-hosted models, and a harness check that rejects calls outside the allowed set.
+  It pays in long sessions with cached prefixes, because editing the tool list invalidates everything
+  after it; on the newest Claude models an edited tool list also makes replayed thinking blocks fail with
+  an error. The evidence is vendor guidance plus indirect measurements: caching cut agent cost 41-80%
+  against a prefix broken on every call, and schema-enforced tool calling nearly eliminated calls to nonexistent
+  tools (3 against 34). No study compares masking with removal directly, and keeping disallowed tools
+  in view has its own measured cost (one unneeded tool cut answer rates from 98.2% to 63.5%).'
+how: '1. Start from the baseline: find where the harness rebuilds the tool list per turn (by mode, phase,
+  permission or connected MCP servers) and log a hash of the tools array on every request with the cache
+  read and write tokens, so each mid-session change and the cache miss after it is visible. 2. Declare
+  the full tool set once at session start, in a fixed order with deterministic serialization, and give
+  tools that switch on and off together a shared name prefix (browser_, shell_) so a group can be allowed
+  or blocked as one. Add tools unknown at the start by appending them (tool search with defer_loading,
+  OpenAI''s additional_tools input item, Anthropic''s tool_addition block), never by editing the array.
+  3. Write availability as a state machine in the harness (state to allowed set) and enforce it without
+  touching the definitions: on OpenAI, tool_choice {"type": "allowed_tools", ...} or "none"; on Claude,
+  an appended system message with tool_removal or tool_addition blocks (beta), because a tool_choice change
+  there re-reads the message history and forced tool choice and prefill are rejected on recent models;
+  on self-hosted models, a logit mask or grammar over the allowed names, or a prefill up to the shared
+  name prefix. 4. Keep a harness-side check whatever the provider: validate every call against the current
+  allowed set and the full registry, return an error result that names what is allowed instead of executing
+  or silently dropping the call, and leave earlier calls to now-unavailable tools in the history. 5. Keep
+  the model able to stop and to decline: do not force a tool call on every turn, and keep a final-answer
+  or no-tool path inside any mask. 6. If tools stay visible but disallowed for long stretches, check accuracy,
+  since a visible unneeded tool can lower answer rates: add a one-sentence note that tools are optional
+  and narrow in scope, and move groups that are rarely allowed behind deferred loading (see the tool-surface
+  entry, 2.a.i). 7. Measure with paired runs on sessions that change availability midway, the list rebuilt
+  per state against the stable list plus a restriction: cache read share, cost per task, time to first
+  token, calls to unavailable or undefined tools, task success and turns to finish, per model and provider.'
+detect:
+  static: Tool list rebuilt per turn from mode, phase, permissions or connected servers (a tools array
+    filtered by state, or prompt text that co-varies with the active toolset); no allowed-tools or tool_choice
+    restriction, appended tool_removal or tool_addition blocks, decode-time mask, or harness check of
+    each call against the allowed set.
+  traces: A different tools-array hash between turns of one session, followed by cache reads near zero
+    (provider cache diagnostics name the tools as the point of divergence); on Claude, tool_choice changing
+    between turns; calls to tools no longer defined or not allowed; on recent Claude models, 400 errors
+    on replayed thinking blocks after a tool edit.
+  evals: Cache hit rate; invalid tool call rate.
+  probes:
+    what: Sessions where a tool becomes unavailable midway.
+    construct: State transitions that disable a tool the model used earlier.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: schema-enforced calling cut calls to nonexistent tools from 34 to 3 across ten models (Iyer,
+      Sep 2026); but forcing a call on every turn made weak local models loop for 600-900 turns (Tang,
+      Sep 2026), one visible unneeded tool cut answer rates from 98.2% to 63.5% (Paturi, Sep 2026), and
+      per-step pruning beat a full list with the retrieved tools emphasized on small models (Patel, Dec
+      2025); no study compares masking with removal
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: avoids a full-prefix recompute at each tool-set change; caching cut agent cost 41.4-79.6% against
+      a prefix broken on every call (Lumer, Jan 2026); cached reads cost 0.1x input on most GPT-5.6+ models
+      (OpenAI docs, Oct 2026); on Claude a tool_choice change still re-reads the message history (Anthropic
+      docs, Oct 2026); the saving scales with how often the tool set changes
+    basis: evidence
+  performance:
+    effect: improves
+    size: small
+    when: time to first token 6.1-30.9% better with caching than with a prefix broken on every call (Lumer,
+      Jan 2026); a mask that forces a call every turn can stop a weak model from finishing (Tang, Sep
+      2026)
+    basis: evidence
+  security:
+    effect: improves
+    size: small
+    when: Constraints enforced at decode time.
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - cost
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired runs on probe sessions where the allowed tool set changes midway (a mode or phase switch,
+    a revoked permission, a tool the model used earlier becoming unavailable): the tool list rebuilt per
+    state against stable definitions with the provider''s restriction (allowed_tools or tool_choice, tool_removal
+    blocks, or a decode-time mask) plus a harness check; compare cache read share and cost per task, time
+    to first token, calls to unavailable or undefined tools, task success and turns to finish, per model
+    and provider'
+- method: monitor
+  how: 'per session: a hash of the tools array on every request, with cache read and write tokens on the
+    turn after any change (or the provider''s cache diagnostics); calls rejected for naming an unavailable
+    or undefined tool; sessions that hit the turn cap while a tool call was forced on every turn'
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Production group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: 'Yichao ''Peak'' Ji (Manus), "Context Engineering for AI Agents: Lessons from Building Manus", https://manus.im/blog/Context-Engineering-for-AI-Agents-Lessons-from-Building-Manus'
+  date: '2025-07-18'
+  task: Mask token logits to restrict tool choice instead of removing tool definitions mid-task
+  effect: Advises "avoid dynamically adding or removing tools mid-iteration" because changes "invalidate the KV-cache"
+    and leave references to undefined tools; Manus instead "masks the token logits during decoding". No numbers.
+  direction: supports
+  measured: false
+  locator: Mask, Don't Remove
+- source: OpenAI, "Prompt caching" and "Function calling" (API guides), https://platform.openai.com/docs/guides/prompt-caching
+    ; https://platform.openai.com/docs/guides/function-calling
+  date: '2026-10-17'
+  task: Keep the tools list stable and restrict which tools are callable per request with tool_choice
+    "none" or an allowed_tools list
+  effect: 'Prompt caching guide: a change to tools ("tool names, descriptions, schemas, ordering, or tool-specific
+    instructions") breaks prefix reuse. "When the tools your application needs vary between requests,
+    change which tools are callable while keeping their definitions stable to preserve reusable prefixes":
+    set tool_choice to "none" "instead of removing the tool definitions", use allowed_tools "to restrict
+    which tools are callable while keeping the supplied `tools` list stable", and with tool search "Discovered
+    tools are appended at the end of context, preserving earlier reusable content." Function calling guide:
+    configure allowed_tools to "not modify the list of tools you pass in, so you can maximize savings
+    from prompt caching." Vendor guidance, no numbers.'
+  conditions: 'Living docs; date is the access date. Same guide: cache reads cost 0.1x the input rate
+    on most GPT-5.6 and later models'
+  direction: supports
+  measured: false
+  locator: 'Prompt caching: settings table and "Manage tools with append-only updates"; Function calling:
+    Tool choice, "When to use allowed_tools"'
+- source: Anthropic, "Prompt caching" and "Tool use with prompt caching" (Claude API docs), https://docs.claude.com/en/docs/build-with-claude/prompt-caching
+    ; https://docs.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching
+  date: '2026-10-17'
+  task: Which changes to tool definitions and tool settings invalidate the prompt cache
+  effect: 'The cache follows tools, then system, then messages: "Modifying tool definitions (names, descriptions,
+    parameters) invalidates the entire cache", while "Changes to `tool_choice` parameter only affect message
+    blocks" (the tools and system caches stay valid, the messages cache does not); changing disable_parallel_tool_use
+    also invalidates the messages cache. Deferred tools "are not included in the system-prompt prefix"
+    and a discovered one is appended inline, so "adding tools dynamically through tool search does not
+    break your cache." No numbers.'
+  conditions: Living docs; date is the access date. Restricting choice with tool_choice keeps the tool
+    and system cache but re-reads the conversation history on Claude
+  direction: mixed
+  measured: false
+  locator: 'Prompt caching: What invalidates the cache (table); Tool use with prompt caching: defer_loading
+    and cache preservation; What invalidates your cache'
+- source: Anthropic, "Mid-conversation system messages and tool changes" (Claude API docs), https://docs.claude.com/docs/en/build-with-claude/mid-conversation-system-messages
+  date: '2026-07-24'
+  task: Declare the full tool set up front and withdraw or re-offer tools mid-conversation with appended
+    tool_removal and tool_addition blocks
+  effect: '"The `tools` array sits even earlier in the hashed request prefix than the top-level `system`
+    field, so editing it invalidates the prompt cache for the entire conversation." Instead, "declare
+    the full tool set in `tools` up front, then use `tool_addition` and `tool_removal` blocks to offer
+    a tool to the model, or withdraw it, from a specific point in the conversation onward. The `tools`
+    array itself never changes, so the cached prefix stays intact." Since September 22, 2026 a tool_addition
+    block can carry a full definition for a tool unknown at the start. The docs do not say whether a call
+    to a withdrawn tool is blocked. No numbers.'
+  conditions: Beta (mid-conversation-tool-changes-2026-07-01, then inline-tools-2026-09-15 headers), Claude
+    API; date is the beta launch in the API release notes
+  direction: supports
+  measured: false
+  locator: Mid-conversation tool changes; Define tools in a message (beta); Limitations; API release notes
+    July 24 and September 22, 2026
+- source: Anthropic, "What's new in Claude Opus 5.5" and "Migration guide" (Claude API docs), https://docs.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5
+    ; https://docs.claude.com/docs/en/models/opus-5-5/migration-guide
+  date: '2026-09-22'
+  task: What happens on the newest Claude models when tools are edited mid-conversation, and which restriction
+    mechanisms remain
+  effect: 'The API "checks whether anything before a Claude Opus 5.5 thinking block (the `system` prompt,
+    the `tools`, or an earlier message) has changed since the block was produced"; for accounts created
+    on or after August 31, 2026, replaying a block after such a change "returns a 400 error." Advice:
+    "Keep the conversation append-only so the question never arises: change instructions or tools with
+    mid-conversation system messages rather than edits." Two masking routes are gone on this model: tool_choice
+    "any" or "tool" "returns a 400 `invalid_request_error`" (auto and none still work), and "Prefilling
+    assistant messages returns a 400 error on Claude Opus 4.6 and later Opus models".'
+  conditions: Claude Opus 5.5 (the forced-tool rule also applies to Claude Fable 5.1); Claude API and
+    cloud platforms; vendor documentation, no numbers
+  direction: supports
+  measured: false
+  locator: 'What''s new: Breaking changes (Forced tool use is not supported; Thinking blocks are tied
+    to the model and the conversation); Migration guide: Prefill removal'
+- source: 'Elias Lumer, Faheem Nizar, Akshaya Jangiti, Kevin Frank, Anmol Gulati, Mandar Phadate, Vamse
+    Kumar Subbiah, "Don''t Break the Cache: An Evaluation of Prompt Caching for Long-Horizon Agentic Tasks",
+    https://arxiv.org/abs/2601.06007'
+  date: '2026-01-09'
+  task: Measure what prompt caching saves in a multi-turn tool-calling agent against a baseline that breaks
+    the prefix at the start of the system prompt on every call
+  effect: With the best cache mode per model, cost fell 79.6% (GPT-5.2), 78.5% (Claude Sonnet 4.5), 41.4%
+    (Gemini 2.5 Pro) and 45.9% (GPT-4o), and time to first token 13.0%, 22.9%, 6.1% and 30.9%; at 50,000-token
+    prompts GPT-5.2 saved 89% and Claude Sonnet 4.5 88%. The authors argue, without testing it, that "any
+    change to the available tool set invalidates the cached prefix" and suggest "a fixed set of general-purpose,
+    reusable functions" with dynamic capabilities done through code generation.
+  conditions: DeepResearch Bench, 40 sessions per model and cache condition, 10,000-token system prompt;
+    the baseline breaks the cache on every request (worst case), not one tool change; no tool-list change
+    was tested
+  direction: supports
+  measured: true
+  locator: §3.2; §4.1 Table 1; §5.1; §6.1
+- source: Laxmipriya Ganesh Iyer, "Closed-World Resolution Against Tool Hallucination in LLM Agents",
+    https://arxiv.org/abs/2609.19425
+  date: '2026-09-16'
+  task: Compare a schema-enforced tool-calling API with a raw-JSON surface (tool catalog described in
+    the prompt, calls parsed by a bridge) on probes that invite calls to nonexistent tools and undeclared
+    arguments
+  effect: '"across all ten models the schema surface emitted just 3 H1 calls, against 34 on raw-JSON"
+    (H1 = a fabricated tool), and every schema-surface one came from Llama-3.1-8B or Ministral-3-8B; on
+    raw-JSON "the same prompts induce hallucination at 13–57% across all ten models". Claude Opus and
+    Sonnet emitted no call on 70-75% of the adversarial schema probes, so their low rate is partly refusal.'
+  conditions: Ten Amazon Bedrock models (Claude Opus 4.8, Sonnet 4.6, Haiku 4.5, Nova Premier, Nova 2
+    Lite, GPT-OSS-120B, Llama-3.1 8B and 70B, Ministral-3-8B, Mistral-Large-3); 10 tools exposed from
+    a 100-tool registry; 60 adversarial probes per model per surface; single author; not a mid-task tool
+    change
+  direction: supports
+  measured: true
+  locator: §VI-A; Table I
+- source: 'Lijuan Tang, Yuemeng Zheng, "Measuring the Serving Stack Instead of the Model: Hidden Confounds
+    in Local Tool-Use Evaluation", https://arxiv.org/abs/2609.26693'
+  date: '2026-09-22'
+  task: Constrain decoding to a JSON schema whose name field is an enum of the available tools, so the
+    model must emit a valid call
+  effect: '"On a single tool-call step, all nine local models ... emit a valid in-schema call on 8 of
+    8 trials", but "Forced to emit a tool call on every turn, the weaker models never terminate, producing
+    600–900-turn loops within a single episode (Qwen-0.5B reached 869 assistant turns in one seed before
+    we cut it off)." The constraint "trades an unparseable-call failure for a non-termination failure
+    on weak models".'
+  conditions: Nine small local models on Ollama (including Qwen-0.5B, Llama-3.2, Phi-3, Gemma-3-270m);
+    coding-agent tasks; 8 trials; the constrained condition was run single-step only because the agentic
+    version did not terminate
+  direction: mixed
+  measured: true
+  locator: §4 Results ("Constrained decoding removes the protocol failures, at a cost"); Limitations
+- source: 'Saanvi Paturi, Arsen Kenzhebayev, Arham Sethi, Vyas Raina, Ivaxi Sheth, Vatsal Raina, "When
+    Tools Get in the Way: The Effect of Unnecessary Tool Availability on LLM Answering", https://arxiv.org/abs/2609.14157'
+  date: '2026-09-12'
+  task: Make a related but unnecessary tool available for questions the model can answer from its own
+    knowledge (the cost of a visible tool that should not be used)
+  effect: '"Across 3,000 baseline trials the pooled answer rate is 98.2%. When an unnecessary tool is
+    available it falls to 63.5%"; Gemini 2.5 Flash-Lite fell from 99.4% to 23.4% while calling the tool
+    in 7.8% of trials, so the drop "cannot be explained by unnecessary tool invocation alone". A one-sentence
+    scope-aware system instruction raised the tool-available answer rate by up to 45.6 percentage points,
+    at some cost to tool use where the tool was needed.'
+  conditions: '500 query pairs, 10 domains, one tool per domain; Gemini 2.5 Flash-Lite, Flash and Pro,
+    GPT-OSS 20B, Grok 4.1 Fast, Llama 3.3 70B; LLM judge; tests availability, not masking: whether a visible
+    but disallowed tool has the same effect is untested'
+  direction: mixed
+  measured: true
+  locator: Abstract; §6 Table 2; §6.3 Table 4
+- source: Bhrij Patel, Davide Belli, Amir Jalalirad, Maximilian Arnold, Aleksandr Ermolov, Bence Major,
+    "Dynamic Tool Dependency Retrieval for Lightweight Function Calling", https://arxiv.org/abs/2512.17052
+  date: '2025-12-18'
+  task: 'Re-retrieve the tools at every step from the query and the calls so far, and compare showing
+    only the retrieved tools ("Hard Mask": "completely exclude the remaining tools from the prompt") with
+    showing the full set and emphasizing the retrieved ones ("Soft Mask")'
+  effect: '"Hard Masking achieves the highest accuracy for smaller models by directly pruning the set
+    of available tools presented to the LLM"; "Pruning irrelevant tools from the prompt has a greater
+    impact for smaller models that cannot handle longer contexts." Per-step retrieval "improves function
+    calling success rates between 23% and 104% compared to state-of-the-art static retrievers." Efficiency
+    is measured as prompt length only; cache reuse is not measured.'
+  conditions: Qwen3 0.6B-14B, GPT-4o, Gorilla-V2; TinyAgent and three TaskBench sets; the soft mask is
+    a prompt emphasis, not a decode-time mask; hard against soft numbers only in Figure 3
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5 ICL methods; §6 "How to encode tools in prompt?", Figure 3
+assessment:
+  qa:
+    unit: Masked tools are never called.
+    examples: Transition probes.
+    benchmark: null
+    production: Invalid tool call rate.
+    primary:
+    - unit
+  impact:
+    cost:
+      effect: improves
+      magnitude: medium
+      note: Cache preserved.
+    security:
+      effect: improves
+      magnitude: low
+      note: Constraints enforced at decode time.
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: low
+      note: ''
+    latency:
+      effect: improves
+      magnitude: low
+      note: ''
+    primary:
+    - cost
+related:
+- 3.b.i
+- 2.a.i
+- 10.b.i
+- 2.b.i
+- 2.a.ii
+- 2.a.iii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: api
+  library_group: Production
+  library_source: master
+caveats: 'No study measures masking against removing tools on the same agent: the cache case rests on
+  vendor documentation and on measurements of caching in general, and the saving scales with how often
+  the tool set changes and how long the prefix is. Masking keeps disallowed tools in view, and visibility
+  has a measured cost: one unneeded tool cut answer rates from 98.2% to 63.5% across six models, and per-step
+  pruning beat a full list with the retrieved tools emphasized on small on-device models. Mechanisms differ
+  by provider: on Claude a tool_choice change still re-reads the message history, and forced tool choice
+  and prefill are rejected on recent models, so Manus''s prefill recipe now applies mainly to self-hosted
+  models, where forcing a call every turn made weak models loop. The constrained-decoding results come
+  from small open models, adversarial probes and single-step runs.'

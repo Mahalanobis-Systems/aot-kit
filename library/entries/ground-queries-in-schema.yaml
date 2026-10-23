@@ -1,0 +1,117 @@
+# 5.b.i: Give the model the schema it queries, in context: descriptions, keys, codes, sample values
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 5.b.i
+legacy_id: T40
+slug: ground-queries-in-schema
+name: 'Give the model the schema it queries, in context: descriptions, keys, codes, sample values'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- knowledge-access
+- context
+domains:
+- data-analysis
+evidence_domains:
+- data-analysis
+categories:
+- context.filter-input
+- retrieval.query
+summary: 'When the model writes SQL or structured filters, put the schema it is querying in its context:
+  table and column descriptions, key relationships, what enum codes and nulls mean, sample values. Give
+  it directly, in the prompt or as files it reads, rather than behind a search tool. This holds while
+  the schema fits in a modest share of the window; past that, link it by exploration (8.b.ii). Making the
+  schema context good (names, descriptions, examples) is data-side work.'
+how: '1. Count the schema''s tokens with descriptions and sample values; if it takes more than a modest
+  share of the window, use 8.b.ii instead. 2. Write or generate the missing descriptions: column meanings,
+  keys, enum codes, null semantics. 3. Put the schema in the prompt, or mount it as files, instead of
+  a retrieval tool. 4. Paired eval on execution accuracy and wrong-table, wrong-column and wrong-value
+  failures.'
+detect:
+  static: a SQL-writing agent with no table and column descriptions, keys or allowed values in its context;
+    schema context reachable only through a search tool
+  traces: queries against non-existent columns, wrong joins, guessed enum codes; failure rows labeled
+    tool-hallucination (names) or domain-knowledge-deficit
+  evals: failures from wrong table, column or value
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'Cube: +17 to +23 points from a semantic-context document on 99 questions (Apr 2026)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    when: the schema costs prompt tokens on every call; caching the prefix (3.b.i) recovers most of it
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval with and without the schema context, on execution accuracy
+evidence:
+- source: Andrew Qu (Vercel), "We removed 80% of our agent's tools", https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools
+  date: '2025-12-22'
+  task: Mount raw semantic-layer files instead of retrieval tools
+  effect: 'Same bundled 5-query result. "The semantic layer is already great documentation ... We were
+    building tools to summarize what was already legible. Claude just needed access to read it directly."
+    Code: sandbox.writeFiles(files) from ./semantic-catalog.'
+  direction: supports
+  measured: true
+  locator: 'v2: The file system is the agent'
+- source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
+    A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
+  date: '2026-04-28'
+  task: Add a hand-authored semantic-layer document to the prompt
+  effect: n=99, single shot, analytical verdict. Opus 4.7 50.5% -> 67.7% (+17.2 pp, McNemar b/c 22/5,
+    p=0.0015); Sonnet 4.6 46.5% -> 68.7% (+22.2 pp, 30/8, p=0.0005); GPT-5.4 45.5% -> 68.7% (+23.2 pp,
+    27/4, p<0.0001). The document also broke 4-8 previously passing questions per model (the c counts).
+    Mean input tokens rose ~2-4K per query (e.g. Sonnet 14,364 -> 17,303); latency changed -0.9 to +1.8
+    s. Document written once and not iterated against the benchmark; residual ~30% failures sit on percentiles,
+    correlation, stddev, ABC classification, threshold ranking and complex CTE shapes.
+  direction: supports
+  measured: true
+  locator: Section 4.2 Conditions; Table 1; Section 5.4; REPORT.md 2.2
+- source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
+    A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
+  date: '2026-04-28'
+  task: Put the semantic context in the prompt, not behind search
+  effect: 'Reported only in passing (Section 6.5; REPORT.md 3.5): "did not significantly outperform raw-DDL
+    Claude on this benchmark"; numbers not given in the paper. 25-table schema, so everything fit in context;
+    the authors flag 1,000+ table warehouses as open.'
+  direction: supports
+  measured: false
+  locator: Section 6.5 Limitations; REPORT.md 3.5
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Render tables as CREATE TABLE with extended column descriptions
+  effect: Described in §2.2.2; not ablated separately.
+  direction: supports
+  measured: false
+  locator: §2.2.2
+related:
+- 8.b.ii
+- 8.a.ii
+- 7.a.i
+- 3.b.i
+- 9.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: context
+  harness_role: retrieval
+  action: add
+caveats: The measured gain comes from a semantic-layer vendor's study (Cube) on one 25-table schema. Past
+  a modest share of the window, loading the whole schema costs more than it returns; that is 8.b.ii.

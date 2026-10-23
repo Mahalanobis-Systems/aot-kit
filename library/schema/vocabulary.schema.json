@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Optimization register vocabulary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "levers",
+    "domains",
+    "categories",
+    "tiers"
+  ],
+  "properties": {
+    "levers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "covers"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "covers": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "covers"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "covers": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "number",
+          "letter",
+          "name",
+          "items"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z-]*$"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The family's number in the library (1..N). Stable: entry numbers are built on it."
+          },
+          "letter": {
+            "type": "string",
+            "pattern": "^[a-z]$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string",
+            "description": "What the category covers, in a phrase; `name` is the short label (a noun for a family, a gerund for a sub-category)."
+          },
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "letter",
+                "name",
+                "lever"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z-]*\\.[a-z][a-z-]*$"
+                },
+                "letter": {
+                  "type": "string",
+                  "pattern": "^[a-z]$",
+                  "description": "The sub-category's letter within its family (2.a). Stable: entry numbers are built on it."
+                },
+                "name": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string",
+                  "description": "What the category covers, in a phrase; `name` is the short label (a noun for a family, a gerund for a sub-category)."
+                },
+                "lever": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tier",
+          "name",
+          "objective",
+          "gate",
+          "default_measure"
+        ],
+        "properties": {
+          "tier": {
+            "enum": [
+              1,
+              2,
+              3,
+              4
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "gate": {
+            "type": "string"
+          },
+          "default_measure": {
+            "enum": [
+              "verify-fix",
+              "before-after",
+              "experiment",
+              "production-test",
+              "monitor"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

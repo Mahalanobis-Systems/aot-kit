@@ -1,0 +1,216 @@
+# 10.c.i: Contain sensitive data and untrusted input
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 10.c.i
+legacy_id: T70
+slug: contain-untrusted-input
+name: Contain sensitive data and untrusted input
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: safety containment
+levers:
+- guardrails
+domains:
+- general
+evidence_domains:
+- tool-use
+- code-generation
+categories:
+- safety.data
+summary: Tokenize PII in the client so it never reaches the model, wrap untrusted tool and web results
+  in taint delimiters, scan context files and skills for prompt injection, and state an explicit instruction-precedence
+  order (user, repo, defaults, external data as data).
+how: 1. Map where PII and untrusted text enter the prompt. 2. Add tokenization at the client and delimiters
+  on untrusted results. 3. Add the precedence statement to the prompt. 4. Run injection and data-leak
+  safety evals.
+detect:
+  static: PII or untrusted content passed to the model unmarked; no instruction-precedence statement
+  traces: sensitive fields in model inputs or logs; injected instructions followed; failure rows labeled
+    indirect-prompt-injection
+  evals: injection and data-leak safety evals
+impact:
+  quality:
+    effect: none
+    basis: evidence
+  cost:
+    effect: none
+    basis: evidence
+  performance:
+    effect: none
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: injection and data-leak safety evals
+evidence:
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Tokenize PII in the MCP client
+  effect: '"The real email addresses, phone numbers, and names flow from Google Sheets to Salesforce,
+    but never through the model. This prevents the agent from accidentally logging or processing sensitive
+    data. You can also use this to define deterministic security rules, choosing where data can flow to
+    and from."'
+  direction: supports
+  measured: false
+  locator: 'Benefits: Privacy-preserving operations'
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: State an explicit instruction-precedence contract
+  effect: 'Mistral Vibe "a formal instruction-hierarchy contract: seven precedence levels ... prompt-injection
+    defense expressed as a ranking rather than prohibitions"; "Critical instructions—not overridable"
+    and "Overridable defaults" sections.'
+  direction: supports
+  measured: false
+  locator: Sec 7.3 "Identity and persona", "Emphasis markers"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Wrap untrusted tool/web results in taint delimiters
+  effect: Hermes "untrusted tool results wrapped in <untrusted_tool_result> delimiters with lookalike
+    defanging"; OpenHands "repository-derived context is wrapped in <UNTRUSTED_CONTENT> markers".
+  direction: supports
+  measured: false
+  locator: Sec 10.3; Sec 10.7; Table 12 "Untrusted-Content Delimiting"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Scan context files and skills for prompt injection
+  effect: Hermes "every context file is scanned for prompt-injection patterns and blocked wholesale on
+    a match"; "builtin/trusted/community trust tiers and quarantine"; Pi trust-gates repo config but "context
+    files load regardless—a documented, deliberate injection-surface acceptance."
+  direction: supports
+  measured: false
+  locator: Sec 9.7; Sec 10.7; Sec 10.8; Sec 12.5; Recommendation 14
+related:
+- 10.a.i
+absorbs:
+- legacy_id: P41
+  name: Dual LLM (privileged / quarantined)
+  group: Multi-Agent
+  source: catalog
+  family: workflow
+  sub_type: orchestration
+  categories:
+  - topologies.trust
+  assessment:
+    detection:
+      static: Two model roles; the quarantined one has no tools; data passed as references.
+      traces: Untrusted content never appears in the privileged model's context.
+      evals: Injection test-suite pass rate.
+      judge: Classify whether a privileged action was influenced by untrusted text.
+      probes:
+        what: Prompt-injection payloads inside untrusted data.
+        construct: Canary instructions in documents and web pages; success is the canary never executing.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Quarantined role has no tool bindings; reference passing.
+      examples: Injection probes.
+      benchmark: Injection benchmark.
+      production: Canary alerts.
+      primary:
+      - unit
+      - examples
+    impact:
+      cost:
+        effect: degrades
+        magnitude: low
+        note: ''
+      security:
+        effect: improves
+        magnitude: high
+        note: ''
+      brand:
+        effect: improves
+        magnitude: medium
+        note: Avoids hijacked behavior.
+      governance:
+        effect: improves
+        magnitude: high
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: Indirection limits what the privileged model can do with content.
+      latency:
+        effect: degrades
+        magnitude: low
+        note: ''
+      primary:
+      - security
+      - governance
+- legacy_id: P53
+  name: Context minimization
+  group: Context & Memory
+  source: catalog
+  family: workflow
+  sub_type: state_management
+  categories:
+  - context.lean-window
+  - topologies.trust
+  note: Purge untrusted segments once used.
+  assessment:
+    detection:
+      static: Untrusted segments removed from context after use.
+      traces: Prompt contents per turn; untrusted text absent after its step.
+      evals: Injection suite; context size.
+      judge: null
+      probes:
+        what: An injection in early input that targets a later step.
+        construct: Payload in the user prompt aimed at the summarization step.
+      primary:
+      - traces
+      - probes
+    qa:
+      unit: Removal happens before the next call.
+      examples: Delayed-injection probes.
+      benchmark: Injection benchmark.
+      production: Context size per turn.
+      primary:
+      - unit
+      - examples
+    impact:
+      cost:
+        effect: improves
+        magnitude: medium
+        note: ''
+      security:
+        effect: improves
+        magnitude: medium
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: ''
+      latency:
+        effect: improves
+        magnitude: low
+        note: ''
+      primary:
+      - security
+      - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: transformation
+  harness_role: tool_impl
+  action: add

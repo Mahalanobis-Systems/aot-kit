@@ -1,0 +1,314 @@
+# 2.a.iii: Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.a.iii
+legacy_id: T61
+slug: choose-action-interface
+name: 'Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes the agent's tools within the existing design
+levers:
+- tool-surface
+- model
+domains:
+- tool-use
+evidence_domains:
+- code-generation
+- tool-use
+- data-analysis
+- web-research
+- reasoning
+- retrieval
+categories:
+- tools.refactor
+- models.workload-fit
+summary: 'Decide the action interface deliberately, by model and by task, and provision what it needs.
+  The rule the evidence supports: (1) weaker models get typed tools (read, write, edit, grep, a narrow
+  calculator); a general code interpreter made a weak agent write boilerplate and fail until it was replaced
+  with typed functions. (2) Structured data gets a typed query tool, whatever the model: SQL scored 100%
+  against 52.7% for bash at a seventh of the tokens, and SQL plus bash also reached 100%. (3) Strong models
+  on shell-heavy or general office work get bash: on enterprise digital-worker tasks bash-only beat typed
+  tools by 21.8-24.5 points with fewer tokens, and typed tools on top of bash added nothing. (4) Work
+  that chains many calls or processes bulk data gets code execution, because intermediate results never
+  pass through the model; calling tools from code matched or beat JSON calling for 11 of 14 models on
+  BFCL v4, and a narrow calculator did as well as full code execution on maths. Whichever you choose:
+  start minimal and add tools per observed failure; for code or shell, provision the packages and fixtures
+  the agent expects, allow concurrent commands, and sandbox it (10.a.i).'
+how: '1. Classify the model''s shell and coding ability from a probe run (typed tools against bash-only
+  on 20 cases). 2. Pick the interface by the table in the summary; for code execution, install the packages
+  the tasks need and set up fixtures. 3. Add tools only when a trace shows a failure a tool would have
+  prevented. 4. Paired eval per model: success, cost, steps.'
+detect:
+  static: the interface in use (typed tools, code interpreter, bash), the model it serves, and whether
+    the environment has the packages and fixtures the tasks need
+  traces: bash-only runs emitting tools that do not exist; typed-tool runs re-patching the same file;
+    code errors in routine operations (reading a file, searching); import-error or command-not-found spans
+    at the start of runs; calculations done in the model's own text; independent commands serialized
+  evals: success and cost by model under each interface
+impact:
+  quality:
+    effect: mixed
+    size: large
+    when: typed tools +15.0 points for a weak model; bash-only +3.6 for a strong one (Fan, Sep 2026);
+      typed functions in place of an interpreter took GAIA from 0.07 to 0.24 (VeRO)
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: bash-only -53% cost for a bash-capable model; chaining tools in code 150k to 2k tokens in one
+      example
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired eval per model, interface A against B: success, cost, steps'
+evidence:
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Match action space to model's shell proficiency and task
+  effect: 'T4/128k, planning on. Nemotron-3 30B: typed tools +15.0 pts SWE (25.2 vs 10.2) and +10.1 TB.
+    66% of its bash-only TB runs end after emitting tools that don''t exist (trajectory 71->15 turns).
+    120B: tools +1.6 SWE / +4.5 TB and shorter runs (101->77, 96->70 turns) at no extra cost. 550B: bash-only
+    +3.6 SWE / +5.6 TB with cost -53% / -30% and calls -32% / -24%. Mistral: tools +23.2 on SWE (bash-only
+    45.4 vs 68.6; 32.8% of bash-only runs never edit vs 1.2%; file-localization failures 16.0%->41.4%),
+    but bash-only +6.7 on TB, where 71.9% of its actions were already bash. Bash-only cuts re-patching
+    for all models (e.g. 550B 4.6->1.5) and raises create/replace share on TB (e.g. 28%->64% for 30B).
+    The ablation bundles tool availability, prompts, file-state tracking and diagnostics.'
+  direction: supports
+  measured: true
+  locator: §2.2 Table 1; §3.2 'The predefined tool set scaffolds weaker models...', Fig 7; §4 Table 7;
+    App 9.3.1 Table 10, 9.5 Tables 11-12
+- source: Andrew Qu (Vercel), "We removed 80% of our agent's tools", https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools
+  date: '2025-12-22'
+  task: Replace specialized text-to-SQL tools with bash plus SQL
+  effect: 'Claude Opus 4.5, 5 representative queries, old vs new: avg time 274.8s -> 77.4s ("3.5x faster");
+    success 4/5 -> 5/5; avg tokens ~102k -> ~61k ("37% fewer"); avg steps ~12 -> ~7 ("42% fewer"). Worst
+    case: old "724 seconds, 100 steps, and 145,463 tokens before failing"; new "141 seconds with 19 steps
+    and 67,483 tokens" and succeeded. v1 code lists 17 tools. Bundled with the context and prompt removals
+    below, so not a single-variable result.'
+  direction: supports
+  measured: true
+  locator: 'v2: The file system is the agent; 3.5x faster table'
+- source: Andrew Qu (Vercel), "We removed 80% of our agent's tools", https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools
+  date: '2025-12-22'
+  task: Drop reasoning-constraining prompts and pre-filtered context
+  effect: 'Part of the bundled v1 -> v2 change (5 queries, Opus 4.5, numbers above). "We were constraining
+    reasoning because we didn''t trust the model to reason. With Opus 4.5, that constraint became a liability."
+    Both code samples show instructions: "", so the size of the prompt change is not visible.'
+  direction: supports
+  measured: true
+  locator: Getting out of the model's way; Lessons learned
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Start with a bash-only tool, add tools per failure
+  effect: '"Mini-SWE-Agent''s single-tool design reports 74%+ on SWE-Bench with essentially no tool infrastructure
+    (self-reported)"; the paper says it is not comparable head-to-head with Codex''s 69.1% (different
+    models, runs, sandboxing).'
+  direction: supports
+  measured: true
+  locator: Recommendation 3 (Sec 16.3); Sec 13.4; Sec 15.2
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Consolidate APIs instead of 1-to-1 wrapper tools
+  effect: 'Rec 17 quoting [18]: "a common error we''ve observed is tools that merely wrap existing software
+    functionality or API endpoints." Consolidate instead.'
+  direction: supports
+  measured: false
+  locator: Recommendation 17 (Sec 16.9)
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Give the agent a filesystem and shell
+  effect: '"The filesystem gives agents access to persistent context. The shell lets agents run built-in
+    utilities, CLIs, provided scripts, or code they write." Examples: Claude Code, Manus virtual computer.'
+  direction: supports
+  measured: false
+  locator: Give Agents A Computer
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Keep few atomic tools; push actions into bash
+  effect: 'Rationale: the GitHub MCP server "has 35 tools with ~26K tokens of tool definitions"; overlapping
+    tools confuse models. Claude Code uses "around a dozen tools", Manus "fewer than 20"; Manus action
+    space is "a hierarchy".'
+  direction: supports
+  measured: false
+  locator: Multi-Layer Action Space
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Give a read plus grep tool pair as minimum retrieval surface
+  effect: 'BrowseComp-Plus 100-q subset, GPT-5.4 nano, L4 context policy: read+grep 61% acc, 19 tool calls,
+    $0.0355/q vs Qwen3-Embedding-8B retrieval 45%, 18 calls, $0.0498/q vs BM25 32%, 19 calls, $0.0527/q.'
+  direction: supports
+  measured: true
+  locator: Sec 4.3 RQ6; Table 5
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Allow piped shell commands for chained lexical search
+  effect: 'BrowseComp-Plus 100-q subset, GPT-5.4 nano: open bash 73% vs read+grep 61% (+12), but 35 vs
+    19 tool calls and $0.1021 vs $0.0355 per q. Lite bash usage (3,168 commands): rg | head 56.2%, rg
+    | rg 20.6%, wc 7.8%, single rg 6.3%, ls 4.3%, python -c 2.4%, cat 0.1%. CC: Bash 62.4% / Grep 33.0%
+    of calls; within Bash, chained search 22.3%, local context peek 18.0%, regex 17.0%, file localization
+    14.0%, full-document read 9.1%.'
+  direction: supports
+  measured: true
+  locator: Sec 4.3 RQ6, Table 5; Appendix B.1, Fig 6; Fig 4 (right)
+- source: paper Figure 12
+  task: MATH
+  effect: Validation 0.88 to 0.92 (best of run) and test 0.86 to 0.88 with T07; train stayed at 0.81.
+- source: paper Figure 12
+  task: MATH
+  effect: Added in phase 5 (train 0.90, validation 0.90) then removed in phase 6; no lasting gain over
+    T08.
+- source: paper Figure 14 (Default, Sonnet 4.5)
+  task: GAIA
+  effect: The seed's CodeInterpreter tool was replaced with plain function tools (see T15) and that was
+    the biggest gain of the run.
+- source: paper Figure 14
+  task: GAIA
+  effect: Validation 0.07 to 0.24 in one phase; the largest single jump in any example trajectory. Final
+    0.30, the best GAIA result in Table 2.
+- source: paper Table 10
+  task: GAIA/FACTS/SimpleQA
+  effect: Knight 12+ packages vs Pawn 3 (math, datetime, json, re).
+- source: repo figure_04
+  task: Terminal-Bench and others
+  effect: MAX_CONCURRENT_SHELLS raised twice, never lowered.
+- source: repo figure_01
+  task: five follow-up benchmarks
+  effect: 3 to 13 of 20 runs per benchmark (13 on GAIA-Shell, whose seed is empty).
+- source: Mak et al., "Is Bash All You Need? An Empirical Study of Tool Interfaces for Enterprise Digital
+    Worker Agents", https://arxiv.org/abs/2609.11999
+  date: '2026-09-10'
+  task: Give a bash-only interface rather than typed tools for enterprise digital-worker tasks
+  effect: 'Opus-4.8 and GPT-5.5 on TheAgentCompany and APEX-Agents, five interfaces compared: bash-only
+    beats typed tools by 21.8-24.5 pp on TheAgentCompany and 4.8-7.4 pp on APEX-Agents, with 19-72% fewer
+    tokens. Adding typed or agent-synthesized tools on top of bash gives no measurable gain; programmatic
+    tool calling saves tokens but scores below bash.'
+  direction: supports
+  measured: true
+- source: Patel et al., "The Bitter Lesson of Tool Calling", https://arxiv.org/abs/2608.06370
+  date: '2026-08-06'
+  task: Call tools from code rather than JSON
+  effect: 'BFCL v4, 14 models: programmatic (code) tool calling matches or beats JSON tool calling in
+    11; more robust under degraded context, where the JSON baseline loses 2.3% on average.'
+  direction: supports
+  measured: true
+- source: Bin Wu et al. (Anthropic), "Introducing advanced tool use on the Claude Developer Platform",
+    https://www.anthropic.com/engineering/advanced-tool-use
+  date: '2025-11-24'
+  task: Call tools programmatically from code
+  effect: Programmatic tool calling cut tokens 37% (43.6k to 27.3k) on complex research tasks.
+  direction: supports
+  measured: true
+- source: 'Matt Carey (Cloudflare), "Code Mode: give agents an entire API in 1,000 tokens", https://blog.cloudflare.com/code-mode-mcp/'
+  date: '2026-02-20'
+  task: Expose a large API through search and execute in code
+  effect: 2,500+ API endpoints behind search() and execute(); the model writes code against the typed
+    spec in a sandbox. About 1k tokens against 1.17M, calculated not tested.
+  direction: supports
+  measured: false
+- source: Rizel Scarlett (Block), "8 Things You Didn't Know About Code Mode", https://goose-docs.ai/blog/2026/02/06/8-things-you-didnt-know-about-code-mode/
+  date: '2026-02-06'
+  task: Use code mode for multi-tool tasks only
+  effect: About 30% fewer tokens on identical tasks (one author's test, Opus 4.5); little benefit on single-tool
+    tasks; model-dependent. A description mentioning 'long-running task' pulled in the wrong extension;
+    explicit imports prevented it.
+  direction: mixed
+  measured: false
+- source: Ankur Goyal (Braintrust) and Andrew Qu (Vercel), "Testing if 'bash is all you need'", https://vercel.com/blog/testing-if-bash-is-all-you-need
+  date: '2026-01-22'
+  task: Give a typed query tool for structured data, not bash alone
+  effect: 'Structured-data questions, Sonnet 4.5: SQL tool 100% accurate, bash 52.7%, basic file tools
+    63%; bash used 7x the tokens and cost 6.5x more. SQL plus bash reached 100% with the agent checking
+    its own answers, at about 2x SQL''s tokens. Found and fixed 5 wrong expected answers in the benchmark.'
+  direction: mixed
+  measured: true
+caveats: 'The paper flags this as intuitively helpful but the test gain is within noise; MATH
+  baseline 0.87 is near the target model''s ceiling.'
+related:
+- 2.a.i
+- 6.c.i
+- 10.a.i
+- 9.a.i
+- 2.c.i
+absorbs:
+- legacy_id: P06
+  name: CodeAct
+  group: Prompting Strategies
+  source: master
+  family: tool
+  sub_type: code_execution
+  categories:
+  - tools.refactor
+  note: Emit executable Python instead of JSON tool calls.
+  assessment:
+    detection:
+      static: A tool that accepts a code string and executes it in a sandbox; JSON tool schemas replaced
+        or supplemented by a code tool.
+      traces: Code blocks as actions; round trips per task; sandbox errors and timeouts.
+      evals: Success on data-processing tasks; calls per task.
+      judge: Rate generated code for safety and for doing the task in one pass.
+      probes:
+        what: Tasks that need a loop over many records.
+        construct: Data tasks where the JSON-tool route would need more than ten calls (aggregate 50 rows,
+          dedupe a list).
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Sandbox isolation, timeouts, memory and network limits.
+      examples: Data-processing probes.
+      benchmark: Data-processing or coding benchmark.
+      production: Sandbox violation alerts; error rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: medium
+        note: One program replaces many round trips.
+      security:
+        effect: degrades
+        magnitude: high
+        note: Arbitrary code execution; sandbox quality decides everything.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: degrades
+        magnitude: medium
+        note: Harder to allowlist actions than with named tools.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: 'VeRO T12: a code tool was added then removed on MATH; replacing a code interpreter with
+          typed functions (T15) was the biggest GAIA gain.'
+      latency:
+        effect: improves
+        magnitude: medium
+        note: Fewer round trips.
+      primary:
+      - security
+      - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: api
+  harness_role: tool_surface
+  action: restructure

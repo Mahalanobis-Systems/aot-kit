@@ -1,0 +1,122 @@
+# 4.c.i: Episodic memory retrieval
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 4.c.i
+legacy_id: P55
+slug: episodic-memory
+name: Episodic memory retrieval
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it adds a cross-session memory architecture
+  proposed: true
+levers:
+- state
+domains:
+- memory
+evidence_domains:
+- code-generation
+categories:
+- memory.reuse
+summary: Episodic memory retrieval
+detect:
+  static: A vector store; write after each episode; top-k retrieval; TTL or decay.
+  traces: Memories retrieved per task; relevance.
+  evals: Repeat-mistake rate over time.
+  judge: Rate retrieved memories for relevance.
+  probes:
+    what: A task pair where the first teaches a lesson the second needs.
+    construct: Run task A with a known pitfall, then task B with the same pitfall.
+  primary:
+  - evals
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: medium
+    basis: assessment
+  cost:
+    effect: degrades
+    size: small
+    basis: assessment
+  performance:
+    effect: degrades
+    size: small
+    basis: assessment
+  security:
+    effect: mixed
+    size: medium
+    when: Memory poisoning.
+    basis: assessment
+  governance:
+    effect: mixed
+    size: medium
+    when: Retention of user data.
+    basis: assessment
+  brand:
+    effect: improves
+    size: small
+    basis: assessment
+  primary:
+  - quality
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Context & Memory group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: 'Shinn et al., "Reflexion: Language Agents with Verbal Reinforcement Learning", https://arxiv.org/abs/2303.11366'
+  date: '2023-03-20'
+  task: Agents write verbal reflections on task feedback into an episodic memory buffer and read them on later trials
+  effect: '"91% pass@1 accuracy on the HumanEval coding benchmark, surpassing the previous state-of-the-art GPT-4
+    that achieves 80%"'
+  conditions: HumanEval; also sequential decision-making and language reasoning tasks
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Store, retrieve, decay.
+    examples: Task-pair probes.
+    benchmark: null
+    production: Repeat-mistake rate; memory size.
+    primary:
+    - examples
+    - production
+  impact:
+    cost:
+      effect: degrades
+      magnitude: low
+      note: ''
+    security:
+      effect: mixed
+      magnitude: medium
+      note: Memory poisoning.
+    brand:
+      effect: improves
+      magnitude: low
+      note: ''
+    governance:
+      effect: mixed
+      magnitude: medium
+      note: Retention of user data.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: degrades
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: memory
+  library_group: Context & Memory
+  library_source: catalog

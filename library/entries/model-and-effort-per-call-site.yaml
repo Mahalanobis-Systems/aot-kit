@@ -1,0 +1,334 @@
+# 1.b.i: Match the model and its effort to each call site and query class
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 1.b.i
+legacy_id: T65
+slug: model-and-effort-per-call-site
+name: Match the model and its effort to each call site and query class
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: model per call site within the existing design
+levers:
+- model
+- prompt
+domains:
+- general
+evidence_domains:
+- data-analysis
+- code-generation
+- reasoning
+- web-research
+- tool-use
+categories:
+- models.specialists
+- models.workload-fit
+- prompts.reasoning-effort
+summary: Pick the model per role or call site rather than one model everywhere, and set its reasoning
+  effort and sampling parameters per site; tune each role's prompt to its model (GEPA raised every model
+  tested at lower cost). Give the agent explicit effort budgets by query class (e.g. one agent and 3-10
+  tool calls for simple fact-finding) so simple queries are not over-served. Upgrade the model generation
+  before doubling token budgets. A prompt that forces stepwise reasoning is the same lever from the prompt
+  side and hurt on GPQA; prefer the model's own effort setting.
+how: 1. From traces, list call sites and their token, cost and error profile. 2. For each, run a small
+  model grid (cheaper, specialist, effort levels) on the eval slice that exercises it. 3. Optimize each
+  site's prompt for its model. 4. Add per-query-class budgets. 5. Paired eval per call site.
+detect:
+  static: one model and one effort setting for every call site; no per-query-class budget
+  traces: simple queries using as many steps, tokens or sub-agents as complex ones; a call site whose
+    cost dominates with no quality reason; retries exhausted or timeouts at one site
+  evals: 'quality and cost per call site, per model; price not predicting quality across the measured
+    configurations (in an email-triage agent we measured: Spearman 0.12)'
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'Genie: 81.4% to 91.6% with a model per role (May 2026); in an email-triage agent we measured,
+      the best recall came from gpt-5-nano at low effort'
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: Genie 2.13x to 0.95x cost
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval per call site and per query class
+evidence:
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Assign a different LLM to each sub-agent role
+  effect: 'Figure 1, internal benchmark: + Multi-LLM (GPT-5.4 + Opus 4.6) on top of parallel thinking
+    81.4% -> 91.6% (+10.2pp) while relative cost falls 2.13x -> 0.95x (baseline code agent = 1.00x). Bundled
+    with GEPA-optimized prompts ("Multi-LLM design with optimized prompts").'
+  direction: supports
+  measured: true
+  locator: Multi-LLM section; Figure 1; Figure 3
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Optimize each sub-agent prompt per model with GEPA
+  effect: 'Figure 6, end-to-end accuracy of the Multi-LLM agent vs relative token cost (Sonnet 4.5 baseline
+    = 1.0), approximate reads, baseline -> GEPA-optimized table-search sub-agent: Sonnet 4.5 ~73.1% @1.00
+    -> ~78.2% @~0.80; GPT-5.4 ~71.8% @~0.76 -> ~78.2% @~0.74; GPT-5.4-mini ~75.3% @~0.72 -> ~76.9% @~0.66;
+    Opus 4.6 ~66.7% @~0.98 -> ~74.4% @0.90. Every model gained accuracy and lost cost; weakest baseline
+    (Opus 4.6 as table-search sub-agent) gained most.'
+  direction: supports
+  measured: true
+  locator: Multi-LLM section; Figure 6
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Dispatch distinct base prompts per model family
+  effect: OpenCode "nine base prompts by model-id substring"; Codex per-generation prompts delivered as
+    server-side catalog data; Hermes "15 guidance blocks gated by model family (tool-use enforcement blocks
+    are sent to GPT/Codex/Gemini/Grok/Qwen/DeepSeek models and never to Claude, with code comments citing
+    observed per-model failures)."
+  direction: supports
+  measured: false
+  locator: Sec 7.2; Observation 3; Table 12 "Model-Family Prompt Matrix"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Keep a per-model metadata registry
+  effect: Aider "per-model metadata for 350+ models"; "This data-driven approach enables support for new
+    models without code changes"; Pi "20 per-model compat quirk flags"; OpenCode 1,400-line per-vendor
+    transform matrix.
+  direction: supports
+  measured: false
+  locator: Sec 7.1; Sec 12.3; Recommendation 2
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Select edit format / edit toolset per model
+  effect: Aider picks among 13 edit formats via Coder.create() from model metadata; OpenCode "GPT-family
+    models receive a port of Codex's apply_patch DSL and lose edit/write entirely"; OpenHands "model-specific
+    tool presets (default, gemini, gpt5, planning)". The paper calls editing strategy "one of the most
+    important determinants of code-modification accuracy" (unmeasured).
+  direction: supports
+  measured: false
+  locator: Sec 8.4; Observation 4; Sec 15.4; Table 11 "Polymorphic Edits"
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Upgrade the model generation before doubling token budget
+  effect: '"upgrading to Claude Sonnet 4 is a larger performance gain than doubling the token budget on
+    Claude Sonnet 3.7" (BrowseComp analysis; no absolute numbers).'
+  direction: supports
+  measured: true
+  locator: Benefits of a multi-agent system
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Use a non-reasoning model as the tool-calling policy
+  effect: '"The reasoning LLM (DeepSeek-R1) is not chosen for AutoLink''s policy due to observed instruction
+    following degradation ... which occasionally leads to deviations from the required thought and action
+    format." Not quantified.'
+  direction: supports
+  measured: false
+  locator: Implementation Details, Experimental Setup
+- source: paper Figure 13
+  task: GPQA
+  effect: Train 0.61 to 0.58 (regressed) in phase 1.
+- source: paper §4.3, Table 10
+  task: GAIA/FACTS/SimpleQA (Knight agent)
+  effect: Knight's 140-line prompt bakes in CoT, ReAct and self-verification; it is harder to improve
+    but far more stable than Pawn.
+- source: repo figure_01
+  task: five follow-up benchmarks
+  effect: 8 to 14 of 20 runs per benchmark.
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Embed effort-scaling rules keyed to query complexity
+  effect: '"Simple fact-finding requires just 1 agent with 3-10 tool calls, direct comparisons might need
+    2-4 subagents with 10-15 calls each, and complex research might use more than 10 subagents". Fixes
+    errors "like spawning 50 subagents for simple queries"; over-investment "was a common failure mode
+    in our early versions."'
+  direction: supports
+  measured: false
+  locator: 'Prompt engineering: Scale effort to query complexity'
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Skip reflection on easy questions and prefetch metadata
+  effect: 'Stated for speed only: "it evaluates question difficulty, bypasses self-reflection for simple
+    queries, and pre-fetches table metadata to minimize routine tool calls." Not quantified.'
+  direction: supports
+  measured: false
+  locator: §2.3.1
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Scale retrieval depth to query difficulty
+  effect: The rationale is to control 'online access cost through query-adaptive retrieval'. No numbers
+    are quoted.
+  direction: supports
+  measured: false
+  locator: §3.3.1 Rule-enhanced Retrieval; Hierarchical Retrieval
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Call tools only when model confidence is low
+  effect: 'Xu et al.''s method ''could reduce the number of tool calls''. Framing: ''an efficient tool
+    user... calls tools only when the expected reduction in uncertainty or error justifies the cost''.'
+  direction: supports
+  measured: false
+  locator: §4.2 Cost-Aware Tool Calling; §4.3 Selective Invocation; §4.4 'Knowing When Not to Call Tools'
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Pick respond/retrieve/tool/verify/stop by estimated utility
+  effect: Described only qualitatively. The survey's point is that efficient tool calling must control
+    'when to stop, verify, or search'.
+  direction: supports
+  measured: false
+  locator: §4.2 Efficient Test-Time Scaling
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Default to a fast policy, escalate to slow planning
+  effect: SwiftSage reports token use and time steps, but the survey quotes no numbers. The rationale
+    is 'reserving expensive reasoning for difficult decisions'.
+  direction: supports
+  measured: false
+  locator: §5.1 Adaptive Budgeting and Control; §7 (MLLM fast-slow)
+caveats: 'The model checkpoint itself is off-limits under VeRO''s rules; only its call parameters
+  move.'
+related:
+- 9.c.ii
+- 6.b.iii
+absorbs:
+- legacy_id: P03
+  name: Chain-of-thought
+  group: Prompting Strategies
+  source: both
+  family: prompt
+  sub_type: instructions
+  categories:
+  - prompts.reasoning-effort
+  note: Zero-shot or few-shot reasoning steps; buys compute before acting.
+  assessment:
+    detection:
+      static: Prompt asks for step-by-step reasoning; reasoning parameter enabled on the model call; output
+        schema has a reasoning field.
+      traces: Reasoning tokens present before the answer; their length relative to task difficulty.
+      evals: Accuracy on multi-step items vs single-step; tokens per item.
+      judge: Is the reasoning load-bearing or post-hoc; is it verbose for the task.
+      probes:
+        what: Multi-step arithmetic or logic tasks with a plausible wrong shortcut.
+        construct: Three or more dependent steps; a shortcut answer that is wrong; a known ground truth.
+      primary:
+      - evals
+      - probes
+    qa:
+      unit: Reasoning field present when required by the schema.
+      examples: Probe set; check the shortcut answer is avoided.
+      benchmark: MATH or GPQA-style reasoning benchmark.
+      production: Tokens per item and accuracy on sampled traffic.
+      primary:
+      - benchmark
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: medium
+        note: More output tokens per item.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: mixed
+        magnitude: low
+        note: Exposed reasoning can read badly to end users.
+      governance:
+        effect: improves
+        magnitude: low
+        note: Reasoning is inspectable.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Task-dependent; VeRO found reasoning tasks bounded by the target model, T13 regressed on
+          GPQA.
+      latency:
+        effect: degrades
+        magnitude: medium
+        note: Longer generations.
+      primary:
+      - quality
+      - cost
+- legacy_id: P14
+  name: Routing to specialists
+  group: Workflow Patterns
+  source: master
+  family: workflow
+  sub_type: orchestration
+  categories:
+  - orchestration.route
+  - models.specialists
+  note: Includes easy-to-small-model / hard-to-large-model routing.
+  assessment:
+    detection:
+      static: A classifier step and a branch table; different models or prompts per branch.
+      traces: Route distribution; branch changes mid-task; fallback rate.
+      evals: Routing accuracy on labeled intents; per-branch quality.
+      judge: Label the correct route for sampled traffic.
+      probes:
+        what: Ambiguous inputs at route boundaries.
+        construct: A labeled set per route plus boundary cases written to sit between two routes.
+      primary:
+      - evals
+      - probes
+    qa:
+      unit: Router confusion matrix on the labeled set.
+      examples: Boundary probes.
+      benchmark: Per-branch benchmark.
+      production: Route distribution drift; fallback rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: Easy traffic to small models.
+      security:
+        effect: improves
+        magnitude: low
+        note: Scope per branch.
+      brand:
+        effect: improves
+        magnitude: low
+        note: Specialized handling.
+      governance:
+        effect: improves
+        magnitude: medium
+        note: Branch policies are explicit.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: ''
+      latency:
+        effect: improves
+        magnitude: medium
+        note: ''
+      primary:
+      - cost
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: config
+  sub_type: model_settings
+  harness_role: model_client
+  action: tune

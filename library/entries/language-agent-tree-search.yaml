@@ -1,0 +1,117 @@
+# 7.c.v: Language Agent Tree Search (LATS)
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.c.v
+legacy_id: P34
+slug: language-agent-tree-search
+name: Language Agent Tree Search (LATS)
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it replaces a single chain with a search
+  proposed: true
+levers:
+- control-flow
+domains:
+- reasoning
+- planning
+evidence_domains:
+- code-generation
+- computer-use
+categories:
+- orchestration.extra-compute
+summary: MCTS with LLM reflection.
+detect:
+  static: MCTS loop with selection, expansion, simulation and backpropagation; reflection used as value.
+  traces: Tree size; rollouts per item.
+  evals: Accuracy vs ReAct at equal budget.
+  judge: Rate reflections used as value estimates.
+  probes:
+    what: Multi-step tasks with recoverable mistakes.
+    construct: Tasks where the first plan is usually wrong but feedback identifies why.
+  primary:
+  - evals
+impact:
+  quality:
+    effect: improves
+    size: medium
+    basis: assessment
+  cost:
+    effect: degrades
+    size: large
+    basis: assessment
+  performance:
+    effect: degrades
+    size: large
+    basis: assessment
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: none
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - cost
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Reasoning & Search group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Zhou et al., "Language Agent Tree Search Unifies Reasoning Acting and Planning in Language Models", https://arxiv.org/abs/2310.04406
+  date: '2023-10-06'
+  task: Monte Carlo tree search over agent actions with LM value functions and self-reflection
+  effect: '"state-of-the-art pass@1 accuracy (92.7%) for programming on HumanEval with GPT-4"; "average score of
+    75.9" on WebShop with GPT-3.5, "comparable to gradient-based fine-tuning"'
+  conditions: HumanEval (GPT-4); WebShop (GPT-3.5)
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: UCB selection and backprop.
+    examples: Recoverable-mistake probes.
+    benchmark: HotpotQA or WebShop style.
+    production: null
+    primary:
+    - benchmark
+  impact:
+    cost:
+      effect: degrades
+      magnitude: high
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: none
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: degrades
+      magnitude: high
+      note: ''
+    primary:
+    - quality
+    - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: planning
+  library_group: Reasoning & Search
+  library_source: catalog

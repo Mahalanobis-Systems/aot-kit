@@ -1,0 +1,510 @@
+# 4.b.iii: Keep plan, progress and results in files when work outlives one context window
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 4.b.iii
+legacy_id: P21
+slug: multi-window-task-state
+name: Keep plan, progress and results in files when work outlives one context window
+kind: pattern
+status: card
+tiers:
+- tier: 4
+  why: it moves task state outside the context window
+  proposed: true
+levers:
+- state
+domains:
+- planning
+evidence_domains:
+- web-research
+- code-generation
+- document-extraction
+- tool-use
+- conversation
+- planning
+categories:
+- memory.resume
+- memory.externalize
+summary: 'When a task spans context resets (compaction, a truncation limit, a new session), have the agent
+  keep what the next window needs in files and read them back at the start of each window: the plan and
+  a progress list, decisions and open items, intermediate results too large to hold in context, and for
+  coding a structured test list and an init script. In measured studies, mostly of deep-research and long-horizon
+  coding agents, state kept outside the history beat a growing or compacted one: Anthropic''s memory tool
+  plus context editing gained 39% on agentic search against 29% for context editing alone. The limits:
+  model-written notes were incomplete or never read back, a stale file misled agents more than no file,
+  and a stronger model needed resets less. Within one window this adds nothing a re-injected task list
+  (7.b.iv) doesn''t.'
+how: '1. Start from the harness as it is (compaction or truncation only) on tasks that really run past
+  one window, and log what breaks after each reset: work redone, decisions or user constraints lost, work
+  declared done too early. 2. In the first window, before real work, have the agent create the state files:
+  a structured list of features or tests (JSON, every item failing, with an instruction that items are
+  never removed or rewritten, only marked passing), a free-text progress log, a decisions and open-items
+  file that also holds the user''s constraints, and for coding an init script that starts the app and
+  runs a smoke test; commit them to git. 3. Write large intermediate results (sources, query results,
+  documents, logs) to files and keep only the path and a one-line note in context. 4. Start every later
+  window with a fixed resume step written into the prompt: read the progress log, the decisions file,
+  the test list and the git log, run the init script and the smoke test, then take one open item. Do not
+  leave reading optional; agents write notes they never read. 5. Update at fixed points: when an item
+  passes an end-to-end check, mark it, append to the log and commit; before a reset, write the handoff.
+  Rewrite the files in place so they describe the present and delete stale entries, because agents follow
+  a written file over the code. 6. Keep harness-side safety nets instead of relying on model-written notes
+  alone: keep compaction or the harness''s own state capture, re-append the constraint list after every
+  compaction, and choose a fresh window or compaction per model. 7. Measure with paired runs that force
+  a reset midway, with and without the files and the resume step: completion, steps redone, constraint
+  violations after the reset, tokens and wall time, per model; re-run after a model change.'
+detect:
+  static: A plan or todo file, a progress log, a decisions and open-items file, and for coding a structured
+    test list and an init script, kept outside the context window, plus a start-of-window step that reads
+    them back.
+  traces: Context resets followed by re-exploration or redone steps; notes written but never read back;
+    user constraints or decisions violated after compaction; work declared done after a reset; state files
+    older than the code they describe.
+  evals: Completion rate and redone work on tasks longer than one window, with a reset forced midway.
+  probes:
+    what: Tasks longer than one context window.
+    construct: A multi-hour coding task with a test suite; force a reset midway.
+  primary:
+  - probes
+assessment:
+  qa:
+    unit: Resume from checkpoint restores state.
+    examples: Reset probes.
+    benchmark: Long-horizon coding.
+    production: Resumption failure rate.
+    primary:
+    - examples
+  impact:
+    cost:
+      effect: improves
+      magnitude: low
+      note: ''
+    security:
+      effect: none
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: low
+      note: ''
+    quality:
+      effect: improves
+      magnitude: medium
+      note: Long tasks only.
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: state_management
+  library_group: Long-Horizon
+  library_source: master
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'tasks past one window: memory tool plus context editing +39% against +29% for context editing
+      alone (Anthropic, Sep 2025); a report rewritten into each rebuilt context +12.7 (o3) and +19.2 (DeepSeek-V3.1)
+      points on BrowseComp over ReAct (Chen, Nov 2025); without todo, checklist and log files 52.76 to
+      48.69 RACE on 10 queries (Zhu, Feb 2026); model-written notes alone degraded Devin (Cognition, Sep
+      2025); a stale convention file cut better-form decisions from 33% with no file to 0% (Mohammadi,
+      Aug 2026)'
+    basis: evidence
+  cost:
+    effect: mixed
+    size: small
+    when: file I/O under 0.03% of wall time (Zhu, Feb 2026); resets add token overhead (Rajasekaran, Mar
+      2026); an agent sometimes spent more tokens writing summaries than solving the problem (Cognition,
+      Sep 2025); no study reports tokens for the files alone
+    basis: evidence
+  performance:
+    effect: mixed
+    size: small
+    when: with a state-recovery memory, minutes per DeepSWE task rose from 42.0 to 54.2 under one harness
+      and fell from 103.8 to 75.3 under another (Xu, Oct 2026); resets add latency (Rajasekaran, Mar 2026)
+    basis: evidence
+  security:
+    effect: none
+    basis: assessment
+  governance:
+    effect: improves
+    size: small
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs on tasks longer than one window, forcing a reset (or capping the window) midway: the
+    harness as is against the same harness with state files and a fixed resume step; completion, steps
+    redone after the reset, constraint violations after the reset, tokens and wall time, per model; re-run
+    after a model change'
+- method: monitor
+  how: 'per reset: whether the first actions read the state files, steps redone, items marked done that
+    fail their test, state files older than the code or plan they describe, and the share of tokens spent
+    writing notes'
+evidence:
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Write plan to file and re-read it periodically
+  effect: '"Some agents write a plan to a file and read it back into context periodically to reinforce
+    objectives and / or verify its work."'
+  direction: supports
+  measured: false
+  locator: Offload Context
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Save the plan to external memory before truncation
+  effect: '"saving its plan to Memory to persist the context, since if the context window exceeds 200,000
+    tokens it will be truncated and it is important to retain the plan."'
+  direction: supports
+  measured: false
+  locator: 'Architecture overview (process diagram caption); Appendix: Long-horizon conversation management'
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Long-Horizon group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file master-agent-optimization-cookbook.md"
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Keep a progress file and git history so a fresh context window can pick up the work
+  effect: '"The key insight here was finding a way for agents to quickly understand the state of work when starting
+    with a fresh context window, which is accomplished with the claude-progress.txt file alongside the git history."'
+  direction: supports
+  measured: false
+  locator: The long-running agent problem
+- source: Anthropic, "Managing context on the Claude Developer Platform", https://www.anthropic.com/news/context-management
+  date: '2025-09-29'
+  task: Give the agent a file-based memory tool (create, read, update and delete files in a memory directory)
+    alongside context editing that clears stale tool results
+  effect: '"combining the memory tool with context editing improved performance by 39% over baseline.
+    Context editing alone delivered a 29% improvement." The 84% token reduction in the same post is for
+    context editing alone, on a 100-turn web search evaluation.'
+  conditions: Internal agentic-search evaluation set; model, n and baseline not stated; vendor evaluating
+    its own feature
+  direction: supports
+  measured: true
+  locator: Performance improvements with context management
+- source: 'Guoxin Chen, Zile Qiao, Xuanzhong Chen, Donglei Yu, Haotian Xu, Wayne Xin Zhao, Ruihua Song,
+    Wenbiao Yin, et al., "IterResearch: Rethinking Long-Horizon Agents with Interaction Scaling", https://arxiv.org/abs/2511.07327'
+  date: '2025-11-10'
+  task: Each round, rebuild the context from the question, an evolving report the agent rewrites as its
+    memory, and only the last action and its result, instead of one growing history
+  effect: As a prompting strategy with no training, it beat ReAct on BrowseComp by 12.7 points with o3
+    and 19.2 with DeepSeek-V3.1. With identical training data, the iterative agent averaged 49.1 against
+    36.5 for a single-context agent across six benchmarks (+12.6), although the single-context agent had
+    a 64K window against 40K.
+  conditions: Trained agent on Qwen3-30B-A3B; prompting with o3 and DeepSeek-V3.1; HLE, BrowseComp, BrowseComp-zh,
+    GAIA, Xbench-DeepSearch, SEAL-0; the report is carried in the prompt, not a file
+  direction: supports
+  measured: true
+  locator: Abstract; §4.3 Table 2; §4.5 Figure 4
+- source: 'Chenglin Yu, Yuchen Wang, Songmiao Wang, Hongxia Yang, Ming Li, "InfiAgent: An Infinite-Horizon
+    Framework for General-Purpose Autonomous Agents", https://arxiv.org/abs/2601.03204'
+  date: '2026-01-06'
+  task: Keep task state in files and rebuild each step's context from a workspace snapshot plus a fixed
+    window of recent actions; ablate by replacing the file state with compressed long-context prompts
+  effect: 'Average coverage on an 80-paper literature review: 67.1 (GPT-OSS-20B), 80.0 (Gemini-3-Flash)
+    and 80.0 (Claude-4.5-Sonnet) with file-centric state; 3.2, 21.1 and 27.7 with "No File State (Compressed
+    Context)". Claude Code with Claude-4.5-Sonnet averaged 29.1. The authors note latency overhead, and
+    that wrong information a sub-agent writes to the files can propagate.'
+  conditions: 80-paper review task, repeated runs (count not stated); authors' own framework; DeepResearch
+    benchmark score 41.45 with gpt-oss-20b
+  direction: supports
+  measured: true
+  locator: §5.2 Table 1 and Ablation analysis; §7 Limitations
+- source: 'Chiwei Zhu, Benfeng Xu, Mingxuan Du, Shaohan Wang, Xiaorui Wang, Zhendong Mao, Yongdong Zhang,
+    "FS-Researcher: Test-Time Scaling for Long-Horizon Research Tasks with File-System-Based Agents",
+    https://arxiv.org/abs/2602.01566'
+  date: '2026-02-02'
+  task: 'Deep research over several sessions on a file workspace: a todo file with a status per item,
+    a fixed checklist and a log read at each session start, plus a knowledge base of notes and archived
+    sources; ablate by removing the control files and replacing the structured workspace with a flat note'
+  effect: Removing the persistent workspace dropped RACE from 52.76 to 48.69, with Insight -7.95 and Comprehensiveness
+    -3.58. File I/O took under 0.03% of wall-clock time.
+  conditions: GPT-5; 10 sampled DeepResearch Bench queries for the ablation; 3 rounds for the note-building
+    agent
+  direction: supports
+  measured: true
+  locator: §3 (control files); §4.2 Table 5; Appendix M Table 15
+- source: 'Hongming Xu, Le Zhou, ZhongHe Jin, Xiang Zhang, Bo Tang, Zhiyu Li, Xuanhe Zhou, Juncheng Zhang,
+    "MemTrace: State-Consistent Memory for Long-Horizon Coding Agents", https://arxiv.org/abs/2610.04838'
+  date: '2026-10-04'
+  task: Store execution history outside the window as traces anchored to files, symbols and tests; after
+    a context refresh, rebuild what is done and what remains from them and check stored evidence against
+    the current repository before reuse
+  effect: 'Against each harness''s native context management: under Codex CLI, DeepSWE pass@1 35.4 to
+    56.6, SWE-EVO resolved 47.8 to 69.6, SWE-Milestone score 28.6 to 46.4; under mini-swe-agent, DeepSWE
+    48.7 to 66.4. A flat trace store without the structure scored 32.1 on DeepSWE, below native. 57.0%
+    of 9,226 file-bound traces saw a later change to a bound file. Mean minutes per DeepSWE task: 42.02
+    to 54.17 under Codex CLI, 103.77 to 75.30 under mini-swe-agent.'
+  conditions: deepseek-v4-flash, 200K window; DeepSWE 113 tasks, SWE-EVO 46, SWE-Milestone 98 milestones;
+    one model; authors' own system
+  direction: supports
+  measured: true
+  locator: Abstract; Table 2; Table 3; §4.3 State–memory alignment; Appendix A.2 Table 6
+- source: 'Zhiqi Wang, Yichi Zhang, Dongwon Lee, Nathalie Baracaldo, Yuchen Yang, "Lost in Context Compaction:
+    When LLM Systems Drop Side Constraints", https://arxiv.org/abs/2608.11242'
+  date: '2026-07-31'
+  task: Keep user-issued constraints in a registry outside the summary and append it after every compaction,
+    against compaction alone
+  effect: Compactors retained 17% of injected constraints on average; in an inbox test the agent deleted
+    emails without approval in 30/100 sessions after compaction, against none before. The registry kept
+    90.3%, 93.7% and 95.1% of constraints (WildChat, Hermes Agent, OpenResearcher), and appending it raised
+    compliance by 39.5-42.6 percentage points.
+  conditions: 100K-token contexts, N=750 per dataset; compactors gpt-oss-120b, Qwen3-30B-A3B, Gemma-4-E4B,
+    GPT-5.4-mini; extractor Qwen3.5-9B; compliance probed with multiple-choice questions
+  direction: supports
+  measured: true
+  locator: Abstract; §2; §5.1; §5.4 Table 4
+- source: 'Axel Backlund, Lukas Petersson, "Vending-Bench: A Benchmark for Long-Term Coherence of Autonomous
+    Agents", https://arxiv.org/abs/2502.15840'
+  date: '2025-02-20'
+  task: Long-running agent with only the last 30,000 tokens in context plus a scratchpad, key-value store
+    and vector database it can read and write
+  effect: All models had runs that derailed. Claude 3.5 Sonnet wrote a long daily summary to the scratchpad
+    "but never retrieves the information." Memory-tool use did not differ significantly between 10k, 30k
+    and 60k token windows, and the larger windows did worse. The Pearson correlation between days until
+    sales stop and days until memory is full was 0.167; "the breakdowns are not directly related to the
+    context of the LLMs being filled".
+  conditions: Claude 3.5 Sonnet, o3-mini, GPT-4o mini and others; window-size variations on GPT-4o mini;
+    5 runs per configuration; about 25M tokens per run
+  direction: mixed
+  measured: true
+  locator: §2.1; §3.2.2; §3.5.2 Figures 12-13; §3.6 Table 9
+- source: 'Bardia Mohammadi, Lars Klein, Aman Chadha, Akhil Arora, Laurent Bindschaedler, "The Working
+    Set of a Coding Agent: Coherence Debt in Repository-Scale Tasks", https://arxiv.org/abs/2608.16630'
+  date: '2026-08-17'
+  task: Give a coding agent a written standard file that agrees with the code, no standard, or a stale
+    standard that demands the worse form
+  effect: 'Share of contested decisions written the better way: 100% with a correct standard, 33% with
+    no standard, 0% with a stale one; "Deleting an out-of-date convention file beats leaving it in place."
+    Where a written standard and working code disagreed, agents followed the standard in every one of
+    39 trials.'
+  conditions: Synthetic workload, ten contested conventions, 12 tasks per trial, 10 trials per condition
+    (3,385 decisions); the 39-trial result spans three model tiers on one harness and a second harness;
+    a convention file, not a progress file
+  direction: mixed
+  measured: true
+  locator: §4.8; §4.9; Appendix N
+- source: 'The Cognition Team, "Rebuilding Devin for Claude Sonnet 4.5: Lessons and Challenges", https://cognition.ai/blog/devin-sonnet-4-5-lessons-and-challenges'
+  date: '2025-09-29'
+  task: Let the model's own notes (CHANGELOG.md, SUMMARY.md) replace the harness's compaction and summarization
+  effect: '"we found the summaries weren''t comprehensive enough. For example, it would sometimes paraphrase
+    the task, leaving out important details. When we relied on the model''s own notes without our compacting
+    and summarization systems, we saw performance degradation and gaps in specific knowledge". Also "we''ve
+    seen the agent spend more tokens writing summaries than actually solving the problem." The behavior
+    was "useful in certain cases, but less effective than our existing memory systems".'
+  conditions: Claude Sonnet 4.5 in Devin; internal testing, no numbers reported
+  direction: mixed
+  measured: false
+  locator: The model takes a lot of notes
+- source: Prithvi Rajasekaran (Anthropic), "Harness design for long-running application development",
+    https://www.anthropic.com/engineering/harness-design-long-running-apps
+  date: '2026-03-24'
+  task: Context resets with a structured handoff between sessions, against one continuous session with
+    automatic compaction
+  effect: With Claude Sonnet 4.5, "compaction alone wasn't sufficient to enable strong long task performance,
+    so context resets became essential", at the cost of "orchestration complexity, token overhead, and
+    latency". "Opus 4.5 largely removed that behavior on its own, so I was able to drop context resets
+    from this harness entirely"; it ran one session with automatic compaction, and its agents still handed
+    work to each other through files.
+  conditions: Claude Sonnet 4.5 and Claude Opus 4.5; the author's own harness; no controlled comparison
+  direction: mixed
+  measured: false
+  locator: Why naive implementations fall short; The architecture
+related:
+- 7.b.iv
+- 5.a.i
+- 4.b.ii
+- 4.b.i
+- 9.b.iii
+- 7.d.i
+- 4.c.i
+- 4.c.ii
+absorbs:
+- legacy_id: P19
+  name: Structured note-taking
+  group: Long-Horizon
+  source: master
+  family: tool
+  sub_type: memory
+  categories:
+  - memory.externalize
+  note: todo.md / NOTES.md outside the context window.
+  assessment:
+    detection:
+      static: Writes to a notes or todo file; read-back at session start.
+      traces: Note writes and reads; note growth; decisions captured.
+      evals: Multi-session coherence.
+      judge: Rate notes for capturing decisions and open items.
+      probes:
+        what: Tasks interrupted and resumed.
+        construct: Split a task across two sessions; the second must continue without re-doing work.
+      primary:
+      - traces
+      - probes
+    qa:
+      unit: Note file schema.
+      examples: Interruption probes.
+      benchmark: null
+      production: Rate of re-done work.
+      primary:
+      - examples
+    impact:
+      cost:
+        effect: mixed
+        magnitude: low
+        note: Tokens on notes vs tokens saved on re-work.
+      security:
+        effect: mixed
+        magnitude: low
+        note: Notes can hold secrets.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: medium
+        note: A record of decisions.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Long tasks only.
+      latency:
+        effect: degrades
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+      - governance
+- legacy_id: P24
+  name: File system as external memory
+  group: Production
+  source: master
+  family: tool
+  sub_type: memory
+  categories:
+  - memory.externalize
+  assessment:
+    detection:
+      static: File read and write tools; intermediate content persisted rather than held in context.
+      traces: File writes and reads vs context growth; content dropped with a path retained.
+      evals: Long-task success.
+      judge: null
+      probes:
+        what: Large intermediate artifacts.
+        construct: Process a 200-page document or a large query result.
+      primary:
+      - traces
+    qa:
+      unit: File tool sandboxing and path restrictions.
+      examples: Large-artifact probes.
+      benchmark: Long-horizon.
+      production: Disk usage; context-error rate.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: medium
+        note: ''
+      security:
+        effect: mixed
+        magnitude: medium
+        note: Files persist; sandbox and cleanup needed.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: mixed
+        magnitude: medium
+        note: Data retention.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: ''
+      latency:
+        effect: none
+        magnitude: low
+        note: ''
+      primary:
+      - cost
+      - quality
+- legacy_id: P56
+  name: Proactive state externalization
+  group: Context & Memory
+  source: catalog
+  family: tool
+  sub_type: memory
+  categories:
+  - memory.externalize
+  assessment:
+    detection:
+      static: Templates or schemas for agent notes.
+      traces: Note quality; share of tokens spent on notes.
+      evals: Continuity across resets.
+      judge: Rate notes for decision rationale.
+      probes:
+        what: Interruption.
+        construct: As P19.
+      primary:
+      - judge
+    qa:
+      unit: Note schema.
+      examples: Interruption probes.
+      benchmark: null
+      production: Token share on notes.
+      primary:
+      - examples
+    impact:
+      cost:
+        effect: degrades
+        magnitude: low
+        note: ''
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: ''
+      quality:
+        effect: improves
+        magnitude: low
+        note: Cognition warns notes are often incomplete.
+      latency:
+        effect: degrades
+        magnitude: low
+        note: ''
+      primary:
+      - quality
+caveats: 'Most measured gains come from deep-research and long-horizon coding systems built around their
+  authors'' own memory design, often on one model and small samples (one ablation used 10 queries, another
+  does not state its run count), and no controlled study isolates a plain progress file under a forced
+  reset. Model-written notes are not free memory: Cognition found them incomplete, Vending-Bench agents
+  wrote notes they never read, and a stale written standard led agents to the worse form on every contested
+  decision, so read-back and upkeep must be enforced. The need depends on the model: Anthropic needed
+  resets with handoff files for Sonnet 4.5 but dropped them for Opus 4.5, so measure per model and again
+  after an upgrade.'

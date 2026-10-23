@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VeRO pattern library: sources and anti-patterns",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pattern_sources",
+    "anti_patterns"
+  ],
+  "properties": {
+    "pattern_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "compiled_from"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "compiled_from": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "anti_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "problem",
+          "why",
+          "fix"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "problem": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+name: Problem or correction
+description: A skill that misbehaves, or an entry that is wrong (a misquoted number, a citation that doesn't resolve, an overstated claim)
+labels: [bug]
+body:
+  - type: input
+    id: skill
+    attributes:
+      label: Skill or entry
+      description: The skill name or library id, e.g. `bound-tool-output` (2.c.i).
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong
+      description: For a skill, what you asked Claude and what it did (leave out code and data you can't share). For an entry, what it says and what the source actually says.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: aot-kit version
+      description: From `claude plugin list`, if you ran a skill.

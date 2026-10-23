@@ -1,0 +1,130 @@
+# 8.b.i: Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 8.b.i
+legacy_id: T34
+slug: tune-search-tool
+name: 'Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: retries recover failed searches
+- tier: 3
+  why: everything else changes what the model retrieves and sees
+levers:
+- knowledge-access
+domains:
+- retrieval
+- web-research
+evidence_domains:
+- web-research
+- data-analysis
+categories:
+- retrieval.query
+- retrieval.results
+summary: Make the search tool return what the model needs to choose what to open (a snippet per result,
+  not just titles; five or more results; a full-document reader beside truncated search), retry failed
+  searches, and reformulate when a query returns little (start broad, then narrow; use the corpus's own
+  terms) rather than retrying it verbatim. Expose the source's metadata as filter parameters (date, product,
+  version, source) where the corpus has it. Drop results from sources that leak the answer or are untrustworthy.
+  Expanding one question into many queries up front has not helped.
+how: 1. From traces, count fetches per question, empty-result queries, and repeats of the same query.
+  2. Change one parameter at a time (snippets, result count, retries, filters). 3. Paired eval scored
+  on retrieval recall and answer accuracy.
+detect:
+  static: a search tool returning titles or URLs only; a fixed small result count; no retry; no filter
+    parameters over a corpus with metadata; results passed to the model unfiltered
+  traces: many page fetches per question; queries returning zero results followed by the same query or
+    by giving up; results from the wrong product, version or date; failure rows labeled missed-read
+  evals: retrieval recall below answer accuracy needs; failures where the answer was in an unfetched result
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: 'snippets: SimpleQA train +0.15 but validation -0.06; source filtering +3.3% on FACTS; retries
+      and result count unmeasured; up-front query expansion: no gain (LinkedIn, 2025)'
+    basis: evidence
+  cost:
+    effect: mixed
+    size: small
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: failed-search rate
+- method: experiment
+  tier: 3
+  how: paired eval on retrieval recall and answer accuracy
+evidence:
+- source: repo figure_01
+  task: BrowseComp-Plus
+  effect: 9/20 runs, and almost none elsewhere; the only benchmark with a retrieval corpus.
+- source: paper Figure 15
+  task: SimpleQA
+  effect: Train 0.74 to 0.89, validation 0.80 (down from 0.86 best).
+- source: blog tricks table (Tool-Centric template)
+  task: FACTS
+  effect: +3.3%.
+- source: paper Table 10
+  task: GAIA/FACTS/SimpleQA
+  effect: Knight "Enhanced (5+ results, retry logic)" vs Pawn "Basic (3 results, no retries)".
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Decompose the question with a query planner
+  effect: 'Appendix A.5 negative result, gpt-4o: "the query planner lowered recall and quality metrics";
+    produced overly nested queries even after instructing it to minimize tasks with few-shot examples.
+    Hypothesis: unnecessary for gpt-4o, possibly useful for smaller models.'
+  direction: contradicts
+  measured: true
+  locator: Appendix A.5
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: Use planner sub-tasks as retrieval query expansion
+  effect: 'Appendix A.5: "this did not improve the recall of tables retrieved from EBR." Authors suggest
+    an explicit query-expansion prompt might do better (untested).'
+  direction: contradicts
+  measured: true
+  locator: Appendix A.5
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Prompt searches to start broad, then narrow
+  effect: '"Agents often default to overly long, specific queries that return few results. We counteracted
+    this tendency by prompting agents to start with short, broad queries, evaluate what''s available,
+    then progressively narrow focus."'
+  direction: supports
+  measured: false
+  locator: 'Prompt engineering: Start wide, then narrow down'
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Let the agent write its own targeted schema-retrieval queries
+  effect: 'Table 4: removing @retrieve_schema costs 6.7-7.6 SRR points (see index entry). Table 7, top-m
+    per call: m=1 SRR 89.2 (20.7K tokens), m=2 89.6 (21.0K), m=3 91.2 (21.2K). Contrasted with CHESS-style
+    question rewriting; not directly compared.'
+  direction: supports
+  measured: true
+  locator: Action Space @retrieve_schema; Appendix Details of Action Space; Table 4; Table 7
+related:
+- 8.a.i
+- 8.a.ii
+- 5.b.i
+- 9.a.ii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: search
+  harness_role: retrieval
+  action: tune

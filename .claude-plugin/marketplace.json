@@ -1,0 +1,21 @@
+{
+  "name": "aot-kit",
+  "description": "Marketplace for the aot-kit Claude Code plugin.",
+  "owner": {
+    "name": "Mahal Systems",
+    "email": "ops@mahalsystems.ai"
+  },
+  "plugins": [
+    {
+      "name": "aot-kit",
+      "source": {
+        "source": "github",
+        "repo": "Mahalanobis-Systems/aot-kit",
+        "ref": "aot-kit--v0.1.0"
+      },
+      "displayName": "AOT Kit",
+      "description": "One skill per researched agent optimization.",
+      "version": "0.1.0"
+    }
+  ]
+}

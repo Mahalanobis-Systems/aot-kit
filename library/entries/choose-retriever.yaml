@@ -1,0 +1,362 @@
+# 8.a.i: Choose the retriever by corpus size and question type
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 8.a.i
+legacy_id: T57
+slug: choose-retriever
+name: Choose the retriever by corpus size and question type
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: routing between retrieval paths that exist
+- tier: 4
+  why: adding a new index (embeddings, a graph) is a retrieval-architecture change
+levers:
+- knowledge-access
+- control-flow
+domains:
+- retrieval
+evidence_domains:
+- retrieval
+- web-research
+- code-generation
+categories:
+- retrieval.sources
+- retrieval.query
+- orchestration.route
+summary: 'On a bounded corpus (up to about 100K documents), grep and file reads over the raw text beat
+  an embedding retriever: the agent narrows into documents it has found. As the corpus grows, grep degrades
+  (37.5% at 400K); add semantic search beside it, and on large codebases semantic search plus grep beats
+  grep alone. A dense retriever beats BM25. Use a knowledge-graph retriever only for multi-hop and synthesis
+  questions, routed per query; keep chunk retrieval for single-fact lookup, return source text with any
+  graph triplets, and avoid global community-summary search for detail questions.'
+how: 1. Size the corpus and classify the questions (single-fact, multi-hop). 2. Pick the retriever by
+  the table in the summary. 3. Paired eval, retriever A against B, on the agent's own corpus, measuring
+  evidence localization as well as document recall.
+detect:
+  static: the retriever in use and the corpus size; a single retrieval path for all question types
+  traces: repeated searches that fail to narrow; documents found but never read in full; failure rows
+    labeled missed-read on multi-hop questions
+  evals: retrieval recall and answer accuracy split by corpus size and question type
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: grep 80.0% against 69.0% for an 8B embedding retriever at ~100K documents (May 2026); Cursor
+      +12.5% from semantic search plus grep on large codebases; GraphRAG routing +1.1%, concatenating
+      both +6.4% (Mar 2026)
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: grep 29% cheaper at ~100K documents; a graph index costs to build
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval, retriever A against B, split by question type
+- method: production-test
+  tier: 4
+  how: when a new index is introduced
+evidence:
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Replace the retriever tool with grep and file reads
+  effect: 'BrowseComp-Plus (830 q, 100,195 docs, avg 5,179 words), same Sonnet 4.6 backbone: Qwen3-Embedding-8B
+    retrieval agent 69.0% -> DCI-Agent-CC 80.0% (+11.0), cost $1,440 -> $1,016 (-29.4%); beats best retrieval
+    baseline GPT-5 + Qwen3-Embed-8B (71.7%). Per-question: 176 DCI-only wins vs 76 retrieval-only wins;
+    of the 176, 142 already had at least one gold doc surfaced by the retriever. DCI-Agent-Lite (GPT-5.4
+    nano) 62.9% at $93 vs o3 + Qwen3-Embed-8B 66.0% at ~$740. Multi-hop QA over 21M-passage Wikipedia
+    (50 q/dataset): DCI-CC avg 83.0 vs ASearcher-Local-14B 52.3 (MuSiQue 74 vs 24). IR ranking NDCG@10
+    avg 68.5 (CC) / 56.7 (Lite) vs ReasonRank-32B 47.0; Lite loses to ReasonRank on Economics (32.3 vs
+    36.6) and SciFact (72.7 vs 75.5). Wins attributed to fine-grained local inspection of documents already
+    reached, not to higher recall.'
+  direction: supports
+  measured: true
+  locator: Abstract; Sec 4.2 (Fig 1, Tables 2-3); Sec 4.3 RQ2 (Fig 4)
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Give a read plus grep tool pair as minimum retrieval surface
+  effect: 'BrowseComp-Plus 100-q subset, GPT-5.4 nano, L4 context policy: read+grep 61% acc, 19 tool calls,
+    $0.0355/q vs Qwen3-Embedding-8B retrieval 45%, 18 calls, $0.0498/q vs BM25 32%, 19 calls, $0.0527/q.'
+  direction: supports
+  measured: true
+  locator: Sec 4.3 RQ6; Table 5
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Allow piped shell commands for chained lexical search
+  effect: 'BrowseComp-Plus 100-q subset, GPT-5.4 nano: open bash 73% vs read+grep 61% (+12), but 35 vs
+    19 tool calls and $0.1021 vs $0.0355 per q. Lite bash usage (3,168 commands): rg | head 56.2%, rg
+    | rg 20.6%, wc 7.8%, single rg 6.3%, ls 4.3%, python -c 2.4%, cat 0.1%. CC: Bash 62.4% / Grep 33.0%
+    of calls; within Bash, chained search 22.3%, local context peek 18.0%, regex 17.0%, file localization
+    14.0%, full-document read 9.1%.'
+  direction: supports
+  measured: true
+  locator: Sec 4.3 RQ6, Table 5; Appendix B.1, Fig 6; Fig 4 (right)
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Do not rely on grep-only search as the corpus grows
+  effect: 'DCI-Agent-CC, BrowseComp-Plus 100-q subset, corpus padded with FineWeb distractors: 100K ->
+    200K docs: tool calls 38.5 -> 86.9, latency and cost more than doubled, accuracy -13.6 points. At
+    400K docs: accuracy 37.5%, 122.4 calls on average, 20 of 100 examples terminated at the max tool budget.
+    (By contrast the paper''s multi-hop QA runs over 21M short Wikipedia passages still worked, avg 83.0.)'
+  direction: supports
+  measured: true
+  locator: Sec 4.3 RQ4; Fig 5
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Cap tool output and compact old tool results moderately
+  effect: 'DCI-Agent-Lite, GPT-5.4 nano, BrowseComp-Plus 100-q subset. L0 none: 72% acc, $0.0716/q, 2,226
+    s. L1 truncate 50K: 75%, fastest (1,820 s), highest retained gold coverage 31.3. L2 truncate 20K:
+    69% (worst), cheapest $0.0590. L3 truncate 20K + compaction (trigger at 240K chars of tool output,
+    keep last 12 turns as-is): 77% (best) but $0.1109/q and 8,712 s. L4 = L3 + LLM summary keeping last
+    20K tokens: 73%. Non-monotonic; retaining more verbatim evidence did not give the best accuracy.'
+  direction: supports
+  measured: true
+  locator: Sec 3.2, Table 1; Sec 4.3 RQ5, Table 6
+- source: 'Li et al., "Beyond Semantic Similarity: Rethinking Retrieval for Agentic Search via Direct
+    Corpus Interaction", https://arxiv.org/abs/2605.05242'
+  date: '2026-05-03'
+  task: Measure evidence localization, not only gold-document recall
+  effect: 'BrowseComp-Plus 100-q subset, GPT-5.4 nano: Qwen3-Embed-8B agent coverage-any 74.0, mean recall
+    56.7, localization 21.7, acc 45; DCI-Agent-Lite coverage-any 70.0, mean recall 28.0, localization
+    48.4, acc 73; BM25 63.0 / 42.8 / 23.5 / 32. Questions have 1-4 gold docs, which favors reaching one
+    and mining it.'
+  direction: supports
+  measured: true
+  locator: Sec 3.3; Sec 4.3 RQ3, Table 4
+- source: Stefan Heule, Emily Jia, Naman Jain (Cursor), "Improving agent with semantic search", https://cursor.com/blog/semsearch
+  date: '2025-11-06'
+  task: Add a semantic code-search tool alongside grep
+  effect: 'Offline (Cursor Context Bench): on average 12.5% higher accuracy answering questions with semantic
+    search available (6.5%-23.5% depending on model); improved accuracy for every model tested, including
+    all frontier coding models. Online A/B (same model, one arm grep-style tools only): agent code retention
+    +0.3% with semantic search, +2.6% on codebases with 1,000+ files; dissatisfied follow-up requests
+    +2.2% when semantic search was absent. Effect sizes online are diluted because not all requests need
+    search. "The combination of these two leads to the best outcomes."'
+  direction: supports
+  measured: true
+  locator: Intro bullets; Offline evals; Online A/B tests; Conclusion
+- source: Stefan Heule, Emily Jia, Naman Jain (Cursor), "Improving agent with semantic search", https://cursor.com/blog/semsearch
+  date: '2025-11-06'
+  task: Train the embedder on agent traces ranked by an LLM
+  effect: Described as "one piece that enables these results"; training data is agent traces where the
+    agent "performs multiple searches and opens files before finding the right code"; an LLM ranks what
+    "would have been most helpful at each step" and the embedding model is trained "to align its similarity
+    scores with these LLM-generated rankings". No ablation against an off-the-shelf embedder is reported.
+  direction: supports
+  measured: false
+  locator: Custom retrieval models
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Use a strong dense embedder rather than BM25
+  effect: 'BM25 -> Qwen3-Embed-8B, accuracy: gpt-5 55.90 -> 70.12%; o3 49.28 -> 63.49%; gpt-4.1 14.58
+    -> 35.42%; Sonnet 4 14.34 -> 36.75%; Opus 4 15.54 -> 36.14%; Gemini 2.5 Pro 19.04 -> 28.67%; gpt-oss-120B-high
+    28.67 -> 42.89%. Search calls fall ~1-3 per query for proprietary models (gpt-5 23.23 -> 21.74). API
+    cost falls (gpt-5 $400.36 -> $360.71; o3 $836.35 -> $740.79; Opus 4 $2,043.95 -> $1,842.48). Standalone
+    gold-doc Recall@100: BM25 6.1 vs Qwen3-Embed-8B 55.8. Oracle (all positive docs in context) gives
+    gpt-4.1 93.49% vs 14.58% with BM25, showing retrieval is the bottleneck.'
+  direction: supports
+  measured: true
+  locator: Sec 4.5-4.7, Tables 1-3; Sec 4.8.1; Appendix H Table 8
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Scale the embedder; reasoning-tuned embedder did not help
+  effect: 'Evidence-doc Recall@100: Qwen3-Embed 0.6B 26.5, 4B 40.2, 8B 47.7, ReasonIR-8B 43.6; nDCG@10
+    8.0 / 14.0 / 20.3 / 16.8. End-to-end with Qwen3-32B agent: 4.10 / 7.83 / 10.36 / 9.16%; with Search-R1-32B:
+    5.66 / 9.40 / 10.36 / 9.43%.'
+  direction: supports
+  measured: true
+  locator: Tables 1-2; Sec 4.7
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Add a full-document reader tool beside truncated search
+  effect: 'Qwen3-Embed-8B retriever, 512-token previews: gpt-4.1 35.42 -> 43.61% with get-doc (search
+    calls 8.67 -> 10.03, 1.85 get-doc calls/q); Qwen3-32B 10.36 -> 11.69% (0.27 get-doc calls/q).'
+  direction: supports
+  measured: true
+  locator: Sec 4.8.3, Table 5
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Raise reasoning effort for search agents
+  effect: 'gpt-oss-20B with Qwen3-Embed-8B low -> medium -> high: accuracy 13.37 -> 29.88 -> 34.58%, recall
+    17.37 -> 41.31 -> 49.29%, search calls 1.87 -> 13.64 -> 23.87. gpt-oss-120B: 24.94 -> 37.59 -> 42.89%.
+    Calibration error also falls. Qwen3-Embed-8B beats BM25 at every effort level.'
+  direction: supports
+  measured: true
+  locator: Sec 4.8.2, Table 4
+- source: 'Chen et al., "BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research
+    Agent", https://arxiv.org/abs/2508.06600'
+  date: '2025-08-08'
+  task: Expect dense retrieval to degrade as distractors grow
+  effect: 'Corpus 100K -> 9,771,311 docs (FineWeb-edu 10BT added). Evidence Recall@100: BM25 4.7 -> 8.0;
+    Qwen3-Embed-8B 47.7 -> 37.6; ReasonIR-8B 43.6 -> 30.7 (added docs are unjudged, so partly measurement
+    artifact). Accuracy with Qwen3-Embed-8B: Qwen3-32B 10.36 -> 7.11%, Search-R1-32B 10.36 -> 8.33%; with
+    BM25 both rose slightly (3.49 -> 5.42%, 3.86 -> 4.72%).'
+  direction: supports
+  measured: true
+  locator: Sec 4.8.4, Tables 6-7
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Retrieve code with ripgrep, glob and tree-sitter, not embeddings
+  effect: '"0/11 systems use vector embeddings for code retrieval"; code "changes minute-to-minute, making
+    embeddings stale"; the cited CodeRAG-Bench finds RAG gains "highly variable across tasks". No controlled
+    comparison is run.'
+  direction: mixed
+  measured: false
+  locator: Sec 13.2; Observation 9; Recommendations 8 and 16; Table 13
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Provide a token-budgeted ranked repository map
+  effect: 'Aider RepoMap: "Tree-sitter-based symbol indexing ... still the only ranked repository map
+    in the corpus. Token budget is adaptive (map_tokens, default 1024) with a map_mul_no_files multiplier."'
+  direction: supports
+  measured: false
+  locator: Sec 9.7; Table 13; Sec 7.2 (Aider)
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Build a text-linked knowledge graph for multi-hop questions
+  effect: 'Han (Llama-3.1-8B): HotpotQA F1 HippoRAG2 63.01, Community-Local 61.66 vs RAG 60.04; MultiHop-RAG
+    acc HippoRAG2 70.27, Community-Local 69.01 vs RAG 67.02 (Temporal 49.91 vs 30.70). GraphRAG-Bench
+    complex reasoning ACC, novels: HippoRAG2 53.38 vs RAG+rerank 42.93; medical 61.98 vs 58.64; contextual
+    summarize (novels) MS-GraphRAG 64.40 vs 51.30. Level 2-3 evidence recall on novels: HippoRAG 87.9-90.9%.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.2, Tables 1-2; Xiang Sec 4.1-4.2, Tables 2-3, Obs 2 and 5
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Keep plain chunk RAG for single-hop fact lookup
+  effect: 'Han NQ F1: RAG 64.78 vs Community-Local 63.01, HippoRAG2 61.03, RAPTOR 60.04, Community-Global
+    54.48, KG triplets+text 50.27. GraphRAG-Bench fact retrieval ACC, novels: RAG+rerank 60.92 vs HippoRAG2
+    60.14, MS-GraphRAG 49.29; medical: 64.73 vs 66.28 (HippoRAG2) but MS-GraphRAG 38.63. RAG+rerank evidence
+    recall on novel fact questions 83.21%. Citing prior work: GraphRAG 13.4% lower on NQ, 16.6% lower
+    on time-sensitive queries.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.2 obs (1), Table 1; Xiang Obs 1 and 4, Tables 2-3; Xiang Sec 1
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Route each query to RAG or GraphRAG by type
+  effect: 'Consistent improvement across datasets; MultiHop-RAG with Llama-3.1-70B: +1.1% over the best
+    single baseline. Cheaper than Integration since each query runs one method. Motivated by complementarity:
+    on MultiHop-RAG 13.6% of queries are GraphRAG-only correct and 11.6% RAG-only.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.4-4.5, Figs 2-3
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Concatenate RAG and GraphRAG evidence for QA
+  effect: 'MultiHop-RAG, Llama-3.1-70B: +6.4% over best baseline (vs +1.1% for Selection); generally above
+    Selection across QA datasets. Query-based summarization: Integration ROUGE-2 F1 10.67 vs RAG 10.08
+    on SQuALITY but 9.53 vs 9.81 on ODSum-story, i.e. "comparably to RAG alone".'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.5, Fig 3; Sec 5.2 obs (4), Tables 6-7
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Return source text with graph triplets, not triplets alone
+  effect: 'Han NQ F1: KG triplets only 34.28 vs triplets+text 50.27 (RAG 64.78); HotpotQA 25.02 vs 42.60
+    (RAG 60.04); MultiHop-RAG 41.24 vs 48.51. Only ~65.8% (HotpotQA) and 65.5% (NQ) of answer entities
+    appear in the constructed KG.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.2 obs (4), Tables 1-2, Appendix C
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Avoid global community-summary search for detail questions
+  effect: 'Han MultiHop-RAG: Community-Global Null-query acc 19.27 vs RAG 96.01, but Comparison 64.02
+    vs 57.59 and Temporal 53.34 vs 30.70. NQ F1 54.48 vs 64.78. Summarization: LLM-judge prefers RAG on
+    comprehensiveness, Global on diversity. GraphRAG-Bench: MS-GraphRAG(global) prompts ~331K tokens avg
+    vs 879 for vanilla RAG, growing 7,800 -> 40,000 tokens with task difficulty.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.2 obs (3), Table 2, Sec 5.3; Xiang Obs 8-9, Figs 8-9
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Use a stronger LLM to construct the graph
+  effect: 'Han, Community-GraphRAG (Local), MultiHop-RAG, Llama-3.1-70B generator: no graph (RAG) 65.77
+    overall; GPT-4o-mini graph 71.17; GPT-4o graph 75.08 (Temporal 25.73 / 49.06 / 58.49; Comparison 56.31
+    / 60.16 / 66.59), while Null falls 91.36 / 88.70 / 81.06.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.7, Table 5
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Prefer dense, compact-prompt graph retrievers
+  effect: 'GraphRAG-Bench avg prompt tokens (novel): vanilla RAG 879, HippoRAG2 1,008, RAPTOR 3,441, Fast-GraphRAG
+    4,204, HippoRAG 7,208, MS-GraphRAG local 38,707, LightRAG 100,832, MS-GraphRAG global 331,375. HippoRAG2
+    avg degree 8.75 (novel) / 13.31 (medical) vs 1.48-5.50 for others; 2,310 edges and 523 nodes per 10K
+    corpus tokens (novel). Han construction time on MultiHop-RAG: RAG 135 s, KG-GraphRAG 7,702 s, Community-GraphRAG
+    5,560 s; retrieval time 1,724 / 14,434 / 1,249 s.'
+  direction: supports
+  measured: true
+  locator: Xiang Sec 4.3-4.4, Obs 7-9, Figs 7-9; Han Sec 4.6, Table 4
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Add reranking and iterative retrieval to either pipeline
+  effect: 'Han: reranking (bge-reranker-large) and IRCoT improve all methods on NQ and MultiHop-RAG, with
+    larger gains on MultiHop-RAG (numbers in Fig 1 / appendices, not in text); RAG still best on single-hop.
+    GraphRAG-Bench novels, fact retrieval: RAG evidence recall 61.37 -> 83.21 with rerank, ACC 58.76 ->
+    60.92.'
+  direction: supports
+  measured: true
+  locator: Han Sec 4.3, Fig 1; Xiang Tables 2-3
+- source: 'Zhishang Xiang et al. (2506.05690); Haoyu Han et al. (2502.11371), "When to use Graphs in RAG:
+    A Comprehensive Analysis for Graph Retrieval-Augmented Generation (GraphRAG-Bench), arXiv 2506.05690;
+    and RAG vs. GraphRAG: A Systematic Evaluation and Key Insights, arXiv 2502.11371", https://arxiv.org/abs/2502.11371'
+  date: '2026-03-04'
+  task: Swap candidate order when LLM-judging retrieval outputs
+  effect: 'Han: reversing which summary is shown first gives "substantially different, and in some cases
+    opposite" preferences, most for RAG vs GraphRAG-Local (QMSum, ODSum-story). Explains why prior LLM-judged
+    work found Community-Global best while reference metrics (ROUGE-2, BERTScore) favor RAG.'
+  direction: supports
+  measured: true
+  locator: Han Sec 5.3, Fig 4
+related:
+- 8.b.i
+- 8.a.ii
+- 5.b.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: search
+  harness_role: retrieval
+  action: restructure

@@ -1,0 +1,486 @@
+# 2.a.i: Reduce the tool surface: remove and consolidate tools, then defer the rest behind search
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 2.a.i
+legacy_id: T60
+slug: reduce-tool-surface
+name: 'Reduce the tool surface: remove and consolidate tools, then defer the rest behind search'
+kind: technique
+status: card
+tiers:
+- tier: 1
+  why: removing tools that are never called, verified unchanged on the hand-labeled set
+- tier: 3
+  why: consolidating or deferring changes what the model sees and chooses
+levers:
+- tool-surface
+- context
+domains:
+- tool-use
+evidence_domains:
+- tool-use
+- code-generation
+categories:
+- tools.refactor
+- context.filter-input
+summary: 'Offer the agent only the tools the task needs. First remove tools no task uses; then consolidate
+  tools with overlapping scopes (read and write tools with a method parameter, tools grouped around jobs),
+  because rewording cannot separate tools that genuinely overlap. Then keep a small core always loaded
+  and defer the rest: names and one-line purposes in the prompt, full definitions loaded on demand through
+  tool search, per-server files or expandable groups. Defer once definitions exceed about 10k tokens or
+  10 tools; keep deferred groups under about 10 tools each. Every tool offered has a cost even when not
+  called: one irrelevant tool cut accuracy from 98.2% to 63.5%. Deferral costs extra calls (2-3x) and
+  time (about 50%), so consolidate first.'
+how: 1. From traces over the eval set, list each tool's call count and the cases where it was needed.
+  2. Remove tools with no calls and no needing case. 3. Find overlapping pairs (similar names or descriptions,
+  or cases routed to the wrong one of the pair) and merge them; a method parameter often replaces several
+  tools. 4. If what remains exceeds about 10 tools or 10k tokens, keep a core loaded and defer the rest
+  behind search or expandable groups. 5. Run the paired eval, old set against new, and compare coverage,
+  success, calls and latency.
+detect:
+  static: more than about 10 tools, or more than about 10k tokens of tool definitions, in every prompt;
+    duplicate or near-duplicate tool names or descriptions (73% of audited MCP servers have repeated names);
+    tools the agent's credentials cannot use
+  traces: tools never called across the eval runs; tool-use coverage below the eval's needs (share of
+    needing cases where the right tool was loaded and chosen; GitHub measured 69% for a static list);
+    calls to a tool where none was needed; failure rows labeled incorrect-tool-selection concentrated
+    on one pair of tools
+  evals: accuracy falling as tools are added (an ablation over catalog size); paired eval, current tool
+    set against a reduced one
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: GitHub +2-5 points on SWE-bench with 40 to 13 tools (Nov 2025); Anthropic tool search 49% to
+      74% (Opus 4); one irrelevant tool cost 34.7 points on questions answerable without tools (Sep 2026)
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: definitions -85% (Anthropic); -46.9% tokens (Cursor A/B); deferral alone raises call count
+    basis: evidence
+  performance:
+    effect: mixed
+    size: medium
+    when: consolidation faster (GitHub -400 ms); deferral about 50% slower with 2-3x calls (Speakeasy)
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: verify-fix
+  tier: 1
+  how: replay the hand-labeled set after removing unused tools
+- method: experiment
+  tier: 3
+  how: 'paired eval, old tool set against new: success, coverage, calls, latency'
+evidence:
+- source: Jediah Katz (Cursor), "Dynamic context discovery", https://cursor.com/blog/dynamic-context-discovery
+  date: '2026-01-06'
+  task: Sync MCP tool descriptions to per-server folders
+  effect: '"In an A/B test, we found that in runs that called an MCP tool, this strategy reduced total
+    agent tokens by 46.9% (statistically significant, with high variance based on the number of MCPs installed)."
+    No n, model or quality metric given.'
+  direction: supports
+  measured: true
+  locator: 4. Efficiently loading only the MCP tools needed; footnote 1
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Expose MCP tools as a code-API filesystem
+  effect: '"This lets the agent load only the definitions it needs for the current task. This reduces
+    the token usage from 150,000 tokens to 2,000 tokens, a time and cost saving of 98.7%." (single Google
+    Drive to Salesforce example; model not stated.) Cloudflare reports similar findings ("Code Mode").'
+  direction: supports
+  measured: true
+  locator: Code execution with MCP improves context efficiency
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Add a search_tools tool with detail levels
+  effect: '"Including a detail level parameter in the search_tools tool that allows the agent to select
+    the level of detail required ... also helps the agent conserve context and find tools efficiently."'
+  direction: supports
+  measured: false
+  locator: 'Benefits: Progressive disclosure'
+- source: Drew Breunig, "How Long Contexts Fail / How to Fix Your Context", https://www.dbreunig.com/2025/06/22/how-contexts-fail-and-how-to-fix-them.html
+    ; https://www.dbreunig.com/2025/06/26/how-to-fix-your-context.html (2025-06-26)
+  date: '2025-06-22'
+  task: Select a per-task tool loadout via retrieval
+  effect: 'RAG-MCP (Gan & Sun), DeepSeek-v3: selection "becomes critical when you have more than 30 tools";
+    "Beyond 100 tools, the model was virtually guaranteed to fail"; RAG-selecting under 30 tools gave
+    "as much as 3x better tool selection accuracy" and shorter prompts. "Less is More": Llama 3.1 8b fails
+    with 46 tools, succeeds with 19; dynamic tool selection improved Llama 3.1 8b by 44% on BFCL; where
+    accuracy did not improve, it saved 18% power and 77% time.'
+  direction: supports
+  measured: true
+  locator: 06-26 post, "Tool Loadout"
+- source: 'Xiaofang Yang, Lijun Li, Heng Zhou, Tong Zhu, Xiaoye Qu, Yuchen Fan, et al. (Shanghai AI Lab
+    et al.), "Toward Efficient Agents: A Survey of Memory, Tool Use, and Planning", https://arxiv.org/abs/2601.14192'
+  date: '2026-01-20'
+  task: Retrieve top-k tools instead of listing all
+  effect: 'TinyAgent (DeBERTa-v3 small multi-label selector, >50% threshold) ''reduces nearly half of
+    the prompt size''. The other methods give no numbers. Trade-off: aggressive selection ''may filter
+    out necessary tools''.'
+  direction: supports
+  measured: true
+  locator: §4.1 Tool Selection (External Retriever, MLC); §4.4
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Defer tool loading behind a tool-search tool
+  effect: '"Claude Code''s shouldDefer flag + ToolSearchTool reduces the initial prompt by 40%" (43 tools;
+    no further conditions given); Hermes collapses catalogs "once schemas would exceed 10% of the context
+    window"; "Below 15 tools the indirection is not worth the added complexity."'
+  direction: supports
+  measured: true
+  locator: Sec 8.3; Recommendation 4; Table 11 "Deferred Loading"; Appendix table (Claude Code row)
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Front a large MCP catalog with a code-mode execute tool
+  effect: 'OpenCode "treats its experimental code mode as MCP-catalog deferral: instead of exposing every
+    MCP tool, one execute tool runs model-written scripts against the catalog."'
+  direction: supports
+  measured: false
+  locator: Sec 8.3
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Index tool definitions and retrieve them on demand
+  effect: '"some agents index tool definitions and retrieve tools on demand, potentially using a search
+    tool to encapsulate this process."'
+  direction: supports
+  measured: false
+  locator: Progressive Disclosure
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: List CLI utilities in instructions; agent reads --help
+  effect: Manus "just provides a list of available utilities in the agent instructions. Then agent uses
+    its bash tool to call the --help flag ... to learn about any one of them if needed."
+  direction: supports
+  measured: false
+  locator: Progressive Disclosure
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Package skills as SKILL.md folders, frontmatter only
+  effect: '"The YAML frontmatter of each file is loaded into agent instructions, letting the agent decide
+    to read SKILL.md only if needed."'
+  direction: supports
+  measured: false
+  locator: Progressive Disclosure
+- source: Mak et al., "Is Bash All You Need? An Empirical Study of Tool Interfaces for Enterprise Digital
+    Worker Agents", https://arxiv.org/abs/2609.11999
+  date: '2026-09-10'
+  task: Give a bash-only interface rather than typed tools for enterprise digital-worker tasks
+  effect: 'Opus-4.8 and GPT-5.5 on TheAgentCompany and APEX-Agents, five interfaces compared: bash-only
+    beats typed tools by 21.8-24.5 pp on TheAgentCompany and 4.8-7.4 pp on APEX-Agents, with 19-72% fewer
+    tokens. Adding typed or agent-synthesized tools on top of bash gives no measurable gain; programmatic
+    tool calling saves tokens but scores below bash.'
+  direction: supports
+  measured: true
+- source: Repantis et al., "How Many Tools Should an LLM Agent See? A Chance-Corrected Answer", https://arxiv.org/abs/2605.24660
+  date: '2026-05-23'
+  task: Show an adaptive shortlist of tools rather than a fixed top-k
+  effect: 'Registries of 20-3,251 tools, chance-corrected coverage metric, RL-trained adaptive-depth selector:
+    BFCL (370 tools) 90.3% coverage while showing about 7 tools, against 90.8% at fixed depth; hard ToolBench
+    queries (3,251 tools) 16.7% where fixed top-5 gets 0. With Claude Sonnet 4.6 choosing: 93.1% vs 87.1%
+    selection accuracy, 76.8% vs 60.9% on medium queries.'
+  direction: supports
+  measured: true
+- source: 'Paturi et al., "When Tools Get in the Way: The Effect of Unnecessary Tool Availability on LLM
+    Answering", https://arxiv.org/abs/2609.14157'
+  date: '2026-09-12'
+  task: Do not offer tools the task does not need
+  effect: '500 query pairs, 10 domains, 6 LLMs, every query answerable from the model''s own knowledge:
+    accuracy falls from 98.2% to 63.5% once an irrelevant tool is offered, whether or not the model calls
+    it.'
+  direction: supports
+  measured: true
+- source: 'Wang et al., "From Docs to Descriptions: Smell-Aware Evaluation of MCP Server Descriptions",
+    https://arxiv.org/abs/2602.18914'
+  date: '2026-02-21'
+  task: 'Fix description defects: purpose, functionality and accuracy'
+  effect: '18 description smells audited over 10,831 MCP servers; 73% have repeated tool names. Controlled
+    mutations: functionality and accuracy defects shift selection most (+11.6%, +8.8%, p<0.001). Among
+    functionally equivalent servers, a standard-compliant description is picked 72% of the time against
+    a 20% baseline.'
+  direction: supports
+  measured: true
+- source: 'Zhou et al., "A Single Rewrite Suffices: Empirical Lessons from Production Skill Description
+    Optimization", https://arxiv.org/abs/2606.30775'
+  date: '2026-06-29'
+  task: Consolidate tools whose scopes genuinely overlap
+  effect: 'Same study: where two skills genuinely overlap in scope, rewording cannot separate them; the
+    paper gives a signal for detecting such pairs, which need consolidation instead.'
+  direction: supports
+  measured: true
+- source: 'Shiyang Chen, "Looking Is Not Picking: An Attention-Segment Account of Tool-Selection Failures
+    in LLM Agents", https://arxiv.org/abs/2606.16364'
+  date: '2026-06-15'
+  task: Do not assume pruning the input fixes wrong-tool selection
+  effect: '3B-32B open models: attention lands most on the correct tool 80% of the time (21% by chance),
+    so failures happen at the decision step. Input fixes recover at most 23% of failures; decision-step
+    interventions 59-91%. Training-free attention-based selector +11.9 pts function-name accuracy on BFCL.
+    Single-turn only.'
+  direction: mixed
+  measured: true
+- source: 'Xiao et al., "SING: Synthetic Intention Graph for Scalable Active Tool Discovery in LLM Agents",
+    https://arxiv.org/abs/2606.16591'
+  date: '2026-06-15'
+  task: Retrieve tools from an intention and co-usage graph
+  effect: '7,471 tools, three benchmarks: up to +59.8% Global Recall@5 and +28.9% downstream success over
+    retrieval baselines, exposing 99.8% less tool schema.'
+  direction: supports
+  measured: true
+- source: 'Suresh Babu and Ganesh Iyer, "ToolChoiceConfusion: Causal Minimal Tool Filtering for Reliable
+    LLM Agents", https://arxiv.org/abs/2606.06284'
+  date: '2026-06-04'
+  task: Filter tools per step by precondition and effect
+  effect: '102 tasks, 100 tools, 4 model backends, 2,448 runs: matches stronger causal baselines while
+    showing about 1 tool per step instead of 100, ~90% fewer tokens than loading all tools.'
+  direction: supports
+  measured: true
+- source: Li et al., "Scalable LLM Agent Tool Access in the Cloud", https://arxiv.org/abs/2607.15593
+  date: '2026-07-17'
+  task: Front a large tool catalog with hybrid retrieval
+  effect: 'Production MCP gateway over 3,000+ tools: 98% top-15 recall, 8.9x faster tool selection and
+    23.8x fewer tokens than mounting all tools. Systems metrics, not task success.'
+  direction: supports
+  measured: true
+- source: 'Li et al., "ComplexMCP: Evaluation of LLM Agents in Dynamic, Interdependent, and Large-Scale
+    Tool Sandbox", https://arxiv.org/abs/2605.10787'
+  date: '2026-05-11'
+  task: Expect performance to fall as more tools are available
+  effect: '300+ tools across 7 stateful sandboxes: best models under 60% against 90% for humans; names
+    tool retrieval saturation (performance falls as tools grow), over-confidence and strategic defeatism
+    as the main failure modes. No count-vs-success curve in the abstract.'
+  direction: supports
+  measured: true
+- source: 'Bandi et al. (Scale AI), "MCP-Atlas: A Large-Scale Benchmark for Tool-Use Competency with Real
+    MCP Servers", https://arxiv.org/abs/2602.00933'
+  date: '2026-01-31'
+  task: Measure selection with plausible distractor tools
+  effect: '1,000 tasks, 36 real servers, 220 tools, 6-37 offered per task (mean 15.2) with plausible distractors,
+    20 models: best pass rate 82.2%; 63.3% of diagnosed failures are reasoning failures, not tool-call
+    failures.'
+  direction: mixed
+  measured: true
+- source: Anisha Agarwal and Connor Peet (GitHub), "How we're making GitHub Copilot smarter with fewer
+    tools", https://github.blog/ai-and-ml/github-copilot/how-were-making-github-copilot-smarter-with-fewer-tools/
+  date: '2025-11-19'
+  task: Cut the default toolset and group the rest behind expandable virtual tools
+  effect: Default built-in tools cut from about 40 to 13; the rest in 4 expandable virtual-tool groups,
+    grouped by embedding similarity. Tool-use coverage 94.5% (embeddings) vs 87.5% (LLM grouping) vs 69%
+    (static list). SWE-Lancer and SWE-bench Verified +2-5 points with GPT-5 and Sonnet 4.5; average response
+    time -400 ms, time to first token -190 ms. An oversized toolset made the agent ignore instructions
+    and call unneeded tools.
+  direction: supports
+  measured: true
+- source: Bin Wu et al. (Anthropic), "Introducing advanced tool use on the Claude Developer Platform",
+    https://www.anthropic.com/engineering/advanced-tool-use
+  date: '2025-11-24'
+  task: Defer tool loading behind tool search
+  effect: 'Tool Search with defer_loading: tool-definition tokens ~77k to 8.7k (-85%); internal MCP evals
+    49% to 74% (Opus 4) and 79.5% to 88.1% (Opus 4.5). Recommended when definitions exceed 10k tokens
+    or there are 10+ tools. Internal evals only.'
+  direction: supports
+  measured: true
+- source: Eric Kim (Amplitude), "Bring headless Amplitude where you work", https://amplitude.com/blog/headless-amplitude
+  date: '2026-09-16'
+  task: Consolidate an MCP server's tools around jobs, and regression-test the new set
+  effect: 'MCP server cut from 100+ tools to about 40, grouped around jobs; paired regression over 80+
+    scenarios: task completion matched or improved in every paired suite. No per-suite numbers.'
+  direction: supports
+  measured: true
+- source: Ryan Caldwell and Bhavya U (Microsoft), "Improving token efficiency for GitHub Copilot in VS
+    Code", https://code.visualstudio.com/blogs/2026/06/17/improving-token-efficiency-in-github-copilot
+  date: '2026-06-17'
+  task: Keep a core toolset loaded and defer the rest behind server-side search
+  effect: 'Deferred tools shown by name and description only, a curated always-loaded core, embedding
+    tool search for Anthropic models: server-side tool search cut total tokens about 11% per turn; user
+    error rate -4.01% with Sonnet 4.6.'
+  direction: supports
+  measured: true
+- source: OpenAI, "Tool search (API guide)", https://developers.openai.com/api/docs/guides/tools-tool-search
+  date: '2026-09-23'
+  task: Group deferred tools into small namespaces with use-case descriptions
+  effect: 'Vendor guidance, not measured: namespaces under 10 functions with short use-case descriptions;
+    defer when the catalog is large and each task needs few tools, load eagerly when small; mixing eager
+    and deferred generally not recommended. Living doc; date is the access date.'
+  direction: supports
+  measured: false
+- source: Chase Crumbaugh (Speakeasy), "Reducing MCP token usage by 100x — you don't need code mode",
+    https://www.speakeasy.com/blog/how-we-reduced-token-usage-by-100x-dynamic-toolsets-v2
+  date: '2025-11-18'
+  task: Replace the catalog with search, describe and execute meta-tools
+  effect: 'Sonnet 4.5 over 40-400 tools, vendor benchmark: 100% success; input tokens -96.7% (simple)
+    and -91.2% (complex). Cost: 2-3x more tool calls (6-8 vs 3) and about 50% slower.'
+  direction: mixed
+  measured: true
+- source: GitHub, "GitHub MCP Server changelogs (Oct 2025, Jan 2026)", https://github.blog/changelog/2026-01-28-github-mcp-server-new-projects-tools-oauth-scope-filtering-and-new-features/
+  date: '2026-01-28'
+  task: Merge related tools into read and write tools with a method parameter
+  effect: Consolidated many tools into read/write tools with a method parameter (issue_read, issue_write);
+    smaller default toolset; server instructions. Projects consolidation saved about 23k tokens (~50%).
+    Tools the user's token scopes cannot use are hidden. Tokens only, no accuracy data.
+  direction: supports
+  measured: true
+- source: 'Matt Carey (Cloudflare), "Code Mode: give agents an entire API in 1,000 tokens", https://blog.cloudflare.com/code-mode-mcp/'
+  date: '2026-02-20'
+  task: Expose a large API through search and execute in code
+  effect: 2,500+ API endpoints behind search() and execute(); the model writes code against the typed
+    spec in a sandbox. About 1k tokens against 1.17M, calculated not tested.
+  direction: supports
+  measured: false
+- source: Guillaume Lebedel (StackOne), "Comparing BM25, TF-IDF, and Hybrid Search for MCP Tool Discovery",
+    https://www.stackone.com/blog/mcp-tool-search-bm25-tfidf-hybrid/
+  date: '2026-02-17'
+  task: Choose the tool-search method by how many results the agent sees
+  effect: '270 tools, 2,700 queries: top-1 retrieval BM25 14%, hybrid 21%, embeddings 38%; top-5 85-90%
+    for all three. Whether a tool is found depends on distinctive terms in its description. Retrieval
+    only, not task success.'
+  direction: supports
+  measured: true
+- source: Lily Chen et al. (Datadog), "Gain end-to-end visibility into MCP clients with Datadog Agent
+    Observability", https://www.datadoghq.com/blog/mcp-client-monitoring/
+  date: '2025-12-01'
+  task: Trace tool listing and calls, linked to the model call that chose them
+  effect: Traces tools/list and call_tool, each linked to the LLM call that chose the tool; per-tool and
+    per-server error rate, retries and p95 latency; large registries add latency. No wrong-tool or unused-tool
+    metric. Not measured.
+  direction: supports
+  measured: false
+- source: Grace et al. (Anthropic), "Demystifying evals for AI agents", https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents
+  date: '2026-01-09'
+  task: Grade outcomes, not exact tool-call sequences
+  effect: Warns against grading exact tool-call sequences as too rigid and brittle; grade the outcome
+    and read transcripts; production monitoring is the ground truth after launch. Not about tool counts.
+  direction: mixed
+  measured: false
+related:
+- 2.a.ii
+- 2.b.ii
+- 2.a.iii
+absorbs:
+- legacy_id: P10
+  name: Consolidate tools into higher-level operations
+  group: Tool Design
+  source: master
+  family: tool
+  sub_type: api
+  categories:
+  - tools.refactor
+  note: schedule_event instead of list_users + list_events + create_event.
+  assessment:
+    detection:
+      static: Tool count; tools that are only ever useful in fixed sequences.
+      traces: Co-occurrence of tool calls; fixed sequences repeated per task; selection errors among many
+        tools.
+      evals: Calls per task.
+      judge: Propose consolidations from traces.
+      probes:
+        what: Tasks that need the composite operation.
+        construct: Derive from the top co-occurring call pairs in traces.
+      primary:
+      - traces
+    qa:
+      unit: Composite tool semantics and error handling.
+      examples: Composite probes.
+      benchmark: Tool-use benchmark.
+      production: Calls per task and latency.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: medium
+        note: Fewer calls.
+      security:
+        effect: mixed
+        magnitude: low
+        note: A broader tool is a broader permission.
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: mixed
+        magnitude: low
+        note: Coarser permission boundaries.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: Fewer selection errors.
+      latency:
+        effect: improves
+        magnitude: medium
+        note: ''
+      primary:
+      - cost
+      - latency
+- legacy_id: P57
+  name: Progressive tool discovery
+  group: Context & Memory
+  source: catalog
+  family: tool
+  sub_type: api
+  categories:
+  - context.filter-input
+  note: Name, then description, then full schema.
+  assessment:
+    detection:
+      static: Tiered tool listing; load-on-demand.
+      traces: Initial context size; discovery calls; tools never found.
+      evals: Tool selection accuracy; tokens per task.
+      judge: null
+      probes:
+        what: Tasks needing rarely used tools.
+        construct: Tasks whose only solution uses a tool outside the top tier.
+      primary:
+      - static
+      - evals
+    qa:
+      unit: Tiers render correctly.
+      examples: Rare-tool probes.
+      benchmark: Tool-use benchmark with many tools.
+      production: Tokens per task; missed-tool rate.
+      primary:
+      - examples
+      - production
+    impact:
+      cost:
+        effect: improves
+        magnitude: high
+        note: Twenty-plus tools.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: none
+        magnitude: low
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: Can miss tools.
+      latency:
+        effect: improves
+        magnitude: low
+        note: ''
+      primary:
+      - cost
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: api
+  harness_role: tool_surface
+  action: restructure

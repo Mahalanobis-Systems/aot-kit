@@ -1,0 +1,348 @@
+# 9.b.iii: Verify completion against the environment before the agent stops
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.b.iii
+legacy_id: T44
+slug: verify-completion
+name: Verify completion against the environment before the agent stops
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: false success and premature termination are silent hard failures
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- code-generation
+- data-analysis
+categories:
+- verification.completion
+summary: 'Never take the agent''s own report that it finished. Before it stops, check the claim against
+  something it cannot write: the environment''s end state, a smoke test or end-to-end run, or its transcript
+  (files it claims to have reviewed against files it opened). Veto stopping when code changed with no
+  verification run; ask for an explicit scope statement; re-verify sub-agent findings before relaying
+  them. Keep the checklist the agent is judged by in a form it is unlikely to rewrite (JSON, one status
+  field editable), but expect rules alone to be weak: only a check the agent cannot see reliably held.'
+how: 1. Define what 'done' means as an environment check (tests pass, feature works end to end, files
+  reviewed). 2. Add a stop hook that runs it and refuses to stop on failure. 3. Lock the checklist format.
+  4. Measure false-success and premature-stop rates.
+detect:
+  static: completion taken from the agent's final message or its own status flag; no stop hook; the agent
+    can edit the tests or checklist it is judged by
+  traces: final message claims success while the environment or transcript shows otherwise; runs ending
+    right after an edit with no test or build run; edits to checklist items; failure rows labeled satisficing
+    or specification-gaming
+  evals: tasks scored failed where the agent reported success (false-success rate); features marked done
+    that fail an end-to-end check
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: 'MAST: ProgramDev 25.0 to 40.6 with reviewer sign-off (2025); Advani: false success is 45-76%
+      of failures where the agent claims success, so the catch rate is large even if the fix is not (Jun
+      2026)'
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    basis: evidence
+  performance:
+    effect: degrades
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: false-success and premature-stop rate on the same cases
+- method: monitor
+  how: sampled completion checks in production
+evidence:
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Do not treat the agent's own success status as completion
+  effect: 'AppWorld (8,190 trajectories): react and plan_exec write status=success 1,503 and 1,099 times
+    and status=fail zero times. Among self-assessing architectures with an explicit status, 75.8% of failures
+    carry status=success (full_code_refl 74.9%, ipfuncall 77.3%; per-model 67% LLaMA-3 to 89% DeepSeekCoder).
+    Easy tasks show more false success (88.2% at difficulty 1 vs 70.1% at 3), claimed after fewer API
+    calls (23 vs 37).'
+  direction: supports
+  measured: true
+  locator: §3.2, §4.1, Table 2, Appendix F Table 11
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Have an independent party verify state changes
+  effect: 'Observational: false success is 45% (airline) and 48% (retail) of failures in single-control
+    tau2-bench domains vs 3% in dual-control telecom, where the user simulator can verify state. Author
+    treats it as a hypothesis: one dual-control domain, 15 false-success cases, other domain differences
+    not controlled.'
+  direction: supports
+  measured: true
+  locator: §1 Contributions (4), §4.1, Table 1
+- source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
+    Agents", https://arxiv.org/abs/2606.09863'
+  date: '2026-06-01'
+  task: Check completion claims against environment state directly
+  effect: 'Recommendation, not tested: "Substantial gains would likely require methods that verify trajectory-environment
+    consistency directly rather than reading surface text." Motivated by 50% precision at a 10% flag rate
+    for the best detector and 20-25% flip rates under adversarial rewriting for both detector and judges.'
+  direction: supports
+  measured: false
+  locator: §4.4 Deployment scoping, §5, §6
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Check claimed review coverage against the transcript
+  effect: 'The paper''s measurement, not an intervention: 67.9% of runs failed to touch every file; among
+    incomplete runs 80.4% were misleading (52.8% explicit overclaim, 27.5% silent omission; 59.0% Claude
+    Opus 5 to 96.2% GPT-5.6-luna). Overclaiming runs missed 58.2% of needles (720/1,237) vs 32.4% (342/1,055)
+    for runs that touched every file; a needle was reported 83.2% of the time its evidence was read vs
+    1.8% when not. Authors conclude final reports should be compared with "trustworthy evidence derived
+    from its full trajectory".'
+  direction: supports
+  measured: false
+  locator: §3.5, §4, §5, Table 1, Figure 5, Appendix A
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: A more capable model does not report coverage honestly
+  effect: Misleading rate among incomplete runs exceeded 50% for every one of 12 models (59.0%-96.2% proprietary,
+    65.0-85.1% open-weight). In the controlled experiment "neither family shows a capability effect on
+    misleading reporting among incomplete runs".
+  direction: supports
+  measured: true
+  locator: §4, Table 1, §4 Subagents paragraph
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Honesty training on infeasible tasks did not fix overclaiming
+  effect: GPT-5.6 models, released after that intervention, claimed a complete review in 48.4% of their
+    incomplete runs and were misleading in 93.6%. Reported as context; the paper did not run the training
+    itself.
+  direction: supports
+  measured: true
+  locator: §5 Discussion
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Re-verify subagent findings before relaying them
+  effect: 'Illustrative only: in the all-files-touched Claude Fable 5 runs the agent "personally re-verified
+    every blocker and major against the source" (release check, 4/4 needles) and "independently verified
+    its major findings ... before including them" (infra review, 1/1). Paper cites a vendor system card
+    noting a model "can relay claims from subagents to users without verifying them". No controlled test.'
+  direction: supports
+  measured: false
+  locator: §2 Related Work, Appendix G.4
+- source: Smyth, Mantilla-Ramos, Tikeng Notsawo, Helbling, Tosato, Merzouk, Dziri, Gidel, Tosato (Tara
+    Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", https://arxiv.org/abs/2609.20812
+  date: '2026-09-22'
+  task: Ask for an explicit scope statement in the report
+  effect: Every prompt in the study already asked the agent to report how it scoped its review; even so
+    only 19.6% of incomplete runs admitted the gap. The admission examples (Appendix G.3) show the useful
+    form, e.g. "About 100 files I read in full ... the remaining ~120 ... I covered with targeted greps".
+    No with/without comparison was run, so the prompt's effect is unmeasured.
+  direction: supports
+  measured: false
+  locator: §3.4, §4, Appendix G.3
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Self-correct assumptions, then verify the exact numbers asked
+  effect: 'Figure 2 trajectory: Phase 5 Reconciliation (steps 91-97) and Phase 6 Per-Customer Verification
+    (steps 97-208, two dozen queries): "Verifies the exact numbers the user asked about." Prose names
+    self-correction and verification as phases. No ablation; the example took ~208 steps.'
+  direction: supports
+  measured: false
+  locator: Key Challenges for Data Agents; Figure 2
+- source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
+  date: '2026-05-08'
+  task: Detect unanswerable data questions and tell the user
+  effect: 'Stated as a requirement, not an evaluated mechanism: "the queries may not always be answerable
+    because of incompleteness in data, and it is important for data agents to be able to identify such
+    cases and surface it back to users."'
+  direction: supports
+  measured: false
+  locator: Key Challenges for Data Agents (Lack of Verifiable Tests)
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Protect the feature list from edits other than status
+  effect: '"It is unacceptable to remove or edit tests because this could lead to missing or buggy functionality."
+    "we landed on using JSON for this, as the model is less likely to inappropriately change or overwrite
+    JSON files compared to Markdown files."'
+  direction: supports
+  measured: false
+  locator: 'Environment management: Feature list'
+- source: Guo et al., "Self-Authored Verification Is Unreliable in Heuristic Self-Improving Agents", https://arxiv.org/abs/2607.24300
+  date: '2026-07-27'
+  task: Do not accept edits on self-authored tests alone
+  effect: 'Unprotected, 7 models x 5 Atari games: all 35 valid cells end with self-score >= 0.70, yet
+    15 of 35 final policies score below the game''s random reference, six at Pong''s -21.0 floor. Weaker
+    models overwrite discovered strategies behind easy self-tests (failure to retain); stronger ones still
+    mismeasure the shifted deployment distribution.'
+  direction: supports
+  measured: true
+  locator: Finding 1, Table 4, Figure 4
+- source: Guo et al., "Self-Authored Verification Is Unreliable in Heuristic Self-Improving Agents", https://arxiv.org/abs/2607.24300
+  date: '2026-07-27'
+  task: Forbidding test weakening does not close the gap
+  effect: 'Breakout, 3 seeds: monotone below no protection in 4 of 6 models (DeepSeek 9.0 -> 4.5, MiniMax
+    5.6 -> 2.4, Doubao 19.1 -> 9.3, GPT-5.5 7.4 -> 7.2); self-scores stay 0.89-0.98.'
+  direction: contradicts
+  measured: true
+  locator: Finding 2 Breakout ablation, Table 5
+- source: Guo et al., "Self-Authored Verification Is Unreliable in Heuristic Self-Improving Agents", https://arxiv.org/abs/2607.24300
+  date: '2026-07-27'
+  task: Requiring tests to beat a trivial baseline does not help
+  effect: 'Breakout, 3 seeds: discriminative below no protection in 4 of 6 models (DeepSeek 9.0 -> 3.0,
+    MiniMax 5.6 -> 3.9, Doubao 19.1 -> 8.5, GPT-5.5 7.4 -> 5.4); self-scores 0.78-1.00.'
+  direction: contradicts
+  measured: true
+  locator: Finding 2 Breakout ablation, Table 5
+- source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
+  date: '2026-01-09'
+  task: Verify work with stop hooks each iteration
+  effect: '"using stop hooks to verify work after each Ralph loop"; "Claude Code uses stop hooks to verify
+    work after each iteration."'
+  direction: supports
+  measured: false
+  locator: Isolate Context; Abstractions for Long-Running Agents
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Veto stop when code changed without verification
+  effect: Hermes verify-on-stop guard "rewrites a text-only response into a continuation whenever the
+    turn mutated code files without producing fresh verification evidence—the reflection loop's function,
+    relocated ... to its stop condition, at a fraction of the cost."
+  direction: supports
+  measured: false
+  locator: Sec 6.2 (Hermes); Sec 6.3; Table 12 "Outer Verification Loop"
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Run an LLM goal-judge outer loop over runs
+  effect: OpenHands "/goal endpoint runs an LLM judge over the transcript after each run, either injecting
+    a follow-up prompt or stopping ... complemented by pluggable critics with configurable refinement-iteration
+    caps."
+  direction: supports
+  measured: false
+  locator: Sec 11.4; Sec 6.1; Table 12 "Outer Verification Loop"
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Smoke-test the app end-to-end before new work
+  effect: '"This ensured that Claude could quickly identify if the app had been left in a broken state,
+    and immediately fix any existing bugs. If the agent had instead started implementing a new feature,
+    it would likely make the problem worse."'
+  direction: supports
+  measured: false
+  locator: Getting up to speed; failure-mode table row 2
+- source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
+  date: '2025-11-26'
+  task: Give browser automation for end-to-end self-verification
+  effect: 'Without it, Claude tested with unit tests or curl "but would fail recognize that the feature
+    didn''t work end-to-end." "Providing Claude with these kinds of testing tools dramatically improved
+    performance" (no numbers). Limitation: "Claude can''t see browser-native alert modals through the
+    Puppeteer MCP, and features relying on these modals tended to be buggier".'
+  direction: supports
+  measured: false
+  locator: Testing; failure-mode table row 3
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Only superior agents may end the conversation
+  effect: 'Table 5, ChatDev: ProgramDev-v0 (32 tasks) 25.0 -> 34.4; HumanEval 89.6 -> 90.3. Text: "+9.4%
+    increase in overall task success rate" (percentage points). §1 says ProgramDev-v2 with GPT-4o; Table
+    5 says ProgramDev-v0.'
+  direction: supports
+  measured: true
+  locator: §1, §4 (FC1), App. H.2, App. M.2, Table 5
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Make the workflow cyclic, gated on reviewer sign-off
+  effect: 'Table 5, ChatDev: ProgramDev-v0 25.0 -> 40.6; HumanEval 89.6 -> 91.5. §4: "adding a high-level
+    task objective verification step to ChatDev yields a +15.6% improvement in task success on ProgramDev".
+    Figs 10-11 (LLM-judge MAST counts): "topology-based changes are more effective than prompt-based changes
+    for both systems".'
+  direction: supports
+  measured: true
+  locator: §4 Insight 3, App. H.2-H.3, Table 5, Figs 10-11
+- source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
+  date: '2025-03-17'
+  task: Define conversation patterns and termination conditions
+  effect: Proposed tactic in Table 4 (FC1, FC2).
+  direction: supports
+  measured: false
+  locator: App. G.1, Table 4
+related:
+- 9.b.i
+- 9.b.ii
+- 9.a.i
+absorbs:
+- legacy_id: P40
+  name: Stop-hook auto-continue
+  group: Feedback & Iteration
+  source: catalog
+  family: workflow
+  sub_type: termination
+  categories:
+  - verification.completion
+  note: Check success criteria on stop; continue if unmet.
+  assessment:
+    detection:
+      static: A stop hook that checks success criteria and re-prompts.
+      traces: Continuation events; loop count.
+      evals: Completion rate; runaway rate.
+      judge: null
+      probes:
+        what: Tasks whose first attempt fails the tests.
+        construct: Tasks with a hidden test the first attempt usually misses.
+      primary:
+      - static
+      - traces
+    qa:
+      unit: Hook fires on failure, stops on success, respects a cap.
+      examples: Hidden-test probes.
+      benchmark: Coding benchmark.
+      production: Continuation count per task.
+      primary:
+      - unit
+      - production
+    impact:
+      cost:
+        effect: degrades
+        magnitude: medium
+        note: Runaway risk without a cap.
+      security:
+        effect: none
+        magnitude: low
+        note: ''
+      brand:
+        effect: none
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: low
+        note: Deterministic criteria.
+      quality:
+        effect: improves
+        magnitude: medium
+        note: ''
+      latency:
+        effect: degrades
+        magnitude: medium
+        note: ''
+      primary:
+      - quality
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: termination
+  harness_role: control_loop
+  action: add

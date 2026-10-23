@@ -1,0 +1,195 @@
+# 8.b.ii: Link large schemas by exploration: start broad, grow the linked set with probing queries, favor recall
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 8.b.ii
+legacy_id: T71
+slug: link-large-schemas
+name: 'Link large schemas by exploration: start broad, grow the linked set with probing queries, favor
+  recall'
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the model sees
+levers:
+- knowledge-access
+- control-flow
+domains:
+- data-analysis
+evidence_domains:
+- data-analysis
+categories:
+- retrieval.query
+summary: 'When a schema is too large to load whole, link the tables and columns a question needs by exploration
+  rather than by one up-front retrieval or by loading everything: start from all table names plus the
+  top retrieved columns, give the agent a column-level vector index, metadata probes and trial queries
+  to grow the linked set, favor recall over minimizing noise, and cap the exploration turns low.'
+how: 1. Build a column-level vector index of the schema. 2. Seed each question with all table names plus
+  the top retrieved columns. 3. Give the agent actions to retrieve more columns, probe metadata and sample
+  values with exploratory SQL (results capped at a few rows, with a timeout), and test sufficiency with
+  a minimal executable query. 4. Cap exploration at a few turns. 5. Paired eval on schema-linking recall
+  (share of needed columns kept), execution accuracy and tokens.
+detect:
+  static: a large schema (too many tables to load whole) linked by a single up-front retrieval, or loaded
+    whole into every prompt
+  traces: queries against non-existent columns or the wrong tables on a large schema; prompt tokens dominated
+    by the schema
+  evals: schema-linking recall and execution accuracy on the large-schema subset
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'AutoLink: 91.2% of needed columns kept against 64.0% for the best full-schema method on Spider
+      2.0-Lite (Nov 2025)'
+    basis: evidence
+  cost:
+    effect: improves
+    size: large
+    when: 21.2K against 171.9K tokens per question
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval on schema-linking recall, execution accuracy and tokens on large schemas
+evidence:
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Link schema by agentic exploration, not full-schema prompting
+  effect: 'Table 1, DeepSeek-V3 backbone for all LLM methods. Spider 2.0-Lite SRR 91.2% at 21.2K avg tokens
+    vs SQL-to-Schema 64.0% at 171.9K, MCS-SQL 58.9% at 168.9K, RSL-SQL 52.0% at 29.2K, LinkAlign 36.4%
+    at 66.7K; Bird-Dev SRR 97.4% at 8.0K vs RSL-SQL 93.3% at 14.8K. Databases >3,000 columns: all baselines
+    SRR <40%, AutoLink ~90% (Figure 2). Downstream EX: Spider 2.0-Lite 34.92% (DeepSeek-R1, 38.0K tokens)
+    vs ReFoRCE 29.62% same model (81.1K); Bird-Dev 68.71% (Gemini-1.5-Pro) vs CHESS 68.31%.'
+  direction: supports
+  measured: true
+  locator: Method; Table 1; Table 2; Table 3; Figure 2
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Build a column-level vector index of the schema
+  effect: 'Ablation Table 4 (Spider 2.0-Lite SRR, removing the @retrieve_schema action that queries this
+    index): n=5 79.2 -> 72.4 (-6.8); n=50 88.0 -> 80.4 (-7.6); n=100 91.2 -> 84.5 (-6.7) - the largest
+    ablation. Build cost: 222.8 s for 158 Spider 2.0-Lite DBs (1.4 s/DB) and 4.4 s for 11 Bird DBs on
+    one H100.'
+  direction: supports
+  measured: true
+  locator: External Environment; Appendix A Schema Vector Store Environment; Table 4
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Let the agent write its own targeted schema-retrieval queries
+  effect: 'Table 4: removing @retrieve_schema costs 6.7-7.6 SRR points (see index entry). Table 7, top-m
+    per call: m=1 SRR 89.2 (20.7K tokens), m=2 89.6 (21.0K), m=3 91.2 (21.2K). Contrasted with CHESS-style
+    question rewriting; not directly compared.'
+  direction: supports
+  measured: true
+  locator: Action Space @retrieve_schema; Appendix Details of Action Space; Table 4; Table 7
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Probe schema metadata and sample values with exploratory SQL
+  effect: 'Table 4 (Spider 2.0-Lite SRR) removing @explore_schema: n=5 79.2 -> 76.8 (-2.4); n=50 88.0
+    -> 84.8 (-3.2); n=100 91.2 -> 88.8 (-2.4).'
+  direction: supports
+  measured: true
+  locator: Action Space @explore_schema; Appendix Details of Action Space; Table 4
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Test schema sufficiency with a minimal executable query
+  effect: 'Table 4 (Spider 2.0-Lite SRR) removing @verify_schema: n=5 79.2 -> 77.2 (-2.0); n=50 88.0 ->
+    86.8 (-1.2); n=100 91.2 -> 89.6 (-1.6).'
+  direction: supports
+  measured: true
+  locator: Action Space @verify_schema; Table 4
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Seed with all table names plus top-n retrieved columns
+  effect: 'Table 4 full AutoLink SRR on Spider 2.0-Lite by initial top-n: n=5 79.2, n=50 88.0, n=100 91.2;
+    EX gains plateau at high n (Figure 3, values not tabulated). Main results use n=100 (Spider 2.0-Lite)
+    and n=30 (Bird).'
+  direction: supports
+  measured: true
+  locator: Agent-Environment Interaction; Table 4; Figure 3
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Favor schema-linking recall over noise minimization
+  effect: 'Table 1 Spider 2.0-Lite: LinkAlign minimizes noise to 21.1 avg columns but reaches SRR 36.4%;
+    AutoLink keeps 159.4 columns at SRR 91.2%. Figure 2: higher SRR correlates with higher EX across database
+    sizes. At similar column counts AutoLink beats BGE retrieval baselines (Figure 4).'
+  direction: supports
+  measured: true
+  locator: Main Results of Schema Linking; Table 1; Figure 2; Figure 4
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Cap exploration results at 5 rows with a timeout
+  effect: Design description only (Appendix A Database Environment); not ablated.
+  direction: supports
+  measured: false
+  locator: Appendix A, Database Environment
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Cap schema-linking agent turns low
+  effect: 'Table 6, Spider 2.0-Lite: max turns 4 -> SRR 89.2 (avg 3.72 turns, 20.1K tokens); 6 -> 90.2
+    (4.65, 20.7K); 8 -> 91.0 (5.01, 20.8K); 10 -> 91.2 (5.79, 21.2K).'
+  direction: supports
+  measured: true
+  locator: Appendix D, Impact of Max Turn, Table 6
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Use a non-reasoning model as the tool-calling policy
+  effect: '"The reasoning LLM (DeepSeek-R1) is not chosen for AutoLink''s policy due to observed instruction
+    following degradation ... which occasionally leads to deviations from the required thought and action
+    format." Not quantified.'
+  direction: supports
+  measured: false
+  locator: Implementation Details, Experimental Setup
+- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
+    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
+    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
+  date: '2025-11-21'
+  task: Resample full-schema linking more times
+  effect: 'Table 5, Spider 2.0-Lite, DeepSeek-V3: MCS-SQL N=1 -> 5 SRR 46.0 -> 58.8 while tokens 33.8K
+    -> 168.9K; SQL-to-Schema N=1 -> 5 SRR 45.2 -> 64.0 while tokens 34.7K -> 171.9K. Recall saturates
+    while cost grows linearly; both remain far below AutoLink 91.2 at 21.2K.'
+  direction: supports
+  measured: true
+  locator: Appendix D, Limitations of Increasing Decoding Time, Table 5
+related:
+- 5.b.i
+- 8.a.i
+- 8.b.i
+- 7.b.iii
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: database
+  harness_role: retrieval
+  action: add
+caveats: One paper (AutoLink, Nov 2025) supplies all of the evidence, on Spider 2.0 with a DeepSeek-V3
+  policy; the component ablations are its own. It found a reasoning model a worse policy because its instruction
+  following degraded.

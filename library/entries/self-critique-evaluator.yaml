@@ -1,0 +1,118 @@
+# 7.c.ii: Self-critique evaluator loop
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.c.ii
+legacy_id: P38
+slug: self-critique-evaluator
+name: Self-critique evaluator loop
+kind: pattern
+status: outline
+tiers:
+- tier: 3
+  why: it adds a self-bootstrapped judge
+  proposed: true
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- judging
+categories:
+- orchestration.extra-compute
+summary: Bootstrap a judge from its own traces; collusion risk.
+detect:
+  static: A pipeline that fine-tunes a judge on its own traces; periodic refresh.
+  traces: Judge agreement over time.
+  evals: Human agreement; collusion tests between generator and evaluator.
+  judge: Meta-judge.
+  probes:
+    what: Outputs built to fool the evaluator.
+    construct: Adversarial outputs that share the generator's blind spots.
+  primary:
+  - evals
+  - probes
+impact:
+  quality:
+    effect: improves
+    size: medium
+    basis: assessment
+  cost:
+    effect: degrades
+    size: medium
+    when: Training cost up front.
+    basis: assessment
+  performance:
+    effect: none
+    basis: assessment
+  security:
+    effect: mixed
+    size: small
+    basis: assessment
+  governance:
+    effect: mixed
+    size: medium
+    when: Self-referential evaluation.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - quality
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Feedback & Iteration group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Wang et al., "Self-Taught Evaluators", https://arxiv.org/abs/2408.02666
+  date: '2024-08-05'
+  task: Train an LLM judge on its own synthetic judgments, iteratively, without human labels
+  effect: '"can improve a strong LLM (Llama3-70B-Instruct) from 75.4 to 88.3 (88.7 with majority vote) on RewardBench"'
+  conditions: Llama3-70B-Instruct; RewardBench
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: null
+    examples: Adversarial probes.
+    benchmark: Judge-agreement benchmark.
+    production: Drift in agreement.
+    primary:
+    - benchmark
+  impact:
+    cost:
+      effect: degrades
+      magnitude: medium
+      note: Training cost up front.
+    security:
+      effect: mixed
+      magnitude: low
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: mixed
+      magnitude: medium
+      note: Self-referential evaluation.
+    quality:
+      effect: improves
+      magnitude: medium
+      note: ''
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - quality
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: reflection
+  library_group: Feedback & Iteration
+  library_source: catalog

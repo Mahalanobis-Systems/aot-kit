@@ -1,0 +1,119 @@
+# 6.c.i: Code-then-execute (CaMeL)
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.c.i
+legacy_id: P49
+slug: code-then-execute
+name: Code-then-execute (CaMeL)
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it restructures the control loop for trust separation
+  proposed: true
+levers:
+- guardrails
+domains:
+- general
+evidence_domains:
+- tool-use
+categories:
+- topologies.trust
+summary: Code-then-execute (CaMeL)
+detect:
+  static: A DSL or sandbox interpreter; a taint or policy checker.
+  traces: Policy violations blocked.
+  evals: Injection suite plus capability benchmark.
+  probes:
+    what: Data-flow violations.
+    construct: Programs that try to send private data to an untrusted sink.
+  primary:
+  - static
+  - probes
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: DSL limits expressiveness.
+    basis: assessment
+  cost:
+    effect: degrades
+    size: small
+    basis: assessment
+  performance:
+    effect: degrades
+    size: small
+    basis: assessment
+  security:
+    effect: improves
+    size: large
+    basis: assessment
+  governance:
+    effect: improves
+    size: large
+    when: Formal verifiability.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - security
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Debenedetti et al., "Defeating Prompt Injections by Design", https://arxiv.org/abs/2503.18813
+  date: '2025-03-24'
+  task: 'Introduces CaMeL: extract control and data flow from the trusted query as a program, then run it with capability
+    checks on tool calls'
+  effect: '"solving 77% of tasks with provable security (compared to 84% with an undefended system) in AgentDojo"'
+  conditions: AgentDojo
+  direction: supports
+  locator: Abstract
+assessment:
+  qa:
+    unit: Checker blocks each violation class.
+    examples: Data-flow probes.
+    benchmark: AgentDojo style.
+    production: Blocked-flow alerts.
+    primary:
+    - unit
+  impact:
+    cost:
+      effect: degrades
+      magnitude: low
+      note: ''
+    security:
+      effect: improves
+      magnitude: high
+      note: ''
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: high
+      note: Formal verifiability.
+    quality:
+      effect: mixed
+      magnitude: medium
+      note: DSL limits expressiveness.
+    latency:
+      effect: degrades
+      magnitude: low
+      note: ''
+    primary:
+    - security
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: code_execution
+  library_group: Control Flow
+  library_source: catalog

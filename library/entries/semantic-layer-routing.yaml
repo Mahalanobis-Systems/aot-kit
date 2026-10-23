@@ -1,0 +1,115 @@
+# 7.a.i: Route metric questions through a deterministic semantic layer; fall back to text-to-SQL
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.a.i
+legacy_id: T54
+slug: semantic-layer-routing
+name: Route metric questions through a deterministic semantic layer; fall back to text-to-SQL
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: routing within a single agent
+levers:
+- control-flow
+- knowledge-access
+domains:
+- data-analysis
+evidence_domains:
+- data-analysis
+categories:
+- orchestration.route
+- retrieval.query
+summary: Where a semantic layer exists, have the agent answer metric questions by choosing metrics and
+  dimensions that the layer compiles to SQL, and write SQL only when the layer cannot answer. The layer
+  fails with an explicit error rather than a plausible wrong answer. Higher reasoning effort or a bigger
+  model did not close the gap; the layer did.
+how: 1. Confirm a semantic layer covers the metrics the agent is asked about. 2. Add a first path that
+  maps the question to metrics and dimensions; fall back to SQL on a layer error. 3. Paired eval on metric
+  questions, tracking explicit errors against wrong answers.
+detect:
+  static: a data agent that writes SQL directly although a semantic or metrics layer exists
+  traces: wrong numbers on questions whose metric the layer defines; failure rows labeled reasoning-failure
+    on metric questions
+  evals: accuracy on metric questions, split by whether the layer defines them
+impact:
+  quality:
+    effect: improves
+    size: large
+    when: 'dbt: 98.2% against 90.0% (Sonnet 4.6), 100% against 84.1% (GPT-5.3 Codex), 11 questions x 20
+      runs (Apr 2026)'
+    basis: evidence
+  cost:
+    effect: unknown
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval on metric questions
+evidence:
+- source: 'Jason Ganz, Benoit Perigaud (dbt Labs), "Semantic Layer vs. Text-to-SQL: 2026 Benchmark Update",
+    https://docs.getdbt.com/blog/semantic-layer-vs-text-to-sql-2026'
+  date: '2026-04-07'
+  task: Route metric questions through a deterministic semantic layer
+  effect: 'On questions the Semantic Layer can reach (not too many entity hops), 11-question ACME set
+    x 20 runs: SL 100.0% for both Sonnet 4.6 and GPT-5.3 Codex vs text-to-SQL 62.5% (Sonnet 4.6) and 51.2%
+    (GPT-5.3 Codex) on raw tables; 2023 GPT-4 was SL 83.1% vs text-to-SQL 26.9%. Across the model x reasoning-effort
+    sweep on SL-answerable questions, SL scored 87.2-100.0% vs text-to-SQL 50.0-65.0% (SL advantage 24.7-50.0
+    pp). Before extra modeling, SL scored 0.0% on the too-many-hops questions (it refused), giving 72.7%
+    overall vs text-to-SQL 64.5%. Qualitative: "the Semantic Layer tells you it can''t answer. It never
+    returns invalid data. Text-to-SQL will cheerfully give you a wrong number."'
+  direction: supports
+  measured: true
+  locator: 'How the two approaches actually work; Which model should you use? table; The main event: 2023
+    vs. 2026 table'
+- source: 'Jason Ganz, Benoit Perigaud (dbt Labs), "Semantic Layer vs. Text-to-SQL: 2026 Benchmark Update",
+    https://docs.getdbt.com/blog/semantic-layer-vs-text-to-sql-2026'
+  date: '2026-04-07'
+  task: Try semantic layer first, then modeling, then text-to-SQL
+  effect: Recommendation derived from the benchmark above; the routing policy itself was not evaluated.
+    Packaged as a dbt agent skill for answering natural-language questions.
+  direction: supports
+  measured: false
+  locator: Which should you use?
+- source: 'Jason Ganz, Benoit Perigaud (dbt Labs), "Semantic Layer vs. Text-to-SQL: 2026 Benchmark Update",
+    https://docs.getdbt.com/blog/semantic-layer-vs-text-to-sql-2026'
+  date: '2026-04-07'
+  task: Do not buy semantic-layer accuracy with bigger models or effort
+  effect: 'Sweep on SL-answerable questions (Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, GPT-5.2; Anthropic low..max,
+    OpenAI none..xhigh): most configurations hit 95-100% SL accuracy regardless of effort; Sonnet 4.6
+    100.0% at low/medium/max vs Opus 4.6 87.2-87.5% at every effort. GPT models at xhigh averaged over
+    20 s per query vs 8 s at high with no meaningful accuracy gain; for Anthropic models effort changed
+    neither results nor latency. (The post calls it 16 permutations; the table lists 18 rows.)'
+  direction: supports
+  measured: true
+  locator: Which model should you use? (It matters less than you'd think)
+- source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
+    A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
+  date: '2026-04-28'
+  task: Write the semantic layer instead of upgrading the model
+  effect: 'Pairwise McNemar, n=99: within the with-document cluster all p >= 0.79 (67.7-68.7%); within
+    the DDL-only cluster all p >= 0.42 (45.5-50.5%); all nine cross-cluster comparisons p < 0.01. Sonnet
+    4.6 plus the document used ~28% fewer input tokens than Opus 4.7 plus the document at equal accuracy.
+    Authors caution n=99 cannot resolve differences of about 5 pp.'
+  direction: supports
+  measured: true
+  locator: Section 5.2 Table 2; Section 5.3
+related:
+- 5.b.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: control_flow
+  harness_role: retrieval
+  action: add
+caveats: Applies only where a semantic layer already covers the metrics being asked about; building one
+  is data-side work and a separate change. Both studies come from semantic-layer vendors (dbt Labs, Cube),
+  and the question sets are small (11 questions x 20 runs; 99 questions). The routing policy itself, layer
+  first and SQL as fallback, was recommended by dbt but not evaluated.

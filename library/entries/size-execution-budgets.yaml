@@ -1,0 +1,90 @@
+# 7.b.iii: Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.b.iii
+legacy_id: T29
+slug: size-execution-budgets
+name: 'Size run budgets so productive runs aren''t cut off: turn caps, deadlines, command timeouts'
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: budgets are execution bounds
+levers:
+- control-flow
+domains:
+- general
+evidence_domains:
+- web-research
+categories:
+- orchestration.bound
+summary: 'Set the turn or step cap, the wall-clock deadline and per-command timeouts from what runs that
+  succeeded actually needed, not from framework defaults, so a run that is still making progress is not
+  stopped short. This is one of three changes that bound a run, each for a different failure: this one
+  lets productive runs finish, 7.b.i stops runs that have stalled, and 9.b.i makes sure a run that does hit
+  the limit still returns its best answer. Raise a cap only together with 7.b.i, or a stall becomes a longer
+  stall. Timeouts are tuned both ways: a timeout that kills commands that would have finished is too low,
+  one that lets a hung command eat the run is too high.'
+how: '1. From traces, take the distribution of turns, wall-clock and command durations on runs that succeeded.
+  2. Find the runs that ended at a limit while still progressing: new tool results, new files or a changing
+  answer in their last turns. 3. Set each cap above the successful range (for example the 95th percentile)
+  and each command timeout above the longest command that finished, with 7.b.i in place before raising a
+  cap. 4. Re-run the truncated cases and compare limit-ended outcomes, cost and turns on the same cases.'
+detect:
+  static: caps, deadlines and command timeouts at framework defaults, unchanged since the agent was built
+  traces: runs ending at the turn cap or deadline while still producing new information in their last
+    turns (a run that ends at the cap after repeating itself is 7.b.i's signal, not this one); commands
+    killed by a timeout that finish when re-run with a longer one
+  evals: limit-ended outcomes (turn cap, deadline, command timeout) on cases where the run was still progressing
+impact:
+  quality:
+    effect: unknown
+    when: the only evidence is how often optimizers changed these limits, not what the change did
+  cost:
+    effect: mixed
+    size: medium
+    when: more turns per case when a cap is raised
+    basis: evidence
+  performance:
+    effect: mixed
+    size: medium
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: limit-ended outcomes, cost and turns on the same cases, before and after
+evidence:
+- source: repo figure_04
+  task: five follow-up benchmarks
+  effect: MAX_TURNS raised 63 times, lowered 14; MAX_STEPS raised 26, lowered 5. The most-edited constants
+    in the corpus.
+- source: repo figure_01
+  task: five follow-up benchmarks
+  effect: Turn-budget edits in 11 to 18 of 20 runs per benchmark.
+- source: paper Table 10
+  task: GAIA
+  effect: Knight 40 max turns vs Pawn 20.
+- source: repo figure_04
+  task: five follow-up benchmarks
+  effect: SOFT_DEADLINE_SEC 2 up / 3 down, COMMAND_TIMEOUT_SEC 1 up / 4 down, RESEARCH_DEADLINE_SEC 0
+    up / 2 down. Direction is mixed, unlike turn budgets.
+related:
+- 7.b.i
+- 9.b.i
+- 2.b.i
+- 5.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: config
+  sub_type: resource_limits
+  harness_role: budget_turns
+  action: tune
+caveats: 'The evidence is frequency only: VeRO''s optimizers raised turn caps far more often than they
+  lowered them (MAX_TURNS 63 up, 14 down) and moved timeouts both ways, but no run measured the effect.
+  Client retries for rate limits and transient errors are not a budget; they are in 2.b.i.'

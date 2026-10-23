@@ -1,0 +1,120 @@
+# The two schemes VeRO uses to classify what an optimizer changed in a target agent.
+# Section 1 is what the paper used (Figures 4, 6, 9, 10). Section 2 is the released v0.5
+# labelling code and the 100-run corpus statistics shipped in the repo (post-paper).
+
+paper_change_types:
+  source: legacy/vero/src/vero/traces/analysis/analyzer.py (DEFAULT_PHASE_ANALYSIS_PROMPT); paper §5.5, A.2.5
+  unit: optimization phase = the commits between two successive ExperimentRunner calls
+  labeller: GPT-4.1, one or more tags per phase
+  actions: [added, modified, deleted, refactored]
+  types:
+  - id: prompt
+    description: Text the target model reads.
+    sub_types: [system_prompt, user_prompt, few_shot, instructions, formatting, context, persona, constraints, other]
+    dominant_sub_types_fig9: [system_prompt, formatting, constraints, user_prompt, context]
+  - id: tool
+    description: A capability the target agent can call, or its implementation.
+    sub_types: [search, browser, database, file_ops, memory, code_execution, math, api, subagent, human_input, messaging, parsing, validation, transformation, error_handling, logging, other]
+    dominant_sub_types_fig9: [api, code_execution, search, error_handling, parsing]
+    note: "'other' is a much larger share for tools than for prompts or workflows (A.2.5): tool design is where diversity lives."
+  - id: workflow
+    description: How the agent sequences, loops, delegates, retries and stops.
+    sub_types: [orchestration, control_flow, retry, parallelization, state_management, termination, planning, reflection, other]
+    dominant_sub_types_fig9: [control_flow, orchestration, reflection, planning, retry]
+  - id: config
+    description: Values, not structure.
+    sub_types: [model_settings, parameters, thresholds, environment, timeouts, resource_limits, other]
+  - id: dependency
+    description: Packages, imports, versions, external services.
+    sub_types: [package, import, version, external_service, other]
+  - id: other
+    description: None of the above.
+    sub_types: []
+  findings:
+  - Prompt changes exceed 50% of tags in every phase after the first, for every optimizer configuration and task (§5.5).
+  - Entropy of the tag distribution falls sharply after phase 1; Orchestrator variant stays highest, Resources Only lowest (Figure 10).
+  - On GAIA the tool share rises when the task demands it (Figure 6).
+
+harness_roles:
+  source: vero/src/vero/interpret/labeling/taxonomy.py (TAXONOMY_VERSION 2); harness-engineering-bench/figures/
+  unit: symbol-scoped edit (function, class, constant, prompt string) between candidate commits
+  labeller: deterministic rule where path/kind/name settles it (2,114 edits), gpt-5.4-mini otherwise (1,872); rule/model disagreement ~16%
+  corpus: 3,986 edits over 100 runs (20 per benchmark) on BrowseComp-Plus, OfficeQA, SWE-Atlas-QnA, Terminal-Bench, GAIA-Shell
+  roles:
+  - id: prompt
+    rubric: System/instruction text sent to the model. Prose the model reads, not code.
+    runs_touching: {browsecomp_plus: 20, officeqa: 19, swe_atlas_qna: 20, terminal_bench: 20, gaia_shell: 18}
+  - id: control_loop
+    rubric: The agent's main turn loop. How many steps run, when to stop, what happens between turns, dispatch of tool calls.
+    runs_touching: {browsecomp_plus: 17, officeqa: 19, swe_atlas_qna: 18, terminal_bench: 17, gaia_shell: 20}
+  - id: budget_turns
+    rubric: A limit counted in turns or steps.
+    runs_touching: {browsecomp_plus: 15, officeqa: 17, swe_atlas_qna: 16, terminal_bench: 18, gaia_shell: 11}
+  - id: tool_surface
+    rubric: The tool declarations shown to the model. Names, JSON schemas, descriptions. Not the code behind them.
+    runs_touching: {browsecomp_plus: 15, officeqa: 7, swe_atlas_qna: 15, terminal_bench: 10, gaia_shell: 18}
+  - id: tool_impl
+    rubric: The implementation behind a tool. Shell execution, file reading, search calls, document opening.
+    runs_touching: {browsecomp_plus: 16, officeqa: 7, swe_atlas_qna: 11, terminal_bench: 10, gaia_shell: 18}
+  - id: other
+    rubric: None of the above, or unclear from the diff alone.
+    runs_touching: {browsecomp_plus: 14, officeqa: 8, swe_atlas_qna: 9, terminal_bench: 9, gaia_shell: 20}
+  - id: tests
+    rubric: The candidate's own test suite.
+    runs_touching: {browsecomp_plus: 11, officeqa: 7, swe_atlas_qna: 14, terminal_bench: 10, gaia_shell: 16}
+  - id: model_client
+    rubric: How a completion is requested. Client construction, sampling parameters, per-request timeouts, SDK retries.
+    runs_touching: {browsecomp_plus: 11, officeqa: 14, swe_atlas_qna: 10, terminal_bench: 8, gaia_shell: 11}
+  - id: metadata
+    rubric: Bookkeeping with no effect on behaviour. Version strings, names.
+    runs_touching: {browsecomp_plus: 9, officeqa: 7, swe_atlas_qna: 6, terminal_bench: 11, gaia_shell: 19}
+  - id: submission
+    rubric: Producing and parsing the final answer. Writing the answer file, stripping markers, detecting refusals, forcing an answer.
+    runs_touching: {browsecomp_plus: 7, officeqa: 8, swe_atlas_qna: 15, terminal_bench: 2, gaia_shell: 18}
+  - id: budget_output
+    rubric: A limit on how much tool output is kept or shown.
+    runs_touching: {browsecomp_plus: 5, officeqa: 13, swe_atlas_qna: 11, terminal_bench: 7, gaia_shell: 7}
+  - id: budget_wallclock
+    rubric: A limit counted in seconds. Deadlines, elapsed-time checks.
+    runs_touching: {browsecomp_plus: 5, officeqa: 7, swe_atlas_qna: 7, terminal_bench: 6, gaia_shell: 12}
+  - id: context_mgmt
+    rubric: Managing conversation history. Compaction, pruning, summarising.
+    runs_touching: {browsecomp_plus: 7, officeqa: 7, swe_atlas_qna: 6, terminal_bench: 10, gaia_shell: 7}
+  - id: initialization
+    rubric: Constructor and wiring. State set up once when the agent is created.
+    runs_touching: {browsecomp_plus: 6, officeqa: 4, swe_atlas_qna: 4, terminal_bench: 5, gaia_shell: 17}
+  - id: env_setup
+    rubric: Preparing the container before work starts. Installing packages, writing fixtures.
+    runs_touching: {browsecomp_plus: 7, officeqa: 5, swe_atlas_qna: 3, terminal_bench: 7, gaia_shell: 13}
+  - id: retrieval
+    rubric: Search or index behaviour. Query construction, result count, ranking, snippet sizing.
+    runs_touching: {browsecomp_plus: 9, officeqa: 0, swe_atlas_qna: 1, terminal_bench: 0, gaia_shell: 2}
+  actions:
+  - {id: fix, rubric: Repairs something broken. There must be a defect, not merely a weakness.}
+  - {id: add, rubric: Introduces a capability or code path that did not exist.}
+  - {id: remove, rubric: Deletes a capability or code path.}
+  - {id: tune, rubric: Changes a value or threshold, leaving structure intact.}
+  - {id: restructure, rubric: Reorganises code without intending to change behaviour.}
+  - {id: reword, rubric: Rewrites instruction or description text while keeping its intent. Most prompt changes are rewords.}
+  - {id: revert, rubric: Undoes an edit the same optimizer made earlier in this run.}
+  - {id: cosmetic, rubric: Cannot change behaviour. Comments, formatting, .gitignore, dead code.}
+  provenance: [seed, own, unknown]
+  direction: [up, down, unchanged, na]
+  knob_direction:
+    note: Numeric constants most often changed, counted per edit (figure_04). Corpus totals 137 raised, 78 lowered.
+    constants:
+    - {name: MAX_TURNS, raised: 63, lowered: 14}
+    - {name: MAX_STEPS, raised: 26, lowered: 5}
+    - {name: MAX_TOOL_OUTPUT_CHARS, raised: 13, lowered: 16}
+    - {name: MAX_OUTPUT_CHARS, raised: 3, lowered: 3}
+    - {name: SOFT_DEADLINE_SEC, raised: 2, lowered: 3}
+    - {name: COMMAND_TIMEOUT_SEC, raised: 1, lowered: 4}
+    - {name: N_ATTEMPTS, raised: 1, lowered: 2}
+    - {name: MAX_HISTORY_CHARS, raised: 0, lowered: 2}
+    - {name: MAX_CONCURRENT_SHELLS, raised: 2, lowered: 0}
+    - {name: RESEARCH_DEADLINE_SEC, raised: 0, lowered: 2}
+  findings:
+  - Prompt and control-loop edits are near-universal; which other roles get touched is dictated by the benchmark, not the optimizer (figure_01). GAIA-Shell's seed is an empty skeleton, so its column is not comparable.
+  - Independent optimizers converge on more similar repertoires than a permutation null allows, on every benchmark (figure_02, Jaccard distance 0.34-0.57 observed vs 0.43-0.69 null mean).
+  - Five independent runs exhaust almost all 16 categories; the next fifteen add nearly nothing (figure_03).
+  - Turn and step budgets go up almost without exception; output caps and timeouts move both ways (figure_04).

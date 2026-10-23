@@ -1,0 +1,119 @@
+# 6.c.ii: Plan-then-execute
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 6.c.ii
+legacy_id: P48
+slug: plan-then-execute
+name: Plan-then-execute
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it fixes the plan before untrusted data is seen
+  proposed: true
+levers:
+- guardrails
+- control-flow
+domains:
+- general
+evidence_domains: []
+categories:
+- topologies.trust
+summary: Fix the tool sequence before seeing untrusted data.
+detect:
+  static: A plan is generated before untrusted data is read; the controller executes the fixed sequence.
+  traces: Executed calls equal the planned calls; no new tool call after data ingestion.
+  evals: Injection suite pass rate; task success.
+  probes:
+    what: Injected data that tries to add a tool call.
+    construct: Documents containing instructions to call an extra tool.
+  primary:
+  - static
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    when: Rigid plans cannot adapt.
+    basis: assessment
+  cost:
+    effect: none
+    basis: assessment
+  performance:
+    effect: improves
+    size: small
+    basis: assessment
+  security:
+    effect: improves
+    size: large
+    basis: assessment
+  governance:
+    effect: improves
+    size: large
+    basis: assessment
+  brand:
+    effect: improves
+    size: small
+    basis: assessment
+  primary:
+  - security
+  - governance
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Beurer-Kellner et al., "Design Patterns for Securing LLM Agents against Prompt Injections", https://arxiv.org/abs/2506.08837
+  date: '2025-06-10'
+  task: 'Names the plan-then-execute pattern: fix the tool-call plan before reading untrusted data'
+  effect: The pattern means "a prompt injection cannot force the LLM into executing a tool that is not part of the
+    defined plan," though injected data can still change the inputs to planned calls. Not benchmarked.
+  direction: supports
+  measured: false
+  locator: Sec 3.1 (2) The Plan-Then-Execute Pattern
+assessment:
+  qa:
+    unit: Controller rejects unplanned calls.
+    examples: Injection probes.
+    benchmark: Injection benchmark.
+    production: Plan deviation alerts.
+    primary:
+    - unit
+    - examples
+  impact:
+    cost:
+      effect: none
+      magnitude: low
+      note: ''
+    security:
+      effect: improves
+      magnitude: high
+      note: ''
+    brand:
+      effect: improves
+      magnitude: low
+      note: ''
+    governance:
+      effect: improves
+      magnitude: high
+      note: ''
+    quality:
+      effect: mixed
+      magnitude: medium
+      note: Rigid plans cannot adapt.
+    latency:
+      effect: improves
+      magnitude: low
+      note: ''
+    primary:
+    - security
+    - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: planning
+  library_group: Control Flow
+  library_source: catalog

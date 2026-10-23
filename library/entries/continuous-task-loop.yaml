@@ -1,0 +1,118 @@
+# 7.d.i: Continuous autonomous task loop
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 7.d.i
+legacy_id: P51
+slug: continuous-task-loop
+name: Continuous autonomous task loop
+kind: pattern
+status: outline
+tiers:
+- tier: 4
+  why: it changes the control loop
+  proposed: true
+levers:
+- control-flow
+domains:
+- planning
+evidence_domains: []
+categories:
+- orchestration.loop
+summary: Continuous autonomous task loop
+detect:
+  static: A loop over a task queue with fresh context, git automation, rate-limit handling and iteration
+    limits.
+  traces: Iterations; commits; rate-limit events.
+  evals: Throughput; defect rate of produced work.
+  judge: Rate produced commits.
+  probes:
+    what: A queue with a poison task.
+    construct: Include one unsolvable task and confirm the loop moves on.
+  primary:
+  - traces
+impact:
+  quality:
+    effect: mixed
+    size: medium
+    basis: assessment
+  cost:
+    effect: degrades
+    size: large
+    basis: assessment
+  performance:
+    effect: none
+    basis: assessment
+  security:
+    effect: degrades
+    size: medium
+    when: Autonomous commits.
+    basis: assessment
+  governance:
+    effect: mixed
+    size: medium
+    when: Needs hard limits.
+    basis: assessment
+  brand:
+    effect: none
+    basis: assessment
+  primary:
+  - cost
+  - security
+evidence:
+- source: paper Table 6
+  date: '2026-02'
+  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  effect: Names the practice as a known agent optimization; reports no measured effect for it.
+  direction: supports
+  measured: false
+  locator: "pattern library file agentic-patterns-catalog.md"
+- source: Geoffrey Huntley, "Ralph Wiggum as a “software engineer”", https://ghuntley.com/ralph/
+  date: '2025-07-14'
+  task: 'Introduces "Ralph": run a coding agent in an endless loop over the same prompt file'
+  effect: '"In its purest form, Ralph is a Bash loop. while :; do cat PROMPT.md | claude-code ; done". Says it has
+    defects that are "identifiable and resolvable through various styles of prompts."'
+  direction: supports
+  measured: false
+  locator: Opening section
+assessment:
+  qa:
+    unit: Iteration cap; rate-limit backoff.
+    examples: Poison-task probes.
+    benchmark: null
+    production: Cost per day; revert rate.
+    primary:
+    - production
+  impact:
+    cost:
+      effect: degrades
+      magnitude: high
+      note: ''
+    security:
+      effect: degrades
+      magnitude: medium
+      note: Autonomous commits.
+    brand:
+      effect: none
+      magnitude: low
+      note: ''
+    governance:
+      effect: mixed
+      magnitude: medium
+      note: Needs hard limits.
+    quality:
+      effect: mixed
+      magnitude: medium
+      note: ''
+    latency:
+      effect: none
+      magnitude: low
+      note: ''
+    primary:
+    - cost
+    - security
+provenance:
+  layer: target
+  origin: observed
+  change_type: workflow
+  sub_type: control_flow
+  library_group: Control Flow
+  library_source: catalog

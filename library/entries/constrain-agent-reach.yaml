@@ -1,0 +1,170 @@
+# 10.a.i: Constrain what the agent can touch
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 10.a.i
+legacy_id: T68
+slug: constrain-agent-reach
+name: Constrain what the agent can touch
+kind: technique
+status: card
+tiers:
+- tier: 2
+  why: safety containment
+levers:
+- guardrails
+domains:
+- general
+evidence_domains:
+- code-generation
+- data-analysis
+- tool-use
+categories:
+- safety.sandbox
+summary: Run the agent in an OS-level sandbox with a workspace path guard that resolves symlinks, scrub
+  credentials from the command environment, run agent-written SQL read-only with timeouts and row caps,
+  and set resource limits on generated code.
+how: 1. List what the agent can reach (paths, credentials, databases, network). 2. Remove write access
+  and credentials it does not need; add the path guard and limits. 3. Run the safety evals before and
+  after.
+detect:
+  static: shell or code execution without a sandbox; credentials in the agent's environment; write access
+    where read is enough; no row cap or timeout on agent SQL
+  traces: commands touching paths outside the workspace; queries returning very large result sets; failure
+    rows labeled unauthorized-irreversible-action
+  evals: safety evals with out-of-bounds actions
+impact:
+  quality:
+    effect: none
+    basis: evidence
+  cost:
+    effect: degrades
+    size: small
+    basis: evidence
+  performance:
+    effect: degrades
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: before-after
+  tier: 2
+  how: safety evals and out-of-bounds action attempts
+evidence:
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Sandbox execution at the OS level
+  effect: Codex vendored Bubblewrap with "--ro-bind, --unshare-net, --unshare-user, --unshare-pid"; "Protected
+    paths (.git, .agents, .codex) are re-marked read-only even when they sit inside a writable root";
+    described as "a substantial multi-thousand-line investment."
+  direction: supports
+  measured: false
+  locator: Sec 8.5; Sec 10.2 Layer 4; Observation 6; Recommendation 10
+- source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
+    -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
+  date: '2026-07-15'
+  task: Scrub credentials from the command environment
+  effect: Gemini CLI "environment scrubbing of provider credentials (name-pattern regexes over TOKEN/SECRET/KEY/AUTH/CREDENTIAL,
+    a denylist, and GitHub-token value regexes) before each command runs."
+  direction: supports
+  measured: false
+  locator: Sec 8.5
+- source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
+  date: '2026-09-17'
+  task: Gate actions with workspace guard and allow/ask/deny permissions
+  effect: Held fixed, not ablated. The deny and allow lists are given in the bash tool description.
+  direction: supports
+  measured: false
+  locator: §2.4 Safety; App 8.3 Fig 27
+- source: 'Youngwon Lee, Jaejin Kim, Seung-won Hwang (Seoul National University), "Bootstrapping Semantic
+    Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
+  date: '2026-06-04'
+  task: Restrict agent SQL to read-only with timeout and row caps
+  effect: Implementation detail (Appendix B.2), not ablated.
+  direction: supports
+  measured: false
+  locator: Appendix B.2
+- source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
+    https://www.anthropic.com/engineering/code-execution-with-mcp'
+  date: '2025-11-04'
+  task: Sandbox agent-generated code with limits and monitoring
+  effect: '"Running agent-generated code requires a secure execution environment with appropriate sandboxing,
+    resource limits, and monitoring. These infrastructure requirements add operational overhead and security
+    considerations that direct tool calls avoid."'
+  direction: supports
+  measured: false
+  locator: 'Benefits: State persistence and skills (closing note)'
+related:
+- 2.a.iii
+- 10.b.i
+absorbs:
+- legacy_id: P61
+  name: Tool capability compartmentalization
+  group: Safety
+  source: catalog
+  family: tool
+  sub_type: validation
+  categories:
+  - topologies.trust
+  - tools.misuse
+  - safety.sandbox
+  assessment:
+    detection:
+      static: A tool capability manifest; subprocess isolation; consent when composing across classes.
+      traces: Chain attempts flagged; cross-class compositions.
+      evals: Exfiltration test-suite pass rate.
+      judge: null
+      probes:
+        what: Lethal-trifecta chains.
+        construct: A task that needs private data, untrusted input and an outbound channel; the chain
+          must be blocked or gated.
+      primary:
+      - static
+      - probes
+    qa:
+      unit: Each capability class isolated; cross-class consent required.
+      examples: Trifecta probes.
+      benchmark: Exfiltration benchmark.
+      production: Blocked-chain alerts.
+      primary:
+      - unit
+      - examples
+    impact:
+      cost:
+        effect: degrades
+        magnitude: low
+        note: ''
+      security:
+        effect: improves
+        magnitude: high
+        note: ''
+      brand:
+        effect: improves
+        magnitude: low
+        note: ''
+      governance:
+        effect: improves
+        magnitude: high
+        note: ''
+      quality:
+        effect: mixed
+        magnitude: low
+        note: More consent prompts.
+      latency:
+        effect: degrades
+        magnitude: low
+        note: ''
+      primary:
+      - security
+      - governance
+provenance:
+  layer: target
+  origin: observed
+  change_type: config
+  sub_type: environment
+  harness_role: env_setup
+  action: add

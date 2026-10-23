@@ -1,0 +1,147 @@
+# 9.a.ii: Verify citations claim by claim for factual support
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.a.ii
+legacy_id: T50
+slug: verify-citations
+name: Verify citations claim by claim for factual support
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the agent returns
+levers:
+- control-flow
+- knowledge-access
+domains:
+- web-research
+- retrieval
+evidence_domains:
+- web-research
+categories:
+- verification.external
+- retrieval.results
+summary: 'Extract claim-citation pairs deterministically, then check each: the link resolves, the source
+  is relevant, and the source actually supports the claim. Frontier agents pass the first two over 80-94%
+  of the time and the third only 39-77%. Cap search calls when synthesizing cited facts and cite selectively:
+  going from 2 to 150 calls cut supported citations from 78.6% to 16.7%. Prefer primary sources over content
+  farms.'
+how: '1. Parse the report''s claims and citations with a Markdown parser. 2. For each: fetch, check relevance,
+  check support with a judge that sees only the claim and the passage. 3. Report the supported share;
+  cap search calls in the agent.'
+detect:
+  static: a research or RAG agent that returns citations with no check of what they support; no cap on
+    search calls
+  traces: search-call counts far above what the question needs; cited passages that do not contain the
+    claim
+  evals: share of citations that factually support their claim
+impact:
+  quality:
+    effect: improves
+    size: medium
+    when: factual support 39-77% before checking (May 2026)
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: fewer search calls
+    basis: evidence
+  performance:
+    effect: unknown
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval scored on factual citation support
+evidence:
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: Extract claim-citation pairs with a deterministic Markdown AST parser
+  effect: Described as reproducible and scaling to thousands of cited pages; parser accuracy is not reported.
+  direction: supports
+  measured: false
+  locator: Sec. 3.2; Algorithm 1 Phase 1
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: 'Check each citation: link works, relevant, fact-supported'
+  effect: 'Table 1, 14 models: Link Works 80.8-100%; Relevant 60.6-95.7%; Fact Check 24.4% (OSS-120B)
+    to 76.8% (Claude Opus 4.5). Frontier Fact Check 38.9% (GPT-5 Mini) to 76.8%. Only the Fact Check stage
+    separates models (53-point spread). Used as evaluation; not tested as an in-loop gate.'
+  direction: supports
+  measured: true
+  locator: Sec. 3.3; Algorithm 1 Phase 2; Table 1
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: Do not treat working, relevant links as verified citations
+  effect: '12 of 14 models exceed 94% Link Works and all frontier models exceed 80% Relevant, yet frontier
+    Fact Check is 39-77% (e.g. GPT-5.4: 100% link, 93.7% relevant, 47.7% fact).'
+  direction: supports
+  measured: true
+  locator: Sec. 4.1; Table 1
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: Cap search tool calls when synthesizing cited facts
+  effect: Max tool calls 2/10/30/50/70/100/150. GPT-5.4 Fact Check 78.6/45.9/43.0/38.0/35.5/37.2/16.7%;
+    Claude Opus 4.6 80.0/74.4/69.2/61.2/61.7/58.7/57.9%. Link Works and Relevant stay above 92% throughout.
+    Mean relative drop ~42%; steepest step GPT-5.4 2 -> 10 calls (79% -> 46%). Two models only.
+  direction: supports
+  measured: true
+  locator: Sec. 3.4 Ablation; Sec. 4.3; Tables 2-3; Figure 2
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: Cite selectively rather than exhaustively
+  effect: 'Correlational across providers: OpenAI 100% task success, most citations (GPT-5 Mini 1,272
+    attributions), Fact Check 39-59%; Anthropic 83-97% success, Fact Check up to 77% (Opus 4.5) and 69%
+    (Haiku 4.5); Gemini 45-49%. No intervention on citation count was run.'
+  direction: supports
+  measured: true
+  locator: Sec. 4.2; Table 1
+- source: 'Onweller et al., "Cited but Not Verified: Parsing and Evaluating Source Attribution in LLM
+    Deep Research Agents", https://arxiv.org/abs/2605.06635'
+  date: '2026-05-07'
+  task: Use frontier models for one-shot cited research reports
+  effect: 'Task success: OSS-120B 40.0%, Llama 4 Maverick 30.0%, Pixtral Large 16.7% vs 83.3-100% for
+    frontier models. Tool calls 7-60 (open) vs 73-211 (frontier). Link failure rate Llama 4 Maverick 19.2%,
+    OSS-120B 16.1% vs GPT-5.4 1 of 2,159.'
+  direction: supports
+  measured: true
+  locator: Sec. 4.1; Sec. 4.4; Table 1
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Add a dedicated citation agent after research
+  effect: '"passes all findings to a CitationAgent, which processes the documents and research report
+    to identify specific locations for citations. This ensures all claims are properly attributed to their
+    sources."'
+  direction: supports
+  measured: false
+  locator: Architecture overview (process diagram caption)
+- source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
+    "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
+  date: '2025-06-13'
+  task: Add source-quality heuristics to the prompt
+  effect: Human testers "noticed that our early agents consistently chose SEO-optimized content farms
+    over authoritative but less highly-ranked sources ... Adding source quality heuristics to our prompts
+    helped resolve this issue."
+  direction: supports
+  measured: false
+  locator: 'Effective evaluation: Human evaluation catches what automation misses'
+related:
+- 8.b.i
+- 9.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: tool
+  sub_type: validation
+  harness_role: submission
+  action: add

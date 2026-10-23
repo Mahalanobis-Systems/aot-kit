@@ -1,0 +1,130 @@
+# 9.c.i: Don't prompt agents to write their own tests; suppress it for test-heavy models
+# Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
+id: 9.c.i
+legacy_id: T51
+slug: no-self-written-tests
+name: Don't prompt agents to write their own tests; suppress it for test-heavy models
+kind: technique
+status: card
+tiers:
+- tier: 3
+  why: it changes what the agent does, so quality must be checked
+levers:
+- control-flow
+domains:
+- code-generation
+evidence_domains:
+- code-generation
+categories:
+- verification.spend
+summary: Agent-written tests are mostly print probes and do not change resolve rate. Prompting for them
+  added 20% output tokens for no gain; suppressing them for models that write many saved 33-49% of input
+  tokens for a non-significant loss. Keep test writing for bugs with explicit repro conditions, and make
+  those tests assertion-based.
+how: 1. From traces, measure the share of tokens spent writing and running tests, and whether they contain
+  assertions. 2. Remove any instruction to write tests; for test-heavy models add an instruction not to,
+  except for bugs with a stated repro. 3. Paired eval on resolve rate and tokens.
+detect:
+  static: a prompt that tells the agent to write tests
+  traces: test files written with print statements and no assertions; test writing and running over about
+    20% of tokens
+  evals: resolve rate unchanged between runs with and without agent tests
+impact:
+  quality:
+    effect: none
+    when: -1.8 to -2.6 points, not significant (Apr 2026)
+    basis: evidence
+  cost:
+    effect: improves
+    size: medium
+    when: -33 to -49% input tokens
+    basis: evidence
+  performance:
+    effect: improves
+    size: small
+    basis: evidence
+  security:
+    effect: unknown
+  governance:
+    effect: unknown
+  brand:
+    effect: unknown
+measure:
+- method: experiment
+  tier: 3
+  how: paired eval with and without the instruction
+evidence:
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Prompting the agent to write its own tests does not help
+  effect: 'Encourage prompt: GPT-5.2 flips No test -> Has test on 322/500 tasks (64.4%) with net 0 change
+    in resolved (359 -> 359, McNemar p=1.000) while API calls +5.5%, input tokens +9.0%, output tokens
+    +19.8% (all Wilcoxon p<0.001). Gemini 3 Pro flips 185 tasks (37%), resolved 371 -> 366 (p=0.522),
+    cost change not significant. Observationally, GPT-5.2 writes tests in 3/500 tasks yet resolves 71.8%
+    vs Claude Opus 4.5''s 74.4% with tests in 83% of tasks; within each model, resolved and unresolved
+    tasks have similar test-writing rates.'
+  direction: supports
+  measured: true
+  locator: §3.1 Table 1, §5.1 Table 7, §5.2 Table 8
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Suppress ad-hoc test writing for test-heavy models
+  effect: 'Discourage prompt, SWE-bench Verified: Kimi K2 Thinking resolved 317 -> 304 (-2.6pp, McNemar
+    p=0.228), API calls -35.4%, input tokens -49.0%, output tokens -43.1%; DeepSeek v3.2 Reasoner resolved
+    300 -> 291 (-1.8pp, p=0.435), API calls -24.5%, input -32.9%, output -14.0% (all cost changes Wilcoxon
+    p<0.001, bootstrap CIs exclude zero). 83.2% of tasks keep the same outcome across interventions.'
+  direction: supports
+  measured: true
+  locator: §5.1 Table 7, §5.2 Table 8
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Turn print-probe tests into assertion-based oracles
+  effect: 'Recommendation from the discussion, untested. Motivating data: value-revealing prints outnumber
+    assertions for every model (e.g. Claude Opus 4.5 25.00 prints vs 5.16 assertions per resolved task;
+    MiniMax M2 34.06 vs 7.37); 69.7-77.5% of prints inspect raw values; assertions are mostly property
+    (33.6-41.4%) or exact-value (34.5-42.9%) checks, relational checks 3.0-7.9%.'
+  direction: supports
+  measured: false
+  locator: §4 Tables 4-6, §6.1, §8
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Package targeted testing as a focused subagent or skill
+  effect: 'Recommendation, untested: "the goal should not be to simply make agents write more tests, but
+    to make testing more targeted and budget-aware ... generating one minimal regression test, strengthening
+    a weak oracle ..., or running only the smallest relevant test slice."'
+  direction: supports
+  measured: false
+  locator: §6.1 Implications
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Log test-writing and test-running cost separately
+  effect: Recommendation, untested. Motivated by unresolved tasks running tests more (ExecCount 6.52 vs
+    4.89, ExecPerTest 1.70 vs 1.46, Mann-Whitney significant) and interventions moving cost far more than
+    outcomes.
+  direction: supports
+  measured: false
+  locator: §3.3 Table 3, §6.1
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
+    Agents", https://arxiv.org/abs/2602.07900
+  date: '2026-04-09'
+  task: Reserve test writing for bugs with explicit repro conditions
+  effect: 'Exploratory only: 8 SWE-bench Verified issues appear both in encourage-prompt Fail->Success-with-new-tests
+    and discourage-prompt Success->Fail-with-tests-removed (e.g. astropy-13236, django-11790, sympy-21612);
+    themes summarized with GPT-5.4 help. Authors: "necessarily limited", no issue taxonomy tested.'
+  direction: supports
+  measured: false
+  locator: §5.1.1
+related:
+- 9.a.i
+provenance:
+  layer: target
+  origin: observed
+  change_type: prompt
+  sub_type: instructions
+  harness_role: prompt
+  action: remove

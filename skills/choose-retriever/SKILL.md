@@ -60,6 +60,8 @@ On a bounded corpus (up to about 100K documents), grep and file reads over the r
 - `aot-kit:ground-queries-in-schema` (5.b.i, Give the model the schema it queries, in context: descriptions, keys, codes, sample values)
 - `aot-kit:link-large-schemas` (8.b.ii, Link large schemas by exploration: start broad, grow the linked set with probing queries, favor recall)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
+- `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

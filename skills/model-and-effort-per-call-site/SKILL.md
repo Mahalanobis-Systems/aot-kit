@@ -32,7 +32,7 @@ Pick the model per role or call site rather than one model everywhere, and set i
 ## How (outline)
 
 1. From traces, list call sites and their token, cost and error profile.
-2. For each, run a small model grid (cheaper, specialist, effort levels) on the eval slice that exercises it.
+2. For each, run a small model grid (cheaper, specialist, effort levels) on the eval slice that exercises it. Sweep effort rather than max it, since forced extra thinking cut GSM8K accuracy from 87.3% to 70.3% (1,100 to 15,980 thinking tokens), majority-voted parallel traces beat one long trace at the same budget (+10.1%), and stopping once a candidate answer appears cut reasoning tokens by 24.5% for a 2.9-point accuracy drop.
 3. Optimize each site's prompt for its model.
 4. Add per-query-class budgets.
 5. Paired eval per call site.
@@ -53,7 +53,7 @@ Pick the model per role or call site rather than one model everywhere, and set i
 - Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents -- A Source-Code Study of Eleven Systems"… (2026-07-15): OpenCode "nine base prompts by model-id substring"; Codex per-generation prompts delivered as server-side catalog data; Hermes "15 guidance blocks gated by model family (tool-use enforcement blocks are sent to…
 - Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents -- A Source-Code Study of Eleven Systems"… (2026-07-15): Aider "per-model metadata for 350+ models"; "This data-driven approach enables support for new models without code changes"; Pi "20 per-model compat quirk flags"; OpenCode 1,400-line per-vendor transform matrix.
 - Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents -- A Source-Code Study of Eleven Systems"… (2026-07-15): Aider picks among 13 edit formats via Coder.create() from model metadata; OpenCode "GPT-family models receive a port of Codex's apply_patch DSL and lose edit/write entirely"; OpenHands "model-specific tool presets (default, gemini, gpt5…
-- …and 11 more sources in `library/entries/model-and-effort-per-call-site.yaml`.
+- …and 14 more sources in `library/entries/model-and-effort-per-call-site.yaml`.
 
 ## Caveats
 
@@ -64,6 +64,18 @@ The model checkpoint itself is off-limits under VeRO's rules; only its call para
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:multi-agent-for-breadth` (6.b.iii, Use multi-agent orchestration only for breadth-first, independent sub-tasks)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
+- `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
+- `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
+- `aot-kit:reflection-loop` (7.c.i, Reflection loop)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
+- `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
+- `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
+- `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

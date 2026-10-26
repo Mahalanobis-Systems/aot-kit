@@ -7,6 +7,23 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+- 20 optimizations go from outline to full card, with a summary, a how-to and the signals that say
+  each applies, backed by 122 new sources (each dated, quoted and located in its entry): few-shot
+  examples (3.a.i), self-discover reasoning (3.c.i), filesystem checkpoints (4.b.i),
+  initializer and maintainer agents (4.b.ii), episodic memory (4.c.i), skill library (4.c.ii),
+  discrete phase separation (5.c.i), oracle-worker escalation (6.a.i), parallel read-only tools
+  (6.b.i), LLM map-reduce (6.b.ii), code-then-execute (6.c.i), plan-then-execute (6.c.ii),
+  reflection loop (7.c.i), self-critique evaluator (7.c.ii), graph of thought (7.c.iv),
+  language agent tree search (7.c.v), multi-agent debate (7.c.vi), tree of thought (7.c.vii),
+  continuous task loop (7.d.i) and inversion of control (7.d.ii). Contributed by the
+  Mahalanobis Systems maintainers.
+- 5 cards gain new sources: model and effort per call site (1.b.i, 3 sources), fail-soft tools
+  (2.b.i, 4), multi-window task state (4.b.iii, 1: Knowledge Graph of Thoughts on GAIA, a mixed
+  result), evaluator-optimizer loop (7.c.iii, 4), and samples before verification (9.c.ii, 1: Ghosal
+  et al. 2025, "Mirage of Test-Time Scaling"), whose how-to now says that at a fixed thinking budget,
+  parallel traces with a majority vote beat forcing one trace to think longer. Contributed by the
+  Mahalanobis Systems maintainers.
+
 ## 0.1.0 — 2026-10-23
 
 The first public release.

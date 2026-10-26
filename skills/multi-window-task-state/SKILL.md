@@ -61,7 +61,7 @@ When a task spans context resets (compaction, a truncation limit, a new session)
 - paper Table 6 (2026-02): Names the practice as a known agent optimization; reports no measured effect for it.
 - Justin Young (Anthropic), "Effective harnesses for long-running agents"… (2025-11-26): "The key insight here was finding a way for agents to quickly understand the state of work when starting with a fresh context window, which is accomplished with the claude-progress.txt file alongside the git history."
 - Anthropic, "Managing context on the Claude Developer Platform", https://www.anthropic.com/news/context-management (2025-09-29): "combining the memory tool with context editing improved performance by 39% over baseline. Context editing alone delivered a 29% improvement." The 84% token reduction in the same post is for context editing alone, on a 100-turn web search…
-- …and 9 more sources in `library/entries/multi-window-task-state.yaml`.
+- …and 10 more sources in `library/entries/multi-window-task-state.yaml`.
 
 ## Caveats
 
@@ -78,6 +78,7 @@ Most measured gains come from deep-research and long-horizon coding systems buil
 - `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 - `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
+- `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

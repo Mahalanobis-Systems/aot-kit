@@ -40,6 +40,7 @@ patterns it absorbs.
 - `risky-action-policy` (10.b.i): Gate irreversible actions: allow, ask or deny by side effect
 - `contain-untrusted-input` (10.c.i): Contain sensitive data and untrusted input
 - `keep-errors-in-context` (7.b.ii): Keep errors in context
+- `llm-map-reduce` (6.b.ii): LLM map-reduce
 - `filesystem-checkpoints` (4.b.i): Filesystem-based agent state and checkpoints
 
 **Tier 3, Tuning:** real trade-offs within the existing design; needs the calibrated quality eval and a paired comparison.
@@ -81,7 +82,6 @@ patterns it absorbs.
 - `language-agent-tree-search` (7.c.v): Language Agent Tree Search (LATS)
 - `oracle-worker-escalation` (6.a.i): Oracle-worker multi-model
 - `multi-agent-debate` (7.c.vi): Multi-agent debate
-- `llm-map-reduce` (6.b.ii): LLM map-reduce
 - `initializer-maintainer-agents` (4.b.ii): Initializer-maintainer dual agent
 - `discrete-phase-separation` (5.c.i): Discrete phase separation
 - `plan-then-execute` (6.c.ii): Plan-then-execute

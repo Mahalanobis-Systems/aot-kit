@@ -71,6 +71,8 @@ Chains cost latency and tokens, and a fixed chain that reruns downstream steps o
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
+- `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

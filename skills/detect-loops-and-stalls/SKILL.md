@@ -59,9 +59,12 @@ Track repeated identical actions (same tool, same arguments; same search query) 
 
 - `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
 - `aot-kit:staged-compaction` (5.a.i, Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary)
+- `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
+- `aot-kit:filesystem-checkpoints` (4.b.i, Filesystem-based agent state and checkpoints)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

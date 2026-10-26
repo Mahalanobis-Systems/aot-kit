@@ -56,6 +56,7 @@ Train a lightweight text classifier (TF-IDF with logistic regression) on 50-100 
 
 - `aot-kit:verify-completion` (9.b.iii, Verify completion against the environment before the agent stops)
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
+- `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

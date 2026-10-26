@@ -83,6 +83,7 @@ Remove hard failures (crashes, loops, timeouts, injection); measured as failure 
 | `risky-action-policy` | 10.b.i | Gate irreversible actions: allow, ask or deny by side effect | P59, P60 |
 | `contain-untrusted-input` | 10.c.i | Contain sensitive data and untrusted input | P41, P53 |
 | `keep-errors-in-context` | 7.b.ii ¹ | Keep errors in context |  |
+| `llm-map-reduce` | 6.b.ii ¹ | LLM map-reduce |  |
 | `filesystem-checkpoints` | 4.b.i ¹ | Filesystem-based agent state and checkpoints |  |
 
 ### Tier 3: Tuning
@@ -132,7 +133,6 @@ Change the agent's structure; needs production cost baselines and an A/B or blue
 | `language-agent-tree-search` | 7.c.v ¹ | Language Agent Tree Search (LATS) |  |
 | `oracle-worker-escalation` | 6.a.i ¹ | Oracle-worker multi-model |  |
 | `multi-agent-debate` | 7.c.vi ¹ | Multi-agent debate |  |
-| `llm-map-reduce` | 6.b.ii ¹ | LLM map-reduce |  |
 | `initializer-maintainer-agents` | 4.b.ii ¹ | Initializer-maintainer dual agent |  |
 | `discrete-phase-separation` | 5.c.i ¹ | Discrete phase separation |  |
 | `plan-then-execute` | 6.c.ii ¹ | Plan-then-execute |  |

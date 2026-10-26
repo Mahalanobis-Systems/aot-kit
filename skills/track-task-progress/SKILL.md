@@ -58,6 +58,9 @@ Model strength decides the sign. On weaker models the list keeps the agent worki
 - `aot-kit:multi-window-task-state` (4.b.iii, Keep plan, progress and results in files when work outlives one context window)
 - `aot-kit:staged-compaction` (5.a.i, Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
+- `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
+- `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

@@ -65,6 +65,7 @@ Offer the agent only the tools the task needs. First remove tools no task uses; 
 - `aot-kit:surface-unreadable-information` (8.a.ii, Surface information the source holds but the agent cannot read)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

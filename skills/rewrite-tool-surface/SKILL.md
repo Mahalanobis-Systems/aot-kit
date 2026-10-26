@@ -61,6 +61,7 @@ Change what the model sees of each tool without touching its implementation: a d
 
 - `aot-kit:tool-use-guidance` (2.b.ii, Tell the agent when to use each tool, in context it always sees)
 - `aot-kit:reduce-tool-surface` (2.a.i, Reduce the tool surface: remove and consolidate tools, then defer the rest behind search)
+- `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 

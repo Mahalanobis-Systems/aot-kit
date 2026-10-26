@@ -57,8 +57,11 @@ State the required answer format in the prompt, and make the harness extract it 
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
 - `aot-kit:verify-completion` (9.b.iii, Verify completion against the environment before the agent stops)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
 - `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
+- `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

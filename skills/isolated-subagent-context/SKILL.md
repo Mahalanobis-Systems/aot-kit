@@ -80,6 +80,8 @@ The large gains come from very large corpora (data rooms, multi-million-token in
 - `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:reduce-tool-surface` (2.a.i, Reduce the tool surface: remove and consolidate tools, then defer the rest behind search)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

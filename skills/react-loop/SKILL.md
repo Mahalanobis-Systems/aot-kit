@@ -73,6 +73,10 @@ The 2022 gains came from few-shot text prompting on PaLM-540B, and ReAct alone t
 - `aot-kit:choose-action-interface` (2.a.iii, Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task)
 - `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
 - `aot-kit:contain-untrusted-input` (10.c.i, Contain sensitive data and untrusted input)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

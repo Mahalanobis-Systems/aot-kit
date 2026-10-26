@@ -65,6 +65,8 @@ Never take the agent's own report that it finished. Before it stops, check the c
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:multi-window-task-state` (4.b.iii, Keep plan, progress and results in files when work outlives one context window)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

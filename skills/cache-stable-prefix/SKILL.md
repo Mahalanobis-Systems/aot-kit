@@ -58,10 +58,14 @@ Put static content (identity, rules, tool definitions) before a boundary and per
 ## Related
 
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
+- `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
 - `aot-kit:ground-queries-in-schema` (5.b.i, Give the model the schema it queries, in context: descriptions, keys, codes, sample values)
 - `aot-kit:inject-runtime-context` (3.a.iii, Dynamic context injection)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

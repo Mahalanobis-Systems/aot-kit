@@ -32,7 +32,7 @@ Running several independent attempts and picking by majority vote or a judge rai
 ## How (outline)
 
 1. Measure variance across repeated runs on the same questions; if low, stop here.
-2. Add N parallel attempts with a vote or aggregator; paired eval at matched compute.
+2. Add N parallel attempts with a vote or aggregator; paired eval at matched compute. At a fixed thinking budget, parallel traces with a majority vote beat forcing one trace to think longer.
 3. Only then try a verifier, at the same compute, on the hard slice.
 
 ## How to measure
@@ -52,7 +52,7 @@ Running several independent attempts and picking by majority vote or a judge rai
 - Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative Verification for LLM Reasoning"… (2025-04-01): Fitted power laws on MATH: Llama-3.1-8B GenRM-FT S_opt ~ C^0.57, V_opt ~ C^0.39; Qwen-2.5-7B GenRM-FT S_opt ~ C^0.75, V_opt ~ C^0.32; Llama-3.3-70B GenRM-Base S_opt ~ C^0.69, V_opt ~ C^0.43. Up to 128 solutions x 128 verifications sampled.
 - Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative Verification for LLM Reasoning"… (2025-04-01): Analytical upper bound assuming constant verifier accuracy (Llama-3-8B GenRM-FT, MATH): tokens per verification 2048 -> compute to match SC 8x, to beat 128x; 1024 -> 4x/64x; 512 -> 2x/32x; 256 -> 1x/16x. The authors note keeping accuracy…
 - Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative Verification for LLM Reasoning"… (2025-04-01): "In most cases, at least 32 verifications are needed to achieve good results" (Llama-3.1-8B, MATH).
-- …and 30 more sources in `library/entries/samples-before-verification.yaml`.
+- …and 31 more sources in `library/entries/samples-before-verification.yaml`.
 
 ## Related
 
@@ -60,6 +60,14 @@ Running several independent attempts and picking by majority vote or a judge rai
 - `aot-kit:false-success-detector` (9.b.ii, Triage false success with a cheap trained detector, not an LLM judge)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
+- `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
+- `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
+- `aot-kit:reflection-loop` (7.c.i, Reflection loop)
+- `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

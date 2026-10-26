@@ -59,6 +59,7 @@ When a cheap model's outputs are accepted or escalated by a verifier, measure tr
 - `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
+- `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

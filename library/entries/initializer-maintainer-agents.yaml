@@ -5,7 +5,7 @@ legacy_id: P46
 slug: initializer-maintainer-agents
 name: Initializer-maintainer dual agent
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it splits the work across two agents
@@ -15,31 +15,95 @@ levers:
 domains:
 - planning
 - code-generation
-evidence_domains: []
+evidence_domains:
+- code-generation
+- planning
 categories:
 - memory.resume
-summary: Initializer-maintainer dual agent
+summary: 'Give the first session of a multi-session build a setup-only prompt (expand the spec into a
+  JSON list of end-to-end tests, all failing, and write an init script, a progress file and a first commit)
+  and every later session a maintainer prompt that reads that state, re-tests what passed, builds one
+  failing item, verifies it end to end and commits. A separate up-front spec step pays when the model
+  would otherwise start building and under-scope, and it is cheap: Anthropic kept its planner on Opus
+  4.6 for that reason at $0.46 of a $124.70 run, and in one controlled study a planning call before a
+  single development pass raised a game-building score from 49.58 to 59.71. Freezing that first plan is
+  the weak part: in the same study a plan written once and built over three fresh sessions scored 63.39,
+  above 58.24 for one session continued for three passes but below 71.52 when each session replanned from
+  test results, and Cursor dropped its one-time planner as too rigid. No study compares the split with
+  one agent keeping the same state files (4.b.iii), Anthropic''s two "agents" differ only in their first
+  prompt, and strong models narrow the need: one Codex session ran about 25 hours on spec, plan and status
+  files.'
+how: '1. Start from one agent with one prompt that keeps the 4.b.iii state files (spec, plan, progress
+  log, git history) in one continuous session with compaction, and log what goes wrong across a multi-session
+  build: it starts building before it specs and under-scopes, tries to one-shot and runs out of context
+  mid-feature, declares the job done early, or breaks features that had passed. A strong model may need
+  nothing more: one Codex session with a spec, a milestone plan it wrote first, a runbook and a status
+  file ran about 25 hours. 2. If it under-scopes or one-shots, give the first session a setup-only prompt
+  on the same harness, tools and system prompt (in Anthropic''s version the first user prompt is the only
+  difference), chosen by the harness when no feature list exists yet. It expands the spec into a JSON
+  list of end-to-end tests ordered by priority, each with steps and all failing (over 200 for Anthropic''s
+  claude.ai clone), and writes an init script that installs, starts the app and runs a smoke test, a progress
+  file and a first git commit. Keep it at product level rather than implementation detail, since spec
+  errors cascade downstream; ask for a concrete number of items ("20-100 tasks", not "many"); and review
+  the spec itself, since a weak one set Cursor''s first browser on an architecture that could not grow
+  into a full browser. 3. Give every later session a maintainer prompt with a fixed contract: read the
+  progress file, the list and the git log; run the init script and re-test one or two core passing items,
+  marking any regression failing and fixing it first; take the highest-priority failing item and only
+  that; verify it end to end as a user would (browser automation for a web app); change only that item''s
+  status; commit, update the progress file and leave a merge-ready state. 4. Let the plan move with the
+  evidence instead of freezing it: allow each session, or a planning step at its start that cannot edit
+  code, to append items for defects and requirements the build exposes and to re-prioritize, never to
+  delete or weaken an item. In one study a plan frozen after the first loop scored 63.39 against 71.52
+  when it was revised each loop from test results. 5. Keep each role narrow: check each session''s work
+  outside the maintainer''s own pass flags (7.c.iii, 9.b.iii), and do not give one agent planning, coding,
+  review, merging and the completion decision at once; Cursor''s agent that held all of them stalled and
+  claimed premature completion. 6. Measure with paired runs on the same specs and model at matched sessions
+  and tokens: one agent with the 4.b.iii files, setup plus maintainer, and setup plus a maintainer that
+  may append items; score with an end-to-end suite the agents never see (features passing, spec features
+  never built, regressions reopened), plus tokens, the setup session''s share and wall time; re-run after
+  a model upgrade, since Anthropic dropped context resets for Opus 4.5 and sprints for Opus 4.6 but kept
+  the planner.'
 detect:
   static: Two entry points; a progress file and feature list; bootstrap and per-session flows.
-  traces: Session handoffs; progress file updates.
+  traces: Session handoffs; progress file updates; whether each session starts by reading state and running
+    the smoke test; items removed or reworded in the feature list; sessions declaring the project done
+    with items failing; a first-session plan never revised after tests expose new defects.
   evals: Multi-session completion rate.
   probes:
     what: A multi-session project.
-    construct: A feature list of ten items completed over several sessions.
+    construct: A spec of a few dozen testable features built over several fresh-context sessions and scored
+      by an end-to-end suite the agents never see; include a defect that only surfaces once a later feature
+      is built, and check that later sessions add it to the list rather than edit or drop items.
   primary:
   - probes
 impact:
   quality:
     effect: improves
     size: medium
-    when: Long projects only.
-    basis: assessment
+    when: 'multi-session builds where the model under-scopes or one-shots: a separate planning call before
+      one development pass 49.58 to 59.71 on 45 game builds; a plan frozen after the first loop and built
+      in fresh sessions 63.39 against 58.24 for one session continued for the same three passes, and 71.52
+      when each loop replanned from test results (Yan, Sep 2026); without its planner Opus 4.6 under-scoped
+      (Rajasekaran, Mar 2026); one-time up-front planning was too rigid to readjust and was removed (Lin,
+      Feb 2026); no study against one agent keeping the same state files'
+    basis: evidence
   cost:
-    effect: improves
+    effect: mixed
     size: small
-    basis: assessment
+    when: 'the setup session is a small share: planner $0.46 of $124.70 (Rajasekaran, Mar 2026); a planning
+      call before one pass 2.88M against 2.59M tokens per task; three fresh-session loops 8.41M (frozen
+      plan 7.56M) against 6.33M for three passes of one continued session, but 3.77 against 2.32 points
+      per extra million tokens, and rebuilding from scratch each loop instead of continuing raised tokens
+      to 11.12M (Yan, Sep 2026); planner, sprints and evaluator together cost $200 against $9 for a solo
+      run (Rajasekaran, Mar 2026)'
+    basis: evidence
   performance:
-    effect: none
+    effect: degrades
+    size: small
+    when: 'the setup session adds minutes, not hours: planner 4.7 min of a 3 hr 50 min run (Rajasekaran,
+      Mar 2026); Anthropic''s quickstart warns the first session takes 10-20+ minutes and each coding
+      session 5-15 (Young, Nov 2025); every later session re-reads state and re-runs a smoke test before
+      new work; no source compares wall time with one agent'
     basis: assessment
   security:
     effect: none
@@ -47,30 +111,139 @@ impact:
   governance:
     effect: improves
     size: medium
+    when: a commit and progress-log entry per session and an issue record make each session's work reviewable;
+      a 70-loop build kept 81 issues on record, 17 of them reopened after later changes broke verified
+      behavior (Yan, Sep 2026)
     basis: assessment
   brand:
     effect: none
     basis: assessment
   primary:
   - quality
-  - governance
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs on the same specs and model at matched sessions and tokens: one agent with the 4.b.iii
+    state files in one continuous session; a setup-only first session plus maintainer sessions; the same
+    with the maintainer allowed to append items from test results; score with an end-to-end suite the
+    agents never see (features passing, spec features never built, regressions reopened), plus total tokens,
+    the setup session''s share and wall time; per model, and again after an upgrade'
+- method: monitor
+  how: 'per session: whether it read the progress file, list and git log and ran the smoke test before
+    new work; regressions found at session start; items marked passing that fail the hidden suite; items
+    removed or reworded in the list (should be zero); items added from test findings; sessions per item;
+    sessions that declare the project done with items still failing'
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Multi-Agent group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
   date: '2025-11-26'
-  task: 'Introduces the two-agent harness: an initializer agent sets up the environment once, a coding agent makes
-    incremental progress each session'
-  effect: '"an initializer agent that sets up the environment on the first run, and a coding agent that is tasked
-    with making incremental progress in every session, while leaving clear artifacts for the next session."'
+  task: 'Introduces the two-agent harness: an initializer agent sets up the environment once, a coding
+    agent makes incremental progress each session'
+  effect: '"an initializer agent that sets up the environment on the first run, and a coding agent that
+    is tasked with making incremental progress in every session, while leaving clear artifacts for the
+    next session." The two are one harness: "We refer to these as separate agents in this context only
+    because they have different initial user prompts. The system prompt, set of tools, and overall agent
+    harness was otherwise identical." Working on one feature at a time "turned out to be critical"; no
+    numbers are reported, and "it''s still unclear whether a single, general-purpose coding agent performs
+    best across contexts, or if better performance can be achieved through a multi-agent architecture."'
   direction: supports
   measured: false
-  locator: Intro; The long-running agent problem
+  locator: Intro; The long-running agent problem; Getting up to speed; Future work; footnote 1; accompanying
+    autonomous-coding quickstart
+  conditions: Failure modes shown with Opus 4.5 on the Claude Agent SDK; the accompanying quickstart defaults
+    to Sonnet 4.5 and asks the initializer for at least 200 end-to-end tests; a claude.ai clone web app;
+    internal experiments, no comparison reported
+- source: 'Haoyang Yan, Min-Le Su, Hangfan Zhang, Zhanhao Li, Chen Zhang, Shao Zhang, Yang Chen, Lei Bai,
+    Shuyue Hu (Shanghai AI Laboratory), "Harness-of-Harness: Multi-Day Autonomous Software Development
+    with Continual Improvement", https://arxiv.org/abs/2609.01481'
+  date: '2026-09-01'
+  task: Wrap an existing coding harness in repeated loops of a planner (writes a bounded development document
+    from the spec and the last test report, cannot edit code), a developer (builds the increment on the
+    previous artifact) and an independent QA tester, each a fresh invocation with state carried in files;
+    compared with one development pass and with the same session continued by an extra iteration prompt;
+    ablations freeze the first plan, withhold test evidence from the planner, or rebuild from an empty
+    workspace each loop
+  effect: 'GameCraft-Bench Overall, Codex with GPT-5.5 (high), 45 tasks: one pass 49.58 (2.59M tokens
+    per task); after the first loop 59.71 (2.88M); one session continued for two and three passes 54.99
+    (4.56M) and 58.24 (6.33M); HoH after two and three loops 64.84 (5.67M) and 71.52 (8.41M), 3.77 against
+    2.32 points per extra million tokens. First plan frozen for later loops 63.39 (7.56M); replanning
+    without test evidence 65.23 (7.46M); rebuilding from an empty workspace each loop 63.67 at 11.12M
+    tokens. After three loops HoH beat one pass under all three harness-model pairs (GameCraft-Bench +16.62
+    to +22.08 points, ProgramBench +6.09 to +16.85). A 70-loop FPS build closed 65 of 81 recorded issues;
+    17 were reopened after later changes broke verified behavior.'
+  conditions: Codex CLI + GPT-5.5 (high), OpenCode + DeepSeek-V4-Pro, Pi + MiniMax-M3; GameCraft-Bench
+    (45 of 140 tasks), FrontierSWE (15 of 17), ProgramBench; the pass-matched comparison and ablations
+    on Codex + GPT-5.5 only; one run per task and condition at default temperature; the authors' own framework;
+    its roles add an independent tester and per-loop planning, so it does not test initializer and maintainer
+    alone; multi-day case on GPT-5.6-Sol
+  direction: mixed
+  measured: true
+  locator: §4.2 Table 1; §4.3 Tables 2-3; Appendix B.2 Table 7; B.6 Table 13; C.3; C.4 Tables 22-23; §5.2
+- source: Prithvi Rajasekaran (Anthropic), "Harness design for long-running application development",
+    https://www.anthropic.com/engineering/harness-design-long-running-apps
+  date: '2026-03-24'
+  task: A planner agent expands a 1-4 sentence prompt into a product spec once, before a generator builds
+    and an evaluator tests; harness components removed one at a time after Opus 4.6
+  effect: 'The planner survived the ablation: "Without the planner, the generator under-scoped: given
+    the raw prompt, it would start building without first speccing its work, and end up creating a less
+    feature-rich application than the planner did." It was prompted to stay "focused on product context
+    and high level technical design rather than detailed technical implementation" because otherwise "the
+    errors in the spec would cascade into the downstream implementation". Browser DAW on Opus 4.6: planner
+    4.7 min and $0.46 of 3 hr 50 min and $124.70. Earlier, on Opus 4.5, solo 20 min and $9 against 6 hr
+    and $200 for planner, sprints and evaluator; in the solo app "the actual game was broken." Context
+    resets were dropped for Opus 4.5 and sprints for Opus 4.6.'
+  conditions: Claude Opus 4.5 and Opus 4.6 on the Claude Agent SDK; one prompt per app, one run each;
+    quality judged by the author; the planner ablation is described, not scored; the $9 vs $200 contrast
+    adds planner, sprints and evaluator at once
+  direction: supports
+  measured: false
+  locator: The architecture; Running the harness; Iterating on the harness; Removing the sprint construct;
+    Results from the updated harness
+- source: Derrick Choi (OpenAI), "Run long horizon tasks with Codex", https://developers.openai.com/blog/run-long-horizon-tasks-with-codex
+  date: '2026-02-23'
+  task: 'One Codex session builds a design tool from a blank repo with no separate setup agent and no
+    context resets: an author-written spec file, a milestone plan the opening prompt had Codex generate
+    from it, a runbook file, and a status and decisions file it kept updated, with tests, lint, typecheck
+    and build after each milestone'
+  effect: '"Codex ran for about 25 hours uninterrupted, used about 13M tokens, and generated about 30k
+    lines of code." "The most important technique was durable project memory. I wrote the spec, plan,
+    constraints, and status in markdown files that Codex could revisit repeatedly. That prevented drift
+    and kept a stable definition of “done.”" The result "was not perfect or production-ready, but it was
+    real and testable."'
+  conditions: GPT-5.3-Codex at Extra High reasoning in Codex; one run, no comparison; judged by the author,
+    a vendor demonstrating its own model
+  direction: mixed
+  measured: false
+  locator: 'My setup for the test; The key idea: durable project memory; Takeaways for long-horizon Codex
+    tasks'
+- source: Wilson Lin (Cursor), "Towards self-driving codebases", https://cursor.com/blog/self-driving-codebases
+  date: '2026-02-05'
+  task: 'Successive harnesses for building a web browser over weeks: one agent nudged to "keep going"
+    on its own plan; equal agents sharing a state file; an up-front planner handing its plan to an executor,
+    workers and a judge; a continuous executor that also planned; and finally recursive planners that
+    never code plus workers that hand results back to them'
+  effect: 'One agent on its own plan: "The model lost track of what it was doing, frequently stopped to
+    proclaim success despite being far from it". With a separate planner, "Doing all planning upfront
+    also made it hard for the system to dynamically readjust as new issues were discovered", and "The
+    next version removed the independent planner." The executor that then planned, spawned, reviewed,
+    merged and judged would "sleep randomly, stop running agents, do work itself ... and claim premature
+    completion"; "it was being given too many roles". The final design keeps planners that never code
+    and keep receiving worker handoffs. The first browser "converged on an architecture that was unfit
+    to evolve into a full browser. This was a failure of the initial specification." "Generate 20-100
+    tasks" instead of "generate many tasks" gave "very different wider behavior".'
+  conditions: Opus 4.5 at first, then GPT-5.1 and GPT-5.2; one research project (a browser) run with hundreds
+    of concurrent agents; no controlled comparison or quality numbers, judged by the author; parallel
+    agents rather than sequential sessions
+  direction: mixed
+  measured: false
+  locator: Background; Adding structure and roles; Continuous executor; Pathological behaviors; The final
+    system design; Specifying intent to agents; Optimizing prompts
 assessment:
   qa:
     unit: Progress file schema.
@@ -107,6 +280,15 @@ assessment:
     primary:
     - quality
     - governance
+related:
+- 4.b.iii
+- 5.c.i
+- 7.c.iii
+- 9.b.iii
+- 7.a.ii
+- 7.b.iv
+- 6.b.iii
+- 4.b.i
 provenance:
   layer: target
   origin: observed
@@ -114,3 +296,12 @@ provenance:
   sub_type: orchestration
   library_group: Multi-Agent
   library_source: catalog
+caveats: 'No study isolates the split as Anthropic built it, two first prompts on one harness, against
+  one agent keeping the same state files (4.b.iii); the one controlled comparison is one framework, one
+  model setup and 45 game-building tasks with one run each, and its roles add an independent tester and
+  per-loop planning. The vendor accounts (Anthropic, Cursor, OpenAI) are single builds judged by their
+  authors, mostly on the vendors'' own models, with no quality numbers. The advice conflicts on freezing
+  the plan: Anthropic forbids editing the test list, while a frozen first plan lost 8.13 points to per-loop
+  replanning and Cursor dropped up-front planning as too rigid; an append-only list sits between them
+  and is untested. The need shifts with the model: Anthropic dropped resets for Opus 4.5 and sprints for
+  Opus 4.6 but kept the planner, and one Codex session ran about 25 hours without a separate setup role.'

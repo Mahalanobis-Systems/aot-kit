@@ -5,7 +5,7 @@ legacy_id: P51
 slug: continuous-task-loop
 name: Continuous autonomous task loop
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it changes the control loop
@@ -14,65 +14,263 @@ levers:
 - control-flow
 domains:
 - planning
-evidence_domains: []
+evidence_domains:
+- code-generation
+- planning
 categories:
 - orchestration.loop
-summary: Continuous autonomous task loop
+summary: 'Run the coding agent from a shell or harness loop that starts a fresh headless session every
+  iteration with the same short prompt; each session reads the plan, progress notes and git history, does
+  one item, runs its tests, commits and exits, until an iteration cap, a budget or a stop rule ends the
+  run. It pays on long backlogs with a near-perfect automatic check: 16 such loops on Opus 4.6 built a
+  100,000-line C compiler that builds Linux 6.9 over nearly 2,000 sessions for just under $20,000, though
+  new features kept breaking existing ones and the author had to add a CI gate. In one controlled study,
+  a harness that rebuilt a fresh context for every invocation and assigned each next experiment reached
+  the strongest baseline''s kernel result with 93.1% fewer tokens, while a framework that resumed long-running
+  sessions kept spending until 1B tokens though its last improvement came at 231M. No study compares a
+  plain loop with one long session on the same backlog, and fresh contexts do not stop drift: across fresh-container
+  iterations code erosion rose in 77% of agent trajectories.'
+how: '1. Start from the baseline: the same backlog run as one long agent session with the harness''s own
+  compaction, or an operator re-prompting it, and log where it stops: it waits for input, declares the
+  job done early, or fills its context. Use the loop only for a long list of checkable items with an automatic
+  check you trust, since the agent "will solve the wrong problem" unless the verifier is "nearly perfect"
+  (Carlini, Feb 2026); tests, type checkers and builds are the loop''s back pressure (Huntley, Jul 2025).
+  2. Start a new headless process every iteration with the same short prompt file, inside a container
+  that holds only the repository, and log each iteration to its own file: while true; do claude --dangerously-skip-permissions
+  -p "$(cat AGENT_PROMPT.md)" &> agent_logs/agent_$(git rev-parse --short=6 HEAD).log; done (Carlini,
+  Feb 2026). Do not resume the previous session: the official Claude Code plugin re-feeds the prompt inside
+  one session through a stop hook (Anthropic, Nov 2025), and in a framework that resumed each agent''s
+  own session after restarts, agents that had declared their work optimal kept repeating that decision,
+  with 98% of the last 1,500 sessions making no tool calls (Zhang, Oct 2026). 3. Keep state in the repository,
+  not the conversation, and load the same files every iteration: the spec, a plan or fix list, a progress
+  file and README the agent updates, and the git log (see 4.b.iii). Ask for one item per iteration and
+  have the agent search the code before implementing, since a wrong "not implemented" conclusion produces
+  duplicate implementations (Huntley, Jul 2025). Letting the agent pick "the next most obvious" problem
+  works while failing tests are independent (Carlini, Feb 2026); in one controlled study a stateless planner
+  that assigned each next experiment from a harness-built summary beat independent worker choices in all
+  four checkpoint comparisons (Zhang, Oct 2026). For parallel loops, claim an item by pushing a lock file
+  through git so a second claim fails (Carlini, Feb 2026); posted notes did not stop two agents from building
+  the same feature twice (Zhang, Oct 2026). 4. Gate every commit: a CI run so new commits can''t break
+  existing tests (added once the agents began breaking existing functionality with each new feature),
+  a --fast mode that runs a 1% or 10% sample of the tests, deterministic per agent, for checks inside
+  an iteration, short test output with details in log files (see 7.b.ii), and a known-good oracle to split
+  a monolithic target (GCC compiled most of the kernel so agents could fix different files) (Carlini,
+  Feb 2026). Schedule cleanup as well: across fresh-container iterations structural erosion rose in 77%
+  of trajectories and verbosity in 75.5%, and quality prompts lowered the level but not the rate of decline
+  (Orlanski, Mar 2026); Carlini gave one agent the job of coalescing duplicate code. 5. Bound and stop
+  the run: always set an iteration cap (the plugin''s default is unlimited), a token or dollar budget
+  and a time limit per iteration; stop when the list is done and a check the agent does not control passes,
+  or when several iterations add no passing test or score gain, not on the agent''s own completion phrase
+  (the plugin''s exact-match phrase cannot express "blocked") (see 7.b.i, 7.b.iii, 9.b.iii). Budget for
+  scale: 16 loops used 2 billion input and 140 million output tokens, just under $20,000, over two weeks
+  (Carlini, Feb 2026). 6. Measure: run the baseline and the loop on the same backlog, model and dollar
+  budget; score with an end-to-end suite the agents never see plus complexity and duplication of the final
+  code, read at several budget points (one harness trailed on all four software tasks at 25% of the budget
+  and led on all four at 100%, Zhang, Oct 2026); per iteration, log tokens, dollars, commits, tests gained
+  and broken, iterations with no tool calls and tokens since the last improvement.'
 detect:
-  static: A loop over a task queue with fresh context, git automation, rate-limit handling and iteration
-    limits.
-  traces: Iterations; commits; rate-limit events.
+  static: A shell or harness loop that starts a headless agent each iteration with the same prompt file
+    over a plan, task list or progress file, committing per iteration; whether it resumes the previous
+    session (a stop hook or resume flag) or starts a fresh one; iteration, budget and time caps; permission
+    prompts turned off outside a container.
+  traces: Iterations; commits; rate-limit events; iterations with no tool calls; tokens since the last
+    test or score gain; the same item claimed or built twice; previously passing tests broken; completion
+    claims while hidden tests fail.
   evals: Throughput; defect rate of produced work.
   judge: Rate produced commits.
   probes:
     what: A queue with a poison task.
-    construct: Include one unsolvable task and confirm the loop moves on.
+    construct: Include one unsolvable task and confirm the loop moves on; after the list is done, confirm
+      it stops instead of adding unrequested work; commit a change that breaks a passing test and confirm
+      the gate rejects it.
   primary:
   - traces
 impact:
   quality:
     effect: mixed
     size: medium
-    basis: assessment
+    when: 'long backlogs with a near-perfect check: 16 loops built a 100,000-line C compiler that builds
+      Linux 6.9 on x86, ARM and RISC-V and passes 99% of most compiler test suites, but its output is
+      less efficient than GCC with all optimizations disabled and new features frequently broke existing
+      ones (Carlini, Feb 2026); a fresh-context harness had the best final result on every task, 1112.0
+      against 1275.7 kernel cycles for the strongest baseline (Zhang, Oct 2026); across fresh-container
+      iterations erosion rose in 77% of trajectories and core pass rate fell from 64.6% to 35.5% (Orlanski,
+      Mar 2026); no study against one long session on the same backlog'
+    basis: evidence
   cost:
     effect: degrades
     size: large
-    basis: assessment
+    when: nearly 2,000 sessions, 2 billion input and 140 million output tokens, just under $20,000 (Carlini,
+      Feb 2026); a framework resuming long sessions kept spending until 1B tokens after its last improvement
+      at 231M, while a fresh-context harness reached the strongest baseline's kernel result with 67.9M
+      against 986.3M tokens and its planner used under 0.6% of tokens (Zhang, Oct 2026); mean cost per
+      iteration grew 2.2x from first to last checkpoint (Orlanski, Mar 2026)
+    basis: evidence
   performance:
-    effect: none
+    effect: mixed
+    size: small
+    when: unattended runs of hours to weeks (two weeks for the compiler) replace operator turns, but each
+      fresh session spends significant time re-orienting on a large project and agents will spend hours
+      running tests without a sampled fast mode (Carlini, Feb 2026); going from 1 to 15 parallel workers
+      cut elapsed time 6.6 to 7.3x (Zhang, Oct 2026); no source compares wall time with one long session
     basis: assessment
   security:
     effect: degrades
     size: medium
-    when: Autonomous commits.
-    basis: assessment
+    when: loops run with permission prompts off (--dangerously-skip-permissions) and push their own commits;
+      Carlini says to run it "in a container, not your actual machine" and saw an agent run pkill -9 bash
+      and end its own loop (Carlini, Feb 2026); one harness ran workers as unprivileged processes under
+      Landlock filesystem limits with restricted network (Zhang, Oct 2026)
+    basis: evidence
   governance:
     effect: mixed
     size: medium
-    when: Needs hard limits.
-    basis: assessment
+    when: 'each iteration leaves a commit, a log named by commit and lock files in git history (Carlini,
+      Feb 2026), but no one reviews each commit and the agent''s own "done" is weak: "it is easy to see
+      tests pass and assume the job is done, when this is rarely the case" (Carlini, Feb 2026); the vendor
+      plugin stops on an exact completion phrase and has no iteration cap by default (Anthropic, Nov 2025)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
   - cost
-  - security
+  - quality
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs on the same backlog, model and dollar budget: one long session with compaction (or
+    resumed sessions), the fresh-process loop with state files, and the loop with a CI gate, assigned
+    next items and a stop-on-no-progress rule; score with an end-to-end suite the agents never see plus
+    cyclomatic complexity and duplicated code of the final tree, read at 25%, 50% and 100% of the budget;
+    report dollars per accepted commit, regressions introduced and human hours needed to finish'
+- method: monitor
+  how: 'per iteration: tokens and dollars, wall time, tool calls (zero means idle), commits, tests gained
+    and broken, CI rejections, items claimed or built twice, rate-limit waits, tokens since the last improvement,
+    complexity and duplication trend, and completion claims checked against the hidden suite'
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Control Flow group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Geoffrey Huntley, "Ralph Wiggum as a “software engineer”", https://ghuntley.com/ralph/
   date: '2025-07-14'
   task: 'Introduces "Ralph": run a coding agent in an endless loop over the same prompt file'
-  effect: '"In its purest form, Ralph is a Bash loop. while :; do cat PROMPT.md | claude-code ; done". Says it has
-    defects that are "identifiable and resolvable through various styles of prompts."'
+  effect: '"In its purest form, Ralph is a Bash loop. while :; do cat PROMPT.md | claude-code ; done".
+    Says it has defects that are "identifiable and resolvable through various styles of prompts." Each
+    loop loads the same plan and specifications, and "you need to ask Ralph to do one thing per loop.
+    Only one thing", trusting it to choose "the most important thing"; "A common failure scenario for
+    Ralph is when the LLM runs ripgrep and comes to the incorrect conclusion that the code has not been
+    implemented", which shows up as "multiple implementations"; tests, type checkers and builds are the
+    "back pressure" that rejects bad output. No numbers. A note added at the top of the page links a video
+    "to learn why the claude code plugin isn''t it".'
   direction: supports
   measured: false
-  locator: Opening section
+  locator: 'Opening section; first some fundamentals; one item per loop; don''t assume it''s not implemented;
+    phase two: backpressure'
+  conditions: One practitioner's account of his own projects (a new programming language built with the
+    loop); no numbers or comparison
+- source: 'Qizheng Zhang, Changxiu Ji, Isaac Sun, Yuetai Li, Shubhangi Upasani, Sherry Ruan, Boyuan Ma,
+    Fenglu Hong, Vamsidhar Kamanuru, Yoonho Lee, Yuzhen Mao, Genghan Zhang, Rulin Shao, Qiuyang Mang,
+    Andy Dimnaku, Changran Hu, Radha Poovendran, Kunle Olukotun (Stanford, CMU, University of Washington,
+    SambaNova, UC Berkeley), "Stateless Language Agents: Scaling Long-Horizon Automated Research", https://arxiv.org/abs/2610.07625'
+  date: '2026-10-06'
+  task: 'Long unattended automated-research runs of up to 1B tokens in which no agent carries its conversation
+    across invocations: the harness keeps candidates and scores, rebuilds a fresh role-specific context
+    for every invocation, and a stateless Advisor assigns each next experiment to parallel Workers. Compared
+    with EvoX (a fresh coding agent per generation), CORAL (each agent keeps one long-running session,
+    resumed after every heartbeat, stall or restart) and SwarmResearch (a long-running coordinator; workers
+    resume a parent''s conversation) under the same coding agents, models, evaluators and external token
+    counter; ablations continue from shared checkpoints'
+  effect: 'Best full-budget result on every task. Anthropic kernel task with Codex (three runs): 1112.0
+    ± 8.9 cycles against 1275.7 ± 133.9 for the strongest baseline, whose final result it matched at 67.9M
+    against 986.3M tokens (93.1% fewer); with Claude Code (one run) 84.4% fewer. FrontierSWE (four tasks,
+    one run each): behind the strongest baseline on all four at 25% of the budget, ahead on all four at
+    100%, +4.95 points on average. In one CORAL run the last improvement came at 231M tokens while spending
+    continued to 1B; agents "repeatedly declare their candidates optimal and wait, despite prompts to
+    continue and restarts", and 98% of the final 1,500 sessions made no tool calls. In a CORAL trace two
+    agents built the same feature twice within 13 minutes, the second time despite a posted claim. Removing
+    the Advisor''s assignments reduced progress in every checkpoint comparison; a full run without Worker
+    context isolation ended at 1336 cycles, 224 worse. The Advisor used under 0.6% of tokens; 1 to 15
+    Workers cut elapsed time 6.6 to 7.3x.'
+  conditions: Codex CLI with GPT-5.5 and Claude Code with Claude Opus 4.8 at high reasoning effort, the
+    same model for Advisor and Workers; FrontierSWE (4 tasks), Anthropic's VLIW SIMD kernel task, SOL-ExecBench
+    (3), FrontierCS (1); three runs only for the kernel task with Codex, one run elsewhere; the authors'
+    own framework; the baselines differ in more than session reuse, so the gain is not attributable to
+    fresh contexts alone; automated research against a scored objective rather than a task backlog
+  direction: supports
+  measured: true
+  locator: §1 Fig. 1; §2.2 Fig. 2(b); §3; §4.1; §4.2 Tables 1-2; §4.3 Table 4; §4.4 Table 5; Appendix
+    D.2 Table 9
+- source: 'Gabriel Orlanski, Devjeet Roy, Alexander Yun, Changho Shin, Alex Gu, Albert Ge, Dyah Adila,
+    Nicholas Roberts, Frederic Sala, Aws Albarghouthi, "SlopCodeBench: Benchmarking How Coding Agents
+    Degrade Over Long-Horizon Iterative Tasks", https://arxiv.org/abs/2603.24755'
+  date: '2026-03-25'
+  task: Agents repeatedly extend their own code over 3 to 8 checkpoints per problem (36 problems, 196
+    checkpoints); each checkpoint runs in a fresh Docker container with only the working directory carried
+    over and no prior conversation; structural erosion and verbosity tracked per checkpoint and compared
+    with the commit histories of 473 open-source Python repositories; two quality prompts tested against
+    a plain one
+  effect: No agent solved any problem end to end; best strict checkpoint solve rate 14.8% (GPT 5.5). Structural
+    erosion rose in 77% of trajectories (53% of human repositories) and verbosity in 75.5%; agent code
+    was 2.3x more verbose and 2.0x more eroded than the human repositories. From first to last checkpoint,
+    core pass rate fell from 64.6% to 35.5% and mean cost per checkpoint grew 2.2x. An anti-slop prompt
+    cut verbosity by 27.5% to 35.6% and erosion by 34.3% to 57.6% against the plain prompt, but quality
+    improved from start to end only on GPT 5.4; the two quality prompts raised cost per checkpoint by
+    12.1% on average and cut the strict solve rate by 2.4 (anti-slop) and 3.6 points (plan-first).
+  conditions: 15 models from six providers in their native CLI harnesses, a two-hour wall-clock limit
+    per run, no turn or cost cap; the prompt study on three OpenAI models (GPT 5.4, GPT 5.5, GPT 5.3 Codex);
+    the benchmark supplies each checkpoint's spec, so the agent does not pick its next task, and there
+    is no per-checkpoint quality gate; numbers from v2 (May 2026)
+  direction: mixed
+  measured: true
+  locator: Abstract; §1 RQ1-RQ4; §3 Setup; §3.1 Table 1, Fig. 2; §3.2 Fig. 3; §3.3 Fig. 4; §3.4 Table
+    3, Fig. 5
+- source: Nicholas Carlini (Anthropic), "Building a C compiler with a team of parallel Claudes", https://www.anthropic.com/engineering/building-c-compiler
+  date: '2026-02-05'
+  task: 'Sixteen Claude Code loops build a Rust C compiler from scratch: a bash while-true loop starts
+    a fresh headless session per iteration, each in its own container, from the same prompt file; each
+    session claims a task with a lock file pushed through git, works, merges, pushes and exits, with progress
+    files and READMEs carrying state; the author added a CI gate, a sampled fast test mode, a GCC oracle
+    and specialist roles as failure modes appeared'
+  effect: '"Over nearly 2,000 Claude Code sessions across two weeks, Opus 4.6 consumed 2 billion input
+    tokens and generated 140 million output tokens, a total cost just under $20,000." The 100,000-line
+    compiler builds a bootable Linux 6.9 on x86, ARM and RISC-V and has "a 99% pass rate on most compiler
+    test suites including the GCC torture test suite", but outputs code less efficient than GCC with all
+    optimizations disabled, calls GCC for 16-bit x86, lacks its own assembler and linker, and "New features
+    and bugfixes frequently broke existing functionality." Near the end "Claude started to frequently
+    break existing functionality each time it implemented a new feature", so the author built a CI pipeline
+    "so that new commits can''t break existing code"; 16 agents on the single kernel build kept overwriting
+    each other''s fixes until GCC served as a known-good oracle; one agent ran pkill -9 bash and ended
+    its loop. "it is easy to see tests pass and assume the job is done, when this is rarely the case."'
+  conditions: Claude Opus 4.6, 16 parallel agents, no orchestration agent, no internet access; one project
+    run as a capability stress test and judged by its author, a vendor demonstrating its own model; no
+    comparison with another harness; earlier Opus 4 models "were barely capable of producing a functional
+    compiler" and Opus 4.5 could not compile real large projects
+  direction: supports
+  measured: true
+  locator: Intro; Enabling long-running Claudes; Running Claude in parallel; Lessons from programming
+    with Claude agent teams; Stress testing the limits of agent teams (Evaluation); Looking forward
+- source: Anthropic (Claude Code repository), "Ralph Wiggum Plugin", https://github.com/anthropics/claude-code/blob/main/plugins/ralph-wiggum/README.md
+  date: '2025-11-16'
+  task: 'Anthropic''s official Claude Code plugin for the technique: /ralph-loop runs the loop inside
+    the current session, where a Stop hook blocks exit and feeds the same prompt back each iteration until
+    an iteration cap or an exact completion phrase'
+  effect: '"The loop happens inside your current session - you don''t need external bash loops." "--max-iterations
+    <n> - Stop after N iterations (default: unlimited)"; "Always use --max-iterations as a safety net
+    to prevent infinite loops on impossible tasks"; the completion promise "uses exact string matching,
+    so you cannot use it for multiple completion conditions (like "SUCCESS" vs "BLOCKED")". Good fits:
+    "Well-defined tasks with clear success criteria" and "Tasks with automatic verification (tests, linters)";
+    poor fits: "Tasks requiring human judgment or design decisions" and "Tasks with unclear success criteria".
+    Its "Real-World Results" are relayed claims without a source or method. No measurement.'
+  conditions: Claude Code plugin documentation and hook script; no evaluation
+  direction: mixed
+  measured: false
+  locator: Core Concept; Commands; Prompt Writing Best Practices (4. Escape Hatches); When to Use Ralph;
+    Real-World Results; hooks/stop-hook.sh
 assessment:
   qa:
     unit: Iteration cap; rate-limit backoff.
@@ -109,6 +307,16 @@ assessment:
     primary:
     - cost
     - security
+related:
+- 4.b.iii
+- 4.b.ii
+- 7.b.i
+- 7.b.iii
+- 9.b.iii
+- 7.b.iv
+- 6.b.iii
+- 5.c.ii
+- 10.a.i
 provenance:
   layer: target
   origin: observed
@@ -116,3 +324,13 @@ provenance:
   sub_type: control_flow
   library_group: Control Flow
   library_source: catalog
+caveats: 'No study compares a plain fresh-process loop with one long session, or an operator re-prompting,
+  on the same backlog, model and budget: the largest account is one build judged by its author on the
+  vendor''s own model, and the one controlled comparison is an automated-research harness whose gain mixes
+  fresh contexts with planner-assigned work and harness summaries, with three runs on one task and one
+  run elsewhere. Fresh contexts do not stop drift: across fresh-container iterations code erosion rose
+  in 77% of agent trajectories (against 53% of human repositories) and quality prompts lowered the level
+  but not the rate, on a benchmark with a two-hour limit per run. The vendor''s own plugin loops inside
+  one session rather than restarting, and no source measures that design against a fresh process. What
+  the loop can finish depends on the model: earlier Opus 4 models "were barely capable of producing a
+  functional compiler" and Opus 4.5 could not compile real large projects.'

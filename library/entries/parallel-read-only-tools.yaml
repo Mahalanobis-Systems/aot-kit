@@ -5,7 +5,7 @@ legacy_id: P52
 slug: parallel-read-only-tools
 name: Parallel tool execution for read-only calls
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 3
   why: it changes execution order and latency
@@ -16,35 +16,105 @@ domains:
 - general
 evidence_domains:
 - tool-use
+- web-research
+- code-generation
 categories:
 - topologies.parallel
-summary: Parallel tool execution for read-only calls
+summary: 'Let the model put several independent read-only tool calls (searches, fetches, file reads) in
+  one turn and have the harness run them at once, while calls that write, share state or need another
+  call''s result run one at a time in the order the model emitted them. It pays where a task has many
+  slow, independent lookups: told to make three parallel search or scrape calls per turn, GPT-5 scored
+  68% against 66% on 100 BrowseComp tasks in half the turns, at 35.9% lower cost and 40.6% less time,
+  and native parallel calls ran 1.61x to 2.76x faster than one call per step on parallel search questions.
+  The gain shrinks where tool work is fast or sequential (1.04x on SWE-bench Lite, 1.40x once the harness
+  declared each tool''s reads and writes and kept decoding during calls), wider is not better (five or
+  eight calls per turn scored 60% and 63%), and batching calls that depend on each other costs accuracy
+  (GLM-4.5 completed 63.1% of compound tasks when parallelizing against 71.8% sequentially).'
+how: '1. Start from the baseline: the same agent, model and tasks with parallel calls off (disable_parallel_tool_use
+  in Claude''s tool_choice, or your provider''s equivalent), and with them on but executed one at a time;
+  record accuracy, turns, tokens, cost and p50/p95 wall-clock per task, and the average number of tool
+  calls per tool-calling turn. Expect the gain to track how much slow, independent lookup work a task
+  has: native parallel batches ran 1.61x to 2.76x faster than ReAct on 2-way and 8-way parallel search
+  questions (gpt-3.5-turbo), but running a model''s same-turn batches concurrently instead of one by one
+  gave 1.04x on SWE-bench Lite (GPT-5.6 Sol). 2. Classify every tool by what it reads and writes. Search,
+  fetch, grep, glob, file reads and other lookups can run together; anything with side effects, shared
+  state (a shell session, a browser, a working directory) or an ordering requirement cannot. Default unknown
+  tools to serial, and classify shell commands per command (one harness locked the whole repository for
+  python, pytest and any command its rules did not match). Declaring a read set and a write set per tool
+  lets the harness run non-conflicting calls together while conflicting ones keep the model''s order.
+  3. Dispatch each batch in the harness, not the model: the provider APIs leave execution order, partial
+  failure and races to you. Run the safe calls concurrently, run the rest in the order the model emitted
+  them, and when a call fails cancel only the calls that depend on it. Return one result per call, all
+  in the next message and before any text (results sent as separate messages teach Claude to stop batching),
+  with is_error and a short reason for any call not run or that failed because its prerequisite had not
+  completed; the model reissues it next turn. 4. Prompt for it, at a modest width: "whenever you need
+  to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially"
+  plus "Only batch tool calls that are independent of each other." With GPT-5 on 100 BrowseComp tasks
+  at a 100-turn limit, three to four search or scrape calls per turn scored 68% against 66% for one, in
+  23.8 against 45.7 turns, while five and eight scored 60% and 63%; a wide-then-narrow schedule (3, then
+  2, then 1 per turn) reached 74%, and letting the model choose reached 72%. Open-weight models gained
+  little (DeepSeek-V3.2 38% to 39%), so measure before relying on it. 5. Keep dependent steps sequential:
+  where later calls need earlier results, parallel scheduling cost GLM-4.5 8.7 points of task completion
+  (63.1% against 71.8% sequential), and QwQ-32B put dependent calls in one batch and completed 29.36%.
+  Leave those workflows serial, or plan them as an explicit dependency graph (the LLMCompiler planner
+  ran 1.40x to 3.74x faster than ReAct). 6. Where tools are slow, also let decoding continue while calls
+  run: returning placeholders (futures) and filling in results at turn boundaries gave 1.40x on SWE-bench
+  Lite and 1.26x on BFCL web search with no significant accuracy change, and with no read/write declarations
+  it still helped by overlapping decoding with serialized calls. 7. Measure paired against the baseline
+  on tasks with and without dependent calls: accuracy, turns, cost and p95 latency per task, average calls
+  per tool-calling turn, calls returned as is_error because a prerequisite had not run, and probes that
+  put a read and a write to the same resource in one batch.'
 detect:
-  static: Tools classified read-only or mutating; concurrent dispatch for read-only batches.
-  traces: Overlapping tool spans; ordering violations.
-  evals: Latency; race-condition failures.
+  static: Each tool marked read-only (safe to run together) or as having side effects, shared state or
+    ordering needs, with unknown tools defaulting to serial; read-only calls in a batch dispatched concurrently;
+    the rest run in model-emitted order; all results returned in one message before any text; a parallel-calls
+    instruction in the prompt.
+  traces: Average tool calls per tool-calling turn near 1 on tasks with independent lookups (parallelism
+    unused); overlapping spans for calls that touch the same resource; calls that failed because a prerequisite
+    in the same batch had not run.
+  evals: Accuracy, turns, cost and p95 latency with parallel calls off and on, on tasks with and without
+    dependent calls; race-condition failures.
   probes:
-    what: Batches mixing reads and writes.
-    construct: A read that depends on a write in the same batch.
+    what: Batches that mix reads and writes to the same resource, or hold a call that needs another call's
+      output.
+    construct: A read that depends on a write in the same batch; a call whose argument must come from
+      another call in the same batch; a shell command treated as read-only that writes a file another
+      call reads.
   primary:
   - static
   - traces
 impact:
   quality:
     effect: mixed
-    size: small
-    when: 'Races if misclassified. VeRO T36: shell concurrency was only ever raised.'
-    basis: assessment
+    size: medium
+    when: 68% against 66% in half the turns at three parallel calls per turn on 100 BrowseComp tasks,
+      60% and 63% at five and eight, 38% to 39% for DeepSeek-V3.2 (Lin, Feb 2026); 63.1% against 71.8%
+      forced sequential for GLM-4.5 on compound tasks with dependencies, 29.36% for QwQ-32B, which batched
+      dependent calls (Xu, Nov 2025); 79.3% against 79.0% on SWE-bench Lite, no significant change (Feng,
+      May 2026); native parallel calls 77.00% against 72.47% on Movie Recommendation and 87.32% against
+      89.09% on ParallelQA for ReAct (Kim, Dec 2023). A tool with side effects classified read-only can
+      race; no source measures that.
+    basis: evidence
   cost:
-    effect: none
-    basis: assessment
+    effect: improves
+    size: medium
+    when: $65.7 against $102.5 per 100 BrowseComp tasks (35.9% less) for three parallel calls per turn
+      (Lin, Feb 2026); native parallel calls 1.81x to 3.33x cheaper than ReAct (Kim, Dec 2023); sequential
+      scheduling raised DeepSeek-R1 from 11.6k to 12.6k tokens per task (Xu, Nov 2025)
+    basis: evidence
   performance:
     effect: improves
-    size: large
-    basis: assessment
+    size: medium
+    when: 904.2 s against 1,522.6 s per task (40.6% less) (Lin, Feb 2026); native parallel calls 1.61x
+      to 2.76x faster than ReAct on parallel search questions (Kim, Dec 2023); 1.04x on SWE-bench Lite
+      for concurrent batches alone, 1.40x with read/write declarations and decoding during calls (Feng,
+      May 2026); 361.6 s against 423.6 s sequential for DeepSeek-R1 (Xu, Nov 2025)
+    basis: evidence
   security:
     effect: mixed
     size: small
+    when: 'No source measures it: a call with side effects classified read-only can run alongside, or
+      ahead of, a check it should follow.'
     basis: assessment
   governance:
     effect: none
@@ -54,22 +124,123 @@ impact:
     basis: assessment
   primary:
   - performance
+  - cost
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired runs on the same tasks and model with parallel calls off, on but executed one at a time,
+    and on and concurrent, including tasks whose calls depend on each other: accuracy, turns, tokens and
+    cost per task, p50/p95 wall-clock, and average tool calls per tool-calling turn; sweep the calls-per-turn
+    instruction (1, 3, 5) and a wide-then-narrow schedule; add probes that put a read and a write to the
+    same resource, or a call that needs another call''s output, in one batch'
+- method: monitor
+  how: average tool calls per tool-calling turn, the share of batches that mix read-only and side-effecting
+    calls, calls returned as is_error because a prerequisite had not run, turns per task, and p95 tool
+    wall-clock per turn
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Control Flow group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Kim et al., "An LLM Compiler for Parallel Function Calling", https://arxiv.org/abs/2312.04511
   date: '2023-12-07'
   task: Plan function calls as a dependency graph and run independent calls in parallel
-  effect: '"latency speedup of up to 3.7x, cost savings of up to 6.7x, and accuracy improvement of up to ~9% compared
-    to ReAct"'
-  conditions: vs ReAct, across function-calling benchmarks
+  effect: '"latency speedup of up to 3.7x, cost savings of up to 6.7x, and accuracy improvement of up
+    to ~9% compared to ReAct": the best cases, 3.74x and 6.73x on Movie Recommendation with gpt-3.5-turbo
+    and +8.55 points on ParallelQA with LLaMA-2 70B, for LLMCompiler''s planner. OpenAI''s native parallel
+    function calling, run as a baseline: 1.61x (HotpotQA), 2.76x (Movie Recommendation) and 1.86x (ParallelQA)
+    faster than ReAct, 1.87x, 3.33x and 1.81x cheaper, accuracy 62.05% against 62.47%, 77.00% against
+    72.47%, and 87.32% against 89.09%; LLMCompiler was up to 35% faster than native parallel calls.'
+  conditions: gpt-3.5-turbo (1106) and LLaMA-2 70B; HotpotQA comparison questions (1.5k, 2-way parallel),
+    Movie Recommendation (500, 8-way), ParallelQA (113, the authors' own, with dependencies), Game of
+    24, WebShop; ReAct with anti-looping prompts as the latency baseline (unprompted ReAct for ParallelQA);
+    LLMCompiler plans a dependency graph, native parallel calls do not
   direction: supports
-  locator: Abstract
+  locator: Abstract; §5.1; Tables 1 and 2
+- source: 'Feng, Mao, Dutta, Gonzalez, "Concurrency without Model Changes: Future-based Asynchronous Function
+    Calling for LLMs", https://arxiv.org/abs/2605.15077'
+  date: '2026-05-14'
+  task: Run function calls through an execution layer that returns placeholders (futures) so decoding
+    continues, with a scheduler that runs calls concurrently only when their declared read and write sets
+    do not conflict (undeclared tools serialize in model-emitted order); compared with sequential and
+    native parallel function calling
+  effect: 'SWE-bench Lite (n=300, GPT-5.6 Sol, real tool latency), resolve rate and speedup over SWE-agent:
+    baseline 79.0%; same-turn batches run concurrently 79.0%, 1.04x; AsyncFC 79.3%, 1.40x. BFCL v3 multi-turn
+    (n=150, GPT-4o, 5 s injected delay) accuracy: sequential 68.0%, native parallel 67.3%, AsyncFC 66.0%
+    to 70.7% (no significant difference). BFCL v4 web search (GPT-4o, real latency): sequential 54.8%
+    against AsyncFC 53.2% at 1.26x (n=31); native parallel 50.0% against AsyncFC 50.0% at 1.12x (n=29,
+    latency gain not significant). Gemini 3.1 Pro on BFCL v3: native parallel 62.0% against AsyncFC 65.3%
+    at 1.17x. With no annotations the scheduler serialized all calls and still cut latency by overlapping
+    decoding. Provider parallel-calling APIs "leave ambiguity in function execution order" and do not
+    specify "the handling of partial failure and race conditions."'
+  conditions: GPT-4o, Gemini 3.1 Pro, GPT-5.6 Sol; SWE-agent with a rule-based command analyzer that locks
+    the repository root for python, pytest and unmatched commands; the native parallel baseline applied
+    state effects in model-emitted order (favorable to it); numbers from v2 (Oct 2026), v1 reported 47.6%
+    / 47.6% / 44.3% at 1.21x / 1.44x with GPT-5.2 under scaled latencies; the authors' own system
+  direction: supports
+  measured: true
+  locator: §2; §3.3; §3.4; §5.1; Figure 3; Figure 5; App. A
+- source: Lin, Liew, Savarese, Li (Salesforce AI Research), "W&D:Scaling Parallel Tool Calling for Efficient
+    Deep Research Agents", https://arxiv.org/abs/2602.07359
+  date: '2026-02-07'
+  task: Tell a deep research agent with search and scrape tools to make a set number of parallel tool
+    calls per turn (a user message before each model call asks for at least m and at most m+1), against
+    one call per turn, at several turn limits and call schedules
+  effect: 'BrowseComp, first 100 tasks, GPT-5 medium effort, accuracy (turns) at a 100-turn limit: 1 call
+    66% (45.7), 2 calls 68% (27.1), 3 calls 68% (23.8), 5 calls 60% (19.9), 8 calls 63% (15.2); at a 10-turn
+    limit 44% for 1 call against 56% for 8. One call at 66% cost $102.5 per 100 tasks and averaged 1,522.6
+    s per task; three parallel calls at 68% cost $65.7 (35.9% less) and 904.2 s (40.6% less). Schedules:
+    3-2-1 descending 74% (23.5 turns), model-chosen 72% (26.6), 1-2-3 ascending 63% (36.5). Open-weight
+    models, one call against three: DeepSeek-V3.2 38% against 39%, Qwen3-235B-A22B-Thinking 8% against
+    11% (turns 18.5 against 52.1). Full BrowseComp with parallel calls: 62.2% for GPT-5 medium.'
+  conditions: MCP-Universe framework; Serper search and Jina scraping with a Gemini-2.5-Flash summarizer,
+    Python only for HLE; n=100 for BrowseComp and HLE, 103 GAIA text tasks; gains for Gemini 3.0 Pro,
+    Claude 4.5 Sonnet, HLE and GAIA shown in figures only; the 62.2% is set against OpenAI's reported
+    54.9% for GPT-5 high, not a same-harness single-call run
+  direction: supports
+  measured: true
+  locator: §2.1 Figure 2; §3.2 Table 1, Table 2; §5 Table 3
+- source: 'Xu, Huang, Liu, Yu, Deng, "TPS-Bench: Evaluating AI Agents'' Tool Planning & Scheduling Abilities
+    in Compounding Tasks", https://arxiv.org/abs/2511.01527'
+  date: '2025-11-03'
+  task: Benchmark tool selection and scheduling on compound tasks over 141 MCP tools whose subtasks may
+    depend on each other, with agents prompted to run independent subtasks in parallel; ablate the default
+    parallel scheduling against forced sequential calls on the hard split
+  effect: 'Forced sequential against default parallel scheduling: GLM-4.5 task completion 71.8% against
+    63.1%; DeepSeek-R1 12.6k against 11.6k tokens and 423.6 s against 361.6 s; "Serial scheduling can
+    effectively help the model reduce errors caused by incorrect judgments of subtask dependencies." Across
+    models on the hard split: GPT-4o, which favors parallel calls, 45.08% in 2.5 turns and 76.84 s; GLM-4.5,
+    mostly sequential, 64.72% in 35.0 turns and 217.8 s; QwQ-32B "often invokes multiple tools simultaneously,
+    even when certain tools rely on the outputs of others" and completed 29.36% in about one turn. GRPO
+    on 100 samples took Qwen3-1.7B from 26.75% to 33.13% completion and 42.0 s to 36.1 s.'
+  conditions: 200 tasks at two levels; completion judged by Gemini-2.5-Flash (Pearson 0.8375 with human
+    scores); seven models; the sequential ablation covers four models (GLM-4.5, DeepSeek-R1, Kimi-K2,
+    Qwen3-32B) but the text gives numbers for two; the abstract's GPT-4o against GLM-4.5 contrast is across
+    models
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1; §4.2 Table 1; §4.3 Tool Scheduling, Figure 7; §5 Table 3
+- source: Anthropic, "Parallel tool use" (Claude API docs), https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use
+  date: '2026-10-25'
+  task: Vendor guidance on executing, formatting and prompting parallel tool calls
+  effect: '"The API doesn''t prescribe an execution order"; "Independent, read-only operations are usually
+    safe to run in parallel for lower latency. Tools with side effects, shared state, or ordering requirements
+    might be better run sequentially." Return one tool_result per tool_use, all in the next user message
+    and before any text; a separate message per result "teaches" Claude to avoid parallel calls. For a
+    call not run, or one that failed because its prerequisite had not completed, return is_error: true
+    and Claude reissues it; computer-use and browser batches must run in order and stop at the first failure.
+    Suggested prompts: "whenever you need to perform multiple independent operations, invoke all relevant
+    tools simultaneously rather than sequentially" and "Only batch tool calls that are independent of
+    each other." Check adoption as average tool calls per tool-calling message (above 1.0). No measured
+    effect.'
+  conditions: Claude 4 and later models call tools in parallel by default; disable_parallel_tool_use in
+    tool_choice turns it off; accessed Oct 2026
+  direction: supports
+  measured: false
+  locator: Execution semantics; Maximizing parallel tool use; Troubleshooting
 assessment:
   qa:
     unit: Mutating calls serialized; read-only concurrent.
@@ -106,6 +277,16 @@ assessment:
       note: ''
     primary:
     - latency
+related:
+- 6.b.iii
+- 6.b.ii
+- 6.c.ii
+- 7.d.iii
+- 2.a.iii
+- 2.b.ii
+- 2.b.i
+- 10.b.i
+- 7.b.iii
 provenance:
   layer: target
   origin: observed
@@ -113,3 +294,12 @@ provenance:
   sub_type: parallelization
   library_group: Control Flow
   library_source: catalog
+caveats: 'The current-model accuracy and cost result rests on one study''s first 100 BrowseComp tasks,
+  where 68% against 66% is two tasks, and its headline 62.2% compares a full-set run with GPT-5 medium
+  against the score OpenAI reported for GPT-5 high in a different harness, not a single-call run (Lin,
+  Feb 2026). The speedup depends on the workload: concurrent batches alone gave 1.04x on SWE-bench Lite,
+  the 1.40x also needs futures and per-tool read/write declarations, and the same paper''s May 2026 version
+  reported 1.44x with a 3.3-point lower resolve rate on GPT-5.2, not significant (Feng, May 2026). The
+  loss on dependent calls comes from an LLM-judged benchmark whose same-model ablation gives numbers for
+  two of four models (Xu, Nov 2025), the largest speedups are with gpt-3.5-turbo against ReAct (Kim, Dec
+  2023), and no source measures races or security effects of a misclassified tool.'

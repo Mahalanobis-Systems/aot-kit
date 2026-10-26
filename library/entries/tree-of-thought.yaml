@@ -5,7 +5,7 @@ legacy_id: P32
 slug: tree-of-thought
 name: Tree-of-Thought
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it replaces a single chain with a search
@@ -16,34 +16,93 @@ domains:
 - reasoning
 evidence_domains:
 - reasoning
+- planning
+- data-analysis
 categories:
 - orchestration.extra-compute
-summary: Tree-of-Thought
+summary: 'Tree-of-Thought replaces one reasoning chain with a search: the model proposes several next
+  steps, an evaluator (the model itself, a trained verifier or a rule check) scores the partial solutions,
+  and breadth-first or depth-first search keeps the best or backtracks. It pays on narrow tasks where
+  early steps decide the outcome and partial states can be judged reliably: Game of 24 rose from 4% with
+  CoT to 74% on GPT-4, and logic-proof accuracy on GPT-4o from 72.0 to 83.1. Against cheaper baselines
+  the gain often disappears: tree search needed an evaluator at least 90% accurate to beat re-ranking,
+  PRM-guided tree search showed no significant gain over best-of-N despite higher cost, and DeepSeek-V3.2
+  with thinking on solved 92% of Game of 24 in one call against 30% for ToT on the same model with thinking
+  off. Its authors put the cost at 5 to 100 times the generated tokens of CoT.'
+how: '1. Start from the cheap baselines on your own items: the same model in one call with thinking on
+  or higher effort (1.b.i), and self-consistency or best-of-N at the same token budget (9.c.ii); consider
+  a search only for the items those miss, where an early wrong step dooms the answer and partial states
+  can be checked. 2. If the moves and the goal can be written down, have the model write the successor
+  function and goal test in code and run plain BFS or DFS: that solved all 1,362 Game of 24 instances
+  with about 2 LLM calls in total, where ToT makes about 100 calls per problem. 3. Otherwise define a
+  thought as one checkable step (an equation, a SQL clause, a line of code, one derived fact), propose
+  several candidates per node and keep the best b (ToT kept b = 5), scoring partial states with the most
+  reliable evaluator you have: a rule or execution check first (execution feedback raised discriminator
+  accuracy by up to 30.2 points), then a trained verifier, then the model''s own value or vote. Measure
+  the evaluator''s ranking accuracy on labeled partial solutions before wiring it in; tree search needed
+  at least 90% to beat re-ranking. 4. Use a search that can back up: depth-first or best-first with pruning
+  of states rated impossible, not a fixed-depth breadth-first pass (ToT''s BFS won 9.47% of 5-number Countdown
+  games against 60.00% for MCTS). Cap nodes, tokens and wall-clock, stop on the first verified solution,
+  and return a fallback answer when the search ends empty. 5. Branch only where a step needs it: a cheap
+  check before each expansion cut ToT beam-search output tokens by 78.3% and 78.9% on Qwen3-32B, at accuracy
+  0.97 and 0.86 against 0.98 and 0.87, but on LLaMA3-8B the cuts were 37.8% to 73.4% with accuracy drops,
+  so re-check accuracy on your model; run the b expansions and their evaluations in parallel. 6. Route by difficulty:
+  send only the items the cheap path is unsure about to the search (a low average verifier score across
+  samples served as the difficulty estimate), and re-check the need on every model upgrade, since stronger
+  models gained less (best-of-N beat search at 72B). 7. Measure on held-out items with ground truth the
+  search never sees: accuracy against both baselines at matched tokens, split by difficulty, plus tokens,
+  LLM calls, p50 and p95 latency, and the share of searches that end without a solution.'
 detect:
-  static: Branching, evaluation and pruning code; a queue of partial solutions.
-  traces: Branch counts; pruned branches; tokens per item.
-  evals: Accuracy on puzzle and planning tasks vs CoT; cost.
-  judge: Rate the partial-solution evaluator.
+  static: 'A search controller: several candidate next steps per node, an evaluator that scores partial
+    solutions (the model''s value or vote, a trained verifier, or a rule or execution check), breadth-first
+    or beam search keeping the best b, or depth-first with backtracking, and a node or token budget. Flag
+    a one-prompt imitation ("imagine three experts") presented as ToT, a model self-evaluator where a
+    rule or execution check exists, a search with no fallback answer when it ends empty, and no comparison
+    against self-consistency or best-of-N at equal tokens.'
+  traces: Nodes expanded, depth and branching per item; pruned and backtracked branches; LLM calls, tokens
+    and wall-clock per item; evaluator score of the chosen path next to the ground truth; share of searches
+    that hit the budget or end without a solution.
+  evals: Accuracy against the same model in one call with thinking on and against self-consistency or
+    best-of-N at matched tokens, split by difficulty; evaluator ranking accuracy on labeled partial solutions;
+    tokens and latency.
+  judge: 'The partial-solution evaluator is the judge: check its ranking accuracy against ground truth
+    before relying on it (tree search needed at least 90% to beat re-ranking).'
   probes:
     what: Puzzles with dead ends.
-    construct: Tasks where the greedy first path fails (game of 24, constrained planning).
+    construct: Tasks where the greedy first path fails and every partial state can be checked by rule
+      (Game of 24, Countdown, Sudoku, constrained planning), so the evaluator's errors can be measured
+      against the rule.
   primary:
   - static
   - evals
 impact:
   quality:
-    effect: improves
+    effect: mixed
     size: medium
-    when: Narrow task class.
-    basis: assessment
+    when: 'gains where one pass fails early and partial states can be judged: Game of 24 4% to 74% on
+      GPT-4 (Yao, May 2023); logic proofs 72.0 to 83.1 on GPT-4o (He, Apr 2025); Math500 0.79 to 0.87
+      on Qwen3-32B (Li, Sep 2025); no gain over cheaper selection when the evaluator is weak or the model
+      strong: tree search 67.5 vs re-ranking 70.3 on Spider (Chen, Feb 2024), PRM beam search 71.8 vs
+      best-of-8 72.7 (Cinquin, Oct 2025), best-of-N best at 72B (Liu, Feb 2025); thinking on alone 92%
+      vs ToT with thinking off 30% on Game of 24 (Hao, Mar 2026)'
+    basis: evidence
   cost:
     effect: degrades
     size: large
-    basis: assessment
+    when: $0.74 and 5.5k completion tokens per Game of 24 case vs $0.47 for 100 CoT samples; 5 to 100
+      times CoT's tokens by the authors' estimate (Yao, May 2023); about 100 LLM calls per Game of 24
+      problem vs about 2 in total for a coded search (Katz, Apr 2024); PRM beam search 20.2 vs 8.2 (x10^7)
+      generated tokens for best-of-8 at the same accuracy (Cinquin, Oct 2025); branching only where needed
+      cut ToT output tokens 78.3% to 78.9% on Qwen3-32B; on LLaMA3-8B cuts were 37.8% to 73.4%, with accuracy drops
+      (Li, Sep 2025)
+    basis: evidence
   performance:
     effect: degrades
     size: large
-    basis: assessment
+    when: 'serial generate-then-evaluate rounds: tree search 262.8 to 405.2 s per Bird example vs 16.4
+      to 24.4 s for re-ranking (Chen, Feb 2024); ToT on GPT-4o 0.30 to 2.13 min per logic problem vs 0.08
+      to 0.12 for CoT and 0.21 to 1.02 for o3-mini (He, Apr 2025)'
+    basis: evidence
   security:
     effect: none
     basis: assessment
@@ -56,22 +115,186 @@ impact:
   primary:
   - quality
   - cost
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval on held-out items with ground truth the search never sees: ToT against the same model
+    in one call with thinking on or higher effort, and against self-consistency or best-of-N at matched
+    tokens, split by difficulty; accuracy, tokens, LLM calls, p50 and p95 latency, share of searches that
+    end without a solution'
+- method: monitor
+  how: 'per item: nodes expanded, depth, branching and pruning, LLM calls, tokens and wall-clock, budget-hit
+    and fallback rates; on a regularly audited sample, the evaluator''s scores of partial states against
+    a rule check or ground truth'
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Reasoning & Search group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Reasoning & Search group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: 'Yao et al., "Tree of Thoughts: Deliberate Problem Solving with Large Language Models", https://arxiv.org/abs/2305.10601'
   date: '2023-05-17'
   task: Search over a tree of intermediate thoughts with self-evaluation, lookahead and backtracking
-  effect: '"in Game of 24, while GPT-4 with chain-of-thought prompting only solved 4% of tasks, our method achieved
-    a success rate of 74%"'
-  conditions: Game of 24; GPT-4
+  effect: '"in Game of 24, while GPT-4 with chain-of-thought prompting only solved 4% of tasks, our method
+    achieved a success rate of 74%". Other Game of 24 results: CoT self-consistency over 100 samples 9.0%,
+    an oracle best of 100 CoT samples 49%, ToT with breadth b = 1 45% and b = 5 74%. Per case, ToT used
+    5.5k completion tokens and $0.74 against 6.7k and $0.47 for 100 CoT samples; the authors say ToT "could
+    require 5-100 times more generated tokens than CoT". With GPT-3.5, ToT solved 19%; GPT-4 generation
+    with GPT-3.5 evaluation 64%, GPT-3.5 generation with GPT-4 evaluation 31%. Zero-shot ToT on 100 GSM8K
+    and 100 StrategyQA questions scored 90 and 83 against 86 and 82 for CoT ("only slightly, given GPT-4
+    + CoT is already very good").'
+  conditions: Game of 24, 100 hard games (indices 901-1,000 of 1,362); GPT-4, and GPT-3.5-turbo in the
+    appendix; BFS keeping the best b candidates per step, the model's own value or vote as evaluator;
+    GSM8K and StrategyQA subsets of 100
   direction: supports
-  locator: Abstract
+  locator: Abstract; §4.1, Table 2; Appendix B.1-B.3, Tables 4, 5, 7
+- source: Ziru Chen, Michael White, Raymond Mooney, Ali Payani, Yu Su, Huan Sun, "When is Tree Search
+    Useful for LLM Planning? It Depends on the Discriminator", https://arxiv.org/abs/2402.10890
+  date: '2024-02-16'
+  task: 'A generator proposes SQL queries or Python programs step by step, a discriminator scores them,
+    and three planners use the scores: re-ranking complete samples, iterative correction, and tree search
+    over partial programs (best partial plan expanded first, scored by Monte Carlo completions); first
+    with oracle discriminators of controlled accuracy, then with LLM discriminators'
+  effect: '"advanced planning methods demand discriminators with at least 90% accuracy to achieve significant
+    improvements over re-ranking"; with oracle discriminators, tree search agents "consistently underperform
+    the other two when the discrimination accuracy threshold" is 0.8 or below. With the best LLM discriminators,
+    tree search trailed re-ranking on text-to-SQL (Spider 67.5 vs 70.3, Bird 21.7 vs 23.7) and on GSM8K
+    scored 51.0 against 47.6, a difference McNemar''s test did not find significant. Tree search "is at
+    least 10–20 times slower"; on Bird it took 262.8 to 405.2 seconds per example against 16.4 to 24.4
+    for re-ranking. Execution feedback raised discriminator accuracy "by up to 30.2 and 8.4 absolute points"
+    on text-to-SQL and math and cut tree search latency.'
+  conditions: generator CodeLlama-13B-Instruct; discriminators CodeLlama-7B/13B (prompted and fine-tuned),
+    GPT-3.5-Turbo, GPT-4-Turbo; Spider (400), Bird (300) and GSM8K (500, tree search on 100) dev examples
+  direction: contradicts
+  measured: true
+  locator: Abstract; §1; §5.2; §7; Tables 3-5
+- source: 'Michael Katz, Harsha Kokel, Kavitha Srinivas, Shirin Sohrabi, "Thought of Search: Planning
+    with Language Models Through The Lens of Efficiency", https://arxiv.org/abs/2404.11833'
+  date: '2024-04-18'
+  task: Counts the LLM calls ToT and other LLM-in-the-loop search methods make on four search problems;
+    instead has GPT-4 write the successor function and goal test in Python once per domain and runs plain
+    BFS or DFS with them
+  effect: ToT "performs ≈100 calls to the LLM" per Game of 24 problem and about 200 per crossword in the
+    worst case. Projected over the datasets, ToT would make 102K calls on Game of 24 (1,362 problems),
+    5K on crosswords, 201K on BlocksWorld and 600K on PrOntoQA, against 2.2, 3.8, 3.8 and 2.6 calls in
+    total for the coded search, which solved every instance; BFS solved all 1,362 Game of 24 instances
+    in 1.92 to 6.83 seconds. The authors call the LLM-search methods "unsound, incomplete, and quite expensive".
+  conditions: GPT-4 with a human feeding back errors (1 to 2.8 interactions per function); Game of 24
+    (1,362), 5x5 crosswords (20, with 10 candidate answers per clue supplied), BlocksWorld (502), PrOntoQA
+    (4,000); ToT call counts are analytical estimates, not runs
+  direction: contradicts
+  measured: true
+  locator: §4 (24 game, Mini crosswords); §5, Table 1; §6
+- source: Charlie Snell, Jaehoon Lee, Kelvin Xu, Aviral Kumar, "Scaling LLM Test-Time Compute Optimally
+    can be More Effective than Scaling Model Parameters", https://arxiv.org/abs/2408.03314
+  date: '2024-08-06'
+  task: 'Search against a process reward model: step-level beam search (BFS over steps with a value model)
+    and lookahead search compared with best-of-N weighted at equal generation budgets, binned by question
+    difficulty'
+  effect: '"with smaller generation budgets, beam search significantly outperforms best-of-N. However,
+    as the budget is scaled up, these improvements greatly diminish, with beam search often underperforming
+    the best-of-N baseline." On easy questions beam search "degrades performance as the generation budget
+    increases, suggesting signs of exploitation of the PRM signal"; on levels 3 and 4 it "consistently
+    outperforms best-of-N"; on the hardest "no method makes much meaningful progress". Lookahead search
+    "generally underperforms other methods at the same generation budget". Choosing the strategy per difficulty
+    "can nearly outperform best-of-N using up to 4x less test-time compute".'
+  conditions: PaLM 2-S* (Codey); PRM trained from Monte Carlo rollouts; MATH 500-question test split;
+    the evaluator is a trained PRM, not the model's self-evaluation
+  direction: mixed
+  measured: true
+  locator: §5.2-5.3; Figures 3-4
+- source: Runze Liu, Junqi Gao, Jian Zhao, Kaiyan Zhang, Xiu Li, Biqing Qi, Wanli Ouyang, Bowen Zhou,
+    "Can 1B LLM Surpass 405B LLM? Rethinking Compute-Optimal Test-Time Scaling", https://arxiv.org/abs/2502.06703
+  date: '2025-02-10'
+  task: Best-of-N, step-level beam search and diverse verifier tree search (DVTS) compared at equal budgets
+    of 4 to 256 across policy models from 0.5B to 72B, several PRMs and three difficulty levels
+  effect: '"For small policy models, search-based methods outperform BoN, while for large policy models,
+    BoN is more effective than search-based methods." "For policy models with 72B parameters, BoN is the
+    best method for all difficulty levels"; below 7B, beam search won on harder problems and BoN on easy
+    ones. "BoN outperforms other strategies most of the time when using Math-Shepherd and RLHFlow PRMs";
+    for Llama-3.1-8B-Instruct, search with those PRMs stayed "relatively poor, even worse than majority
+    voting".'
+  conditions: Qwen2.5 0.5B to 72B and Llama 3 policy models; Math-Shepherd, RLHFlow, Skywork and Qwen2.5-Math
+    PRMs; MATH-500 and AIME24; beam width 4; evaluator is a trained PRM
+  direction: mixed
+  measured: true
+  locator: §4.2-4.3; Figures 4, 7-9
+- source: 'Kang He, Kaushik Roy, "LogicTree: Structured Proof Exploration for Coherent and Rigorous Logical
+    Reasoning with Large Language Models", https://arxiv.org/abs/2504.14089'
+  date: '2025-04-18'
+  task: ToT (tree search over derivation steps, step limit 80) run as a baseline against CoT and other
+    modular methods on multi-step logical proofs, with o1-mini and o3-mini run alone for comparison
+  effect: 'Average proof accuracy, CoT vs ToT: GPT-4o 72.0 vs 83.1, GPT-4o-mini 51.2 vs 66.5, Llama-3.3
+    70B 73.6 vs 83.4. The authors'' own search (LogicTree) reached 95.6 on GPT-4o, 12.5 above ToT, and
+    beat o3-mini alone by 7.6 on average. Per example on GPT-4o, ToT generated 258.4 to 1,896.7 tokens
+    and took 0.30 to 2.13 minutes, against 103.2 to 171.9 tokens and 0.08 to 0.12 minutes for CoT; o3-mini
+    alone generated 481.9 to 2,412.3 tokens in 0.21 to 1.02 minutes.'
+  conditions: GPT-4o, GPT-4o-mini, Llama-3.3 70B; o1-mini and o3-mini (medium) alone; RobustLR, PrOntoQA-OOD,
+    ProofWriter, ParaRules, LogicNLI (1,790 sampled examples); proofs checked by hand
+  direction: supports
+  measured: true
+  locator: Table 1; §4.2; Appendix E, Table 7
+- source: 'Nathan Herr, Tim Rocktäschel, Roberta Raileanu, "LLM-First Search: Self-Guided Exploration
+    of the Solution Space", https://arxiv.org/abs/2506.05213'
+  date: '2025-06-05'
+  task: ToT's breadth-first search (top k = 5 states kept per level, fixed depth, no backtracking) against
+    best-first search, MCTS and the authors' LLM-guided search; the environment supplies the valid moves
+    and the LLM scores them
+  effect: 'Win rate with GPT-4o, ToT-BFS vs MCTS (c=0.5): Countdown with 3, 5 and 7 numbers 82.11, 9.47,
+    0.00 vs 100, 60.00, 32.63; Sudoku 4x4 53.68 vs 100; 6x6 0.00 for both. "ToT-BFS-GPT4o lags behind
+    due to the lack of backtracking", and "due to compute constraints, ToT-BFS-o3mini is not tested".
+    On win rate per token (area under the performance profile) ToT-BFS tied MCTS at 3.68; the LLM-guided
+    search scored 4.70.'
+  conditions: GPT-4o and o3-mini at temperature 0, 5 runs per game; Countdown (3, 5, 7 numbers) and Sudoku
+    (4x4, 6x6)
+  direction: mixed
+  measured: true
+  locator: §5.1; §6.1; Tables 2-3
+- source: 'Xinzhe Li, "Chain-in-Tree: Back to Sequential Reasoning in LLM Tree Search", https://arxiv.org/abs/2509.25835'
+  date: '2025-09-30'
+  task: 'ToT beam search (ToT-BS: an LLM proposes steps, an LLM evaluator scores them) compared with CoT,
+    then with a cheap branching-necessity check that expands the tree only where a step needs it'
+  effect: 'Accuracy, ToT-BS vs CoT: Qwen3-32B GSM8K 0.98 vs 0.96, Math500 0.87 vs 0.79; LLaMA3-8B 0.79
+    vs 0.68 and 0.39 vs 0.34. With the direct-prompt check (BN-DP) on Qwen3-32B, ToT-BS output tokens
+    fell 78.3% and 78.9%, policy calls 78.3% and 80.0%, total runtime 77.3% and 78.2%, at accuracy 0.97
+    and 0.86. Across frameworks BN-DP "reduces token generation, model calls, and runtime by 75-85%";
+    a self-consistency check instead was unstable "in 1-4 out of 14 settings", all within ToT-BS, and
+    "poor BN evaluation can negate the benefits of chaining or even harm performance". On LLaMA3-8B
+    (Table 2) the cuts were 37.8% to 73.4%, with accuracy drops; the 75-85% is the abstract''s claim.'
+  conditions: Qwen3-32B-AWQ and LLaMA3-8B-Instruct; first 100 test items of GSM8K and of Math500 (single-number
+    answers); CoT not matched for compute
+  direction: supports
+  measured: true
+  locator: Abstract; §4; Tables 1-2; §5
+- source: Tristan Cinquin, Geoff Pleiss, Agustinus Kristiadi, "Limits of PRM-Guided Tree Search for Mathematical
+    Reasoning with LLMs", https://arxiv.org/abs/2510.20272
+  date: '2025-10-23'
+  task: PRM-guided tree search (greedy, beam, greedy best-first, MCTS, a Gittins-index method) against
+    best-of-8 and majority vote
+  effect: '"PRM-guided tree search shows no statistically significant improvements over BoN despite higher
+    costs." Mean accuracy and generated tokens (x10^7): best-of-8 by final PRM score 72.7 with 8.2; beam
+    search 71.8 and 71.9 with 20.2 and 21.0; MCTS 71.2 with 89.4; greedy best-first 46.0 with 65.2; majority
+    vote 71.4. "PRMs poorly approximate state values and their reliability degrades with reasoning depth".'
+  conditions: Qwen2.5-Math-7B-Instruct with Qwen2.5-Math-PRM-7B; 23 math benchmarks including AIME24,
+    AIME25 and AMC23; evaluator is a trained PRM
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.2; Tables 1-3
+- source: Guangfu Hao, Yuming Dai, Xianzhe Qin, Shan Yu, "Brain-Inspired Graph Multi-Agent Systems for
+    LLM Reasoning", https://arxiv.org/abs/2603.15371
+  date: '2026-03-16'
+  task: ToT (4 rounds, 3 thoughts, temperature 0.7) and ReAct run as baselines on DeepSeek-V3.2 against
+    the same model in one call; the single call also run with thinking on and on other frontier models
+  effect: 'Accuracy on Game 24, Six Fives and Tower of London, DeepSeek-V3.2: single call 25.0, 12.0,
+    6.0; ReAct 26.0, 18.0, 10.0; ToT 30.0, 25.0, 18.0. The same model with thinking on, single call: 92.0,
+    96.0, 79.0; GPT-5 single call 96.0, 95.0, 91.0. ToT was not run with thinking on.'
+  conditions: DeepSeek-V3.2 with and without thinking, Claude 4.5 Sonnet, Gemini 2.5 Pro, GPT-5; 100 instances
+    per task (Game 24 sampled from the ToT paper's 1,362)
+  direction: mixed
+  measured: true
+  locator: §III-E; §IV-A; §IV-B, Table I
 assessment:
   qa:
     unit: Search terminates within budget.
@@ -108,6 +331,14 @@ assessment:
     primary:
     - quality
     - cost
+related:
+- 9.c.ii
+- 7.c.iv
+- 7.c.v
+- 7.c.iii
+- 7.c.ii
+- 9.a.i
+- 1.b.i
 provenance:
   layer: target
   origin: observed
@@ -115,3 +346,14 @@ provenance:
   sub_type: planning
   library_group: Reasoning & Search
   library_source: catalog
+caveats: 'Most gains come from puzzles built to break left-to-right decoding (Game of 24, crosswords,
+  Sudoku, Countdown) or synthetic logic, often with a programmatic move generator or checker doing part
+  of the work, and the headline 74% is against single-sample CoT: self-consistency over 100 samples scored
+  9.0%, and the 49% best-of-100 baseline is an oracle. The studies that compare against re-ranking or
+  best-of-N (Chen, Snell, Liu, Cinquin) find tree search ties or trails re-ranking and best-of-N except
+  on harder items with weaker models and a reliable evaluator; three of them use a trained PRM rather
+  than the model''s own evaluation. None of these sources runs ToT on a reasoning model with thinking
+  on; the closest shows thinking alone far above ToT on the same model with thinking off. Several studies
+  are small (100 items per task in Hao and Li, one model in Cinquin, 1,790 items in He), and Katz''s ToT
+  call counts are estimates, not runs. Branching only where a check calls for it held accuracy on Qwen3-32B
+  but cost accuracy on LLaMA3-8B (Li).'

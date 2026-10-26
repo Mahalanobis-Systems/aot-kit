@@ -5,7 +5,7 @@ legacy_id: P49
 slug: code-then-execute
 name: Code-then-execute (CaMeL)
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it restructures the control loop for trust separation
@@ -18,62 +18,259 @@ evidence_domains:
 - tool-use
 categories:
 - topologies.trust
-summary: Code-then-execute (CaMeL)
+summary: 'Have a privileged model turn the trusted request into a small program before any untrusted data
+  is read, then run it in an interpreter that labels every value with where it came from and checks a
+  per-tool policy before each call, so injected text can neither add actions nor send private data to
+  the wrong place. Attack success stayed at or below 1.8% across five models even under an adaptive attack
+  (up to 58.6% undefended), but it was the costliest defense in utility: 26.3 to 52.6% of clean tasks
+  solved against 63.2 to 89.5% undefended in one independent test, a gap that narrowed to 5.4 to 7.2 points
+  only with frontier models (GPT-5.5, o3). Use it where the request alone fixes the actions and a hard
+  block on exfiltration is worth lost tasks and about 3.5x the latency; the guarantee holds only where
+  label tracking reaches, and retries, error messages, untaken branches and agent-to-agent messages have
+  all been shown to leak.'
+how: '1. Start from the baseline: your current tool loop (7.d.iii) and a cheaper check on where write
+  arguments came from (argument provenance or per-task policies), same model, on an injection suite with
+  static and adaptive attacks; frontier models already resist template attacks undefended (0.3% for Claude-Haiku-4.5,
+  0.0% for GPT-5.5), so static numbers alone overstate the gain. Sort tasks by whether the request alone
+  fixes the actions: a program written before reading data cannot do "the actions specified in the email"
+  (no model solved it), so contain those inputs (10.c.i) and gate the action (10.b.i) instead. 2. Give
+  the privileged model only the request, trusted context and tool descriptions with full return schemas,
+  and have it write the whole task as a program in a restricted Python subset: undocumented tool outputs
+  caused 13 of Claude 3.5 Sonnet''s 15 Travel failures, and a follow-up had to add return schemas to every
+  tool to reach usable utility. Parse untrusted content only through a quarantined model call with no
+  tools and a typed output schema; it can be a cheaper model (Claude 3.5 Haiku under Claude 4 Sonnet cost
+  about 1% utility for about 12% lower cost per median task) (1.b.i). 3. Run the program in a custom interpreter
+  that attaches sources and allowed readers to every value and propagates them through every operation,
+  string formatting and control flow, including assignments on branches not taken: an independent audit
+  found CaMeL''s interpreter dropped labels in both places. Keep repair retries inside the checked boundary:
+  never return raw error text derived from tool output to the privileged model (an error message put an
+  attacker''s reserve_hotel call into the rewritten program in one test), and cap retries, since each
+  blocked-or-allowed retry leaks a bit. 4. Write a policy for each side-effecting tool on where every
+  argument may come from and who may read what is sent (for example, send_money''s recipient and amount
+  only from the user). Without policies, a recipient the quarantined model parsed from a landlord''s notice
+  was used for a scheduled payment. Route denials to user confirmation and budget for them: CaMeL''s released
+  policies refused 41.5% of calls a task was entitled to make and let every required call through on only
+  37 of 92 tasks, and turning policies on cut banking utility from 66.7% to 37.5% (GPT-5.2). 5. If agents
+  call agents, pass tool-derived values to the child agent through a separate data channel, never inside
+  its instruction text: with CaMeL in every agent, 0.2% of attacks still got through (0.5% for GPT-4.1,
+  from 36.1%), all by that route, and the separate channel took it to 0.0%. 6. Deploy it on strong models
+  and on tasks the request fully specifies: clean utility was 26.3 to 52.6% against 63.2 to 89.5% undefended
+  across five smaller models, but 77.3% against 84.5% for o3 and 82.1% against 87.5% for GPT-5.5 (no policies).
+  If that loss is too high, a cheaper argument-provenance or policy defense kept 59.6 to 63.2% clean utility
+  at 4.4 to 7.7% adaptive attack success on GPT-4o-mini, where CaMeL kept 26.3% at 0.0%. 7. Measure paired
+  against the baseline, same model and suite: benign utility, utility under attack, attack success under
+  static and adaptive attacks, tokens and latency per task (17.30 s against 4.98 s and 5,083 against 8,020
+  tokens with GPT-4o in one test; 2.73x the input and 2.82x the output tokens for the median task with
+  Claude 3.5 Sonnet in the authors'' test), the share of tasks with a policy denial and the excess privilege
+  left open; in production, monitor denials, retries and tasks the program could not express.'
 detect:
-  static: A DSL or sandbox interpreter; a taint or policy checker.
-  traces: Policy violations blocked.
-  evals: Injection suite plus capability benchmark.
+  static: The privileged model sees only the request, trusted context and tool descriptions with return
+    schemas, and writes the task as a program; a custom interpreter labels every value with its sources
+    and readers and propagates labels through operations, string formatting and control flow, including
+    untaken branches; untrusted content is parsed only by a model with no tools and a typed output; each
+    side-effecting tool has a policy on argument sources and readers; repair retries and error messages
+    stay inside the checked boundary.
+  traces: Policy denials and user confirmations per task; privileged-model retries per task; no executed
+    call whose arguments carry untrusted labels unless a policy allows it; no tool-derived text in another
+    agent's instruction.
+  evals: Static and adaptive injection suites (AgentDojo with per-tool policies, plus data-dependent tasks);
+    benign utility and utility under attack; tokens and latency per task; share of tasks with a policy
+    denial; excess privilege left open.
   probes:
-    what: Data-flow violations.
-    construct: Programs that try to send private data to an untrusted sink.
+    what: Injected data that tries to add a call, set a write argument, leak a private value through a
+      branch or a retry, or cross an agent boundary inside instruction text.
+    construct: Tool outputs and documents with instructions; values the quarantined model will parse into
+      recipients or amounts; error messages carrying instructions; secret-dependent assignments on branches
+      that are not taken; untrusted values interpolated into strings; a parent agent that writes tool
+      output into a child agent's instruction. Success is no policy-violating call and no secret-dependent
+      public output.
   primary:
   - static
   - probes
 impact:
   quality:
+    effect: degrades
+    size: large
+    when: benign utility 77.3% against 84.5% for o3 but 41.2% against 73.2% for Gemini 2.5 Pro (Debenedetti,
+      Mar 2025); 59.79% against 80.41% with GPT-4o (Ji, Nov 2025); 26.3 to 52.6% against 63.2 to 89.5%
+      across five smaller models, the largest cost of ten defenses on four (Ma, Jun 2026); 64.9% against
+      86.6% with Sonnet-5, 73.2% against 77.3% with Haiku-4.5 (Sharma, Sep 2026); policies on 37.5% against
+      66.7% off (GPT-5.2, banking) (Garby, Feb 2026); without policies 82.1% against 87.5% for GPT-5.5
+      and 20.5% against 64.3% for Gemini 2.5 Flash-Lite (Peters-Gill, Oct 2026). Tasks whose actions come
+      from the data cannot be expressed.
+    basis: evidence
+  cost:
     effect: mixed
     size: medium
-    when: DSL limits expressiveness.
-    basis: assessment
-  cost:
-    effect: degrades
-    size: small
-    basis: assessment
+    when: median task 2.73x the input and 2.82x the output tokens, mean 7.24x and 6.23x, against native
+      tool calling (Claude 3.5 Sonnet); a cheaper quarantined model cut cost about 12% for about 1% utility
+      (Debenedetti, Mar 2025); 5,083 against 8,020 tokens per task with GPT-4o (Ji, Nov 2025)
+    basis: evidence
   performance:
     effect: degrades
-    size: small
-    basis: assessment
+    size: large
+    when: 17.30 s against 4.98 s per task with GPT-4o, the slowest of the GPT-4o defenses tested (Ji,
+      Nov 2025); the authors attribute the overhead to model calls and code-repair retries, not the interpreter
+      (Debenedetti, Mar 2025)
+    basis: evidence
   security:
     effect: improves
     size: large
-    basis: assessment
+    when: '0 of 949 attacks succeeded with policies for o3 and Gemini 2.5 Pro, against 11 and 163 undefended
+      (Debenedetti, Mar 2025); at most 1.8% under static and adaptive attacks across five models, against
+      up to 58.6% undefended (Ma, Jun 2026); 1.21% against 15.62% on AgentDojo and 7.15% against 31.04%
+      on ASB, and an attack reusing the task''s tools doubled it (0.95% to 1.90%) (Ji, Nov 2025). Leaks
+      where tracking stops: error messages (Ji, Nov 2025), untaken branches and the retry loop (Garby,
+      Feb 2026), tool output written into another agent''s instructions (0.2%, 0.0% with a separate data
+      channel) (Peters-Gill, Oct 2026); 16 of 609 attack sinks left open against 1 for an argument-exact
+      oracle (Sharma, Sep 2026)'
+    basis: evidence
   governance:
     effect: improves
-    size: large
-    when: Formal verifiability.
-    basis: assessment
+    size: medium
+    when: 'the program, per-value labels and per-tool policies are a reviewable record of what may flow
+      where; it left less excess privilege open than a tool allowlist (0.0895 against 0.3551) but about
+      45 times an argument-exact oracle (0.0020), partly by refusing entitled calls (Sharma, Sep 2026);
+      its guarantee is not formally verified: the label rules live in its Python interpreter, which missed
+      an implicit flow (Garby, Feb 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
   - security
-  - governance
+  - quality
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs, CaMeL-style program and interpreter against the current tool loop and a cheaper argument-provenance
+    or policy check, same model, on AgentDojo with per-tool policies plus data-dependent tasks (AgentDyn-style):
+    benign utility, utility under attack, attack success under the static attack and an adaptive black-box
+    optimizer (AutoDojo-style), tokens and latency per task, the share of tasks with a policy denial,
+    and excess privilege left open (Ajar-style candidate calls); add probes for error-message injection,
+    secret-dependent assignments on untaken branches, string interpolation of untrusted values and, in
+    multi-agent systems, tool output written into a child agent''s instructions'
+- method: monitor
+  how: policy denials and user confirmations per task, privileged-model retries per task and error messages
+    that contain tool-derived text, tasks abandoned because the program could not express them, quarantined-model
+    not-enough-information errors, and values that cross agent boundaries inside instruction text
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Control Flow group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Control Flow group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Debenedetti et al., "Defeating Prompt Injections by Design", https://arxiv.org/abs/2503.18813
   date: '2025-03-24'
-  task: 'Introduces CaMeL: extract control and data flow from the trusted query as a program, then run it with capability
-    checks on tool calls'
-  effect: '"solving 77% of tasks with provable security (compared to 84% with an undefended system) in AgentDojo"'
-  conditions: AgentDojo
+  task: 'Introduces CaMeL: extract control and data flow from the trusted query as a program, then run
+    it with capability checks on tool calls'
+  effect: '"solving 77% of tasks with provable security (compared to 84% with an undefended system) in
+    AgentDojo": o3 (high effort) 77.3% against 84.5% with native tool calling; other models lost more
+    (Claude 4 Sonnet 74.2% against 86.6%, Gemini 2.5 Pro 41.2% against 73.2%), mostly in Travel, where
+    undocumented tool outputs caused 13 of Claude 3.5 Sonnet''s 15 failures. With policies, 0 of 949 attacks
+    succeeded for o3 and Gemini 2.5 Pro (11 and 163 undefended). No model solved a task whose actions
+    come from data. Median task 2.73x the input and 2.82x the output tokens of native tool calling (Claude
+    3.5 Sonnet, no attack); a Claude 3.5 Haiku quarantined model under Claude 4 Sonnet cost about 1% utility
+    for about 12% lower cost.'
+  conditions: AgentDojo, 97 tasks, 949 attacks; the abstract's 77% against 84% is o3 with high reasoning
+    effort in the June 2025 v2 (v1 reported 67%); six models in Table 2; the authors' own system and policies
   direction: supports
-  locator: Abstract
+  locator: Abstract; §6.1 Table 1; §6.1.3; §6.2; §6.5; App. B Tables 2 and 4; App. F Table 10
+- source: Peters-Gill, Semler, Bartsch, Shumailov, Schroeder de Witt, "Can CaMeLs Talk? Securing Multi-Agent
+    Systems Against Indirect Prompt Injection Attacks", https://arxiv.org/abs/2610.05640
+  date: '2026-10-05'
+  task: Test whether CaMeL's guarantees hold when CaMeL agents call each other as tools, then add multi-CaMeL,
+    which passes tool-derived values to a child agent through a separate data channel instead of inside
+    its instruction text
+  effect: 'MultiAgentDojo, n=949 per model, attack success with no CaMeL / CaMeL in every agent / multi-CaMeL:
+    average 12.9% / 0.2% / 0.0%; GPT-4.1 36.1% / 0.5% / 0.0%; Gemini 2.5 Pro 24.6% / 0.4% / 0.0%; GPT-5.5
+    0.0% in all three. Every attack that got through per-agent CaMeL was boundary laundering (tool-derived
+    text written into a child agent''s instruction). AssetOpsBench benign success (n=112), no CaMeL against
+    per-agent CaMeL: Claude Fable 5 88.4% / 67.0%, GPT-5.5 87.5% / 82.1%, GPT-4.1 81.2% / 64.3%, Gemini
+    2.5 Pro 75.9% / 55.4%, Gemini 2.5 Flash-Lite 64.3% / 20.5% (average -21.6 points, -13.4 for the two
+    strongest). MultiAgentDojo benign, no CaMeL / per-agent / multi-CaMeL: GPT-5.5 86.6% / 73.2% / 66.0%,
+    GPT-4.1 78.4% / 38.1% / 24.7%. Tool descriptions had to be extended with full return schemas to reach
+    reasonable utility.'
+  conditions: Five models, the same model as privileged and quarantined model; CaMeL run with no security
+    policies; MultiAgentDojo is the authors' own split of AgentDojo across 2 to 4 sub-agents per suite;
+    Claude Fable 5 refused 52 of 97 benign MultiAgentDojo tasks; one author co-wrote CaMeL
+  direction: mixed
+  measured: true
+  locator: §III; §V-A2; §V-B Table III; §V-C; App. D Tables IV and V
+- source: 'Sharma, Jiang, Chen, Lin, "Ajar: Measuring Open Privilege in Agent Defenses", https://arxiv.org/abs/2609.26900'
+  date: '2026-09-22'
+  task: Offer each defense the calls a task needs, calls it may make and calls it does not need, at every
+    decision point of AgentDojo's tasks, and score what it allows and refuses; also run the 97 benign
+    tasks with and without each defense
+  effect: 'CaMeL (released implementation and its four suite policies), deciding model Sonnet-5: over-privilege
+    leakage 0.0895 against 0.3551 for a tool-name allowlist and 0.0020 for an argument-exact oracle; 16
+    of 609 attack sinks left open (allowlist 99, oracle 1); sufficiency 0.700, every required call allowed
+    on 37 of 92 tasks; over-restriction 0.415 (594 entitled calls refused), the highest of the four defenses
+    run under both models (0.412 with Haiku-4.5). Benign completion with and without CaMeL: 64.9% against
+    86.6% (Sonnet-5, -21.6 points); 73.2% against 77.3% (Haiku-4.5, -4.1).'
+  conditions: AgentDojo, 97 benign tasks, 609 attack sinks; Claude Sonnet-5 and Haiku-4.5; the wrapper
+    supplies each candidate's provenance from canaries rather than CaMeL's own run; five defenses (Progent,
+    CaMeL, AC4A, Permission Assistant, Claude Code Auto mode); independent of CaMeL's authors
+  direction: mixed
+  measured: true
+  locator: §3.3; §6.2.3; Tables 5, 6, 7 and 8
+- source: 'Ma, Li, Xiao, Yu, Zhang, Vorobeychik, "AutoDojo: A Generative Benchmark for Evaluating Prompt
+    Injection Defenses in LLM Agents", https://arxiv.org/abs/2606.15057'
+  date: '2026-06-13'
+  task: Evaluate ten injection defenses, including CaMeL with its authors' implementation and policies,
+    against AgentDojo's static attack and an adaptive black-box injection optimizer, on five target models
+  effect: 'AgentDojo (banking, slack, travel), clean utility / static attack success / adaptive attack
+    success. CaMeL: GPT-4o-mini 26.3 / 0.0 / 0.0; GPT-5.4-mini 52.6 / 1.8 / 1.8; Gemini-2.5-Flash 28.1
+    / 0.3 / 0.3; DeepSeek-v4-Flash 38.6 / 0.8 / 0.5; Claude-Haiku-4.5 40.4 / 0.3 / 0.5. No defense: 66.7
+    / 58.6 / 52.4; 77.2 / 6.9 / 8.7; 63.2 / 50.4 / 34.7; 89.5 / 22.6 / 16.5; 70.2 / 0.3 / 1.8. CaMeL,
+    "being the most effective defense overall, incurs the largest clean utility cost on four of the five
+    models." On GPT-4o-mini, Progent 63.2 / 8.2 / 7.7 and ROPE (argument provenance) 59.6 / 6.4 / 4.4.
+    CaMeL was not run on AgentDyn "because it requires extensive suite-specific policies."'
+  conditions: '57 user tasks, 389 attack cases (workspace suite dropped: agents completed nothing on 52.9%
+    of its cases); adaptive attack optimized by Gemini-3.1-Pro, six iterations, success-only feedback;
+    numbers from v3 (Sep 2026); independent of CaMeL''s authors; ROPE is the authors'' own defense'
+  direction: mixed
+  measured: true
+  locator: §4.1; §4.2; App. B; App. D; App. H Table 5
+- source: 'Garby, Gordon, Sands, "The LLMbda Calculus: AI Agents, Conversations, and Information Flow",
+    https://arxiv.org/abs/2602.20064'
+  date: '2026-02-23'
+  task: Formalize code-generating agents with labeled values in a lambda calculus with machine-checked
+    noninterference, audit CaMeL's label tracking, and compare a verified dual-LLM agent with CaMeL rerun
+    on AgentDojo banking
+  effect: 'Two leaks in CaMeL: its interpreter raises a variable''s label only on the branch taken, so
+    a secret reaches a public guard through an assignment that is skipped; and its retry loop runs outside
+    the checked interpreter, so an adaptive driver can extract a secret one blocked-or-not bit per run.
+    Footnote: "interpolating untrusted values into string literals implicitly makes them trusted." AgentDojo
+    banking, utility without / with attack: CaMeL with policies 37.5% / 30% (GPT-5.2) and 37.5% / 41.5%
+    (MiMo-v2.5); without policies 66.7% / 71.1% and 70.8% / 72.2%. The authors'' verified agent (enforcement
+    always on): 75% / 65% (GPT-5.2), with 2 successful attacks in 1,296 attacked runs across three models.'
+  conditions: 'AgentDojo banking only: 16 user tasks x 9 injections, k=3; safe-utility intervals of plus
+    or minus 19 to 27 points; not all CaMeL reruns completed (for GPT-5.2 without policies, 135 of 432
+    attacked runs); the verified agent is the authors'' own; independent of CaMeL''s authors'
+  direction: mixed
+  measured: true
+  locator: §1; §7.2; §7.3 Table 1
+- source: Ji, Wang, Li, Ma, Gao, Wu, Yan, Tian, Wang, "Taxonomy, Evaluation and Exploitation of IPI-Centric
+    LLM Agent Defense Frameworks", https://arxiv.org/abs/2511.15203
+  date: '2025-11-19'
+  task: Independent like-for-like evaluation of injection defenses including CaMeL (with the parts that
+    need manual configuration disabled), then defense-aware attacks built from their failure causes
+  effect: 'GPT-4o, average attack success for CaMeL: 1.21% on AgentDojo (undefended 15.62%), 7.15% on
+    ASB (31.04%), 0.00% on InjecAgent (2.66%); 4.81% overall (23.69%). AgentDojo without attack: utility
+    59.79% against 80.41% undefended (Travel 25.00% against 70.00%); tokens 5,083 against 8,020 and time
+    17.30 s against 4.98 s per task. Failures: a recipient the quarantined model parsed from a landlord''s
+    notice was used for a scheduled payment (parameter hijack); an error message returned to the privileged
+    model for debugging carried an injection that put reserve_hotel into the rewritten code. A semantic-masquerading
+    attack that reuses the task''s tools raised CaMeL from 0.95% to 1.90% (2X).'
+  conditions: GPT-4o (2024-11-20), temperature 0; AgentDojo 629, ASB 2,040, InjecAgent 1,054 cases; adaptive-attack
+    success judged by an LLM on 949 rewritten payloads; the paper does not list which CaMeL parts were
+    disabled
+  direction: mixed
+  measured: true
+  locator: §IV setup; Table II; Table III; §IV-B RC 2, RC 3; App. C; §V-A Table V
 assessment:
   qa:
     unit: Checker blocks each violation class.
@@ -110,6 +307,15 @@ assessment:
     primary:
     - security
     - governance
+related:
+- 6.c.ii
+- 10.c.i
+- 10.b.i
+- 10.a.i
+- 2.a.iii
+- 6.b.iii
+- 1.b.i
+- 7.d.iii
 provenance:
   layer: target
   origin: observed
@@ -117,3 +323,13 @@ provenance:
   sub_type: code_execution
   library_group: Control Flow
   library_source: catalog
+caveats: 'The guarantee holds only where labels are tracked and policies are written: an audit found leaks
+  through untaken branches, the retry loop and string interpolation (Garby, Feb 2026), an error message
+  carried an injection into the privileged model (Ji, Nov 2025), tool output written into another agent''s
+  instructions got through (Peters-Gill, Oct 2026), and untrusted data can still choose among the program''s
+  branches. Several tests ran CaMeL without its policies (Ji, Nov 2025; Peters-Gill, Oct 2026) or on one
+  16-task suite with wide intervals (Garby, Feb 2026), the strongest utility figure (77.3% for o3) is
+  the authors'' own, and the independent test that kept the policies found the largest utility cost of
+  ten defenses on four of five models (Ma, Jun 2026). Tasks whose actions come from the data cannot be
+  expressed at all, and frontier models already resist static template attacks undefended (0.3% for Claude-Haiku-4.5,
+  0.0% for GPT-5.5), so the case rests on adaptive attackers and on a hard block on exfiltration.'

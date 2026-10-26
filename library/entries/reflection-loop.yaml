@@ -5,7 +5,7 @@ legacy_id: P37
 slug: reflection-loop
 name: Reflection loop
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 3
   why: it adds a refine step graded against a metric
@@ -15,35 +15,96 @@ levers:
 domains:
 - general
 evidence_domains:
-- conversation
 - reasoning
+- code-generation
+- planning
+- conversation
 categories:
 - orchestration.extra-compute
-summary: Generate, grade against a metric, refine.
+summary: 'The same model critiques and revises its own output for a few rounds (Self-Refine), or after
+  a failed attempt writes a short lesson it carries into the next try (Reflexion). It pays when the critique
+  has something to stand on, such as a failing test, an error, an environment reward or a checkable constraint
+  (Reflexion on hard Rust problems went from 0.60 to 0.68 with its tests and fell to 0.52 without them),
+  or when it judges form rather than correctness. Asked only to re-check whether an answer is right, models
+  often break right ones as well as fix wrong ones: one revision pass lowered accuracy in 20 of 28 BoolQ
+  settings across open-weight models, every RefineBench model (GPT-5 and o1 included) moved by -2.5 to
+  +2.6 points over five turns, and plain retries against the tests beat Reflexion on HumanEval at lower
+  cost. Revision can still help long reasoning (one study found significant gains on BBEH Non-Choice for
+  all five models and on HLE for two), but there it turned up to 13.25% of right answers wrong against
+  at most 2.1% on checkable SAT constraints, so gate the loop by how checkable the answer is. On reasoning
+  models an outer loop mostly adds tokens: over five self-refinement turns on RefineBench, o1 went from
+  18.5 to 18.3 and DeepSeek-R1 from 8.1 to 7.9.'
+how: '1. Start from the baselines on your own items: the single pass with the model''s own thinking on
+  or a higher effort (1.b.i), and retries or best-of-N at the same tokens (9.c.ii). Plain retries against
+  HumanEval''s example tests scored 92.0% for $2.51 where Reflexion scored 87.8% for $3.90. 2. Add the loop only
+  where the critique has a signal to work from (a failing test, a compiler or runtime error, an environment
+  reward, a constraint the model can check such as a formula, required fields or a length limit) or where
+  it judges form (tone, format, coverage of required items) rather than correctness. If the check is sound,
+  feed its verdict back instead (9.a.i); if the critic needs written criteria and its own context, use
+  7.c.iii. Do not add an outer "check your answer" step on a reasoning model with thinking on. 3. Put
+  the signal or the checklist into the critique prompt: the error, the failing test, the list of requirements
+  (given the full checklist, Gemini 2.5 Pro scored 44.5 points above open self-refinement, which gained
+  1.8 over five turns). On a non-reasoning model, try appending "Wait" after its
+  own output before the critique: 14 such models fixed injected errors in their own output 64.5% less
+  often than the same errors in the user''s message, and appending "Wait" cut that gap by 89.3%. Use a neutral instruction that keeps the answer unless something contradicts
+  it; on BoolQ every refinement prompt lowered mean accuracy, and more forceful ones added more harmful
+  flips than helpful ones. 4. Cap rounds at one to three and stop when the check passes or the critique
+  finds nothing to fix; Self-Refine capped at four, with most of the gain in the first iterations. 5.
+  Keep the first answer unless the revision is better by the metric: accept it only when the check passes
+  or the score rises, otherwise return the original. A trained gate took Qwen2.5-7B on BoolQ to 86.02% where always
+  revising gave 72.32%, though the author flags the gate''s gains as unverified. 6. When attempts repeat (agent episodes, test-driven retries), store each failure''s
+  short verbal reflection and give the last few to the next attempt (Reflexion kept 1 to 3); that is where
+  reflection beat plain retry: 130 of 134 ALFWorld tasks while the retry-only agent stopped improving
+  after six trials. 7. Measure on held-out items with ground truth the loop never sees: accuracy per round
+  against both baselines at matched tokens, the share of right answers turned wrong and of wrong ones
+  fixed per round (one untrained model turned 15.8% of MATH problems from right to wrong), and tokens
+  and latency per item; re-run on every model upgrade.'
 detect:
-  static: A self-critique call and a threshold; refinement loop.
-  traces: Iterations per item; whether critiques change the output.
-  evals: Gain per iteration.
+  static: A step where the same model critiques its own output and a step that revises it (a reflect,
+    critique or "double-check your answer" call), or verbal reflections stored between attempts, with
+    a round cap. Flag a loop that re-checks correctness with no test, error, environment signal or explicit
+    checklist in the critique, no cap, one that always returns the last revision, and an outer reflect
+    step on a reasoning model with thinking on.
+  traces: Rounds per item; share of rounds whose critique changes the answer; on items with ground truth,
+    right-to-wrong and wrong-to-right flips per round; whether the critique cites a test, error or requirement
+    or only restates the answer; tokens per round.
+  evals: Accuracy per round against the single pass and against retries or best-of-N at equal tokens;
+    share of initially right answers the loop breaks.
   judge: Rate critiques for specificity.
   probes:
-    what: Outputs with detectable defects.
-    construct: Plant one defect per output (missing citation, off-by-one).
+    what: Correct outputs mixed with outputs carrying one detectable defect.
+    construct: Plant one defect in some outputs (missing required item, off-by-one, failing test) and
+      leave the others correct; the loop must fix the defects and leave the correct outputs unchanged.
   primary:
   - traces
   - probes
 impact:
   quality:
-    effect: improves
+    effect: mixed
     size: medium
-    when: 'VeRO T26: Knight''s reflect tool is part of a much stronger baseline.'
-    basis: assessment
+    when: 'gains where a signal or checkable constraint exists: hard Rust problems 0.60 to 0.68 with self-written
+      tests, 0.52 without (Shinn, Mar 2023); SAT 34.62% to 64.96% on Mistral Large with at most 2.1% of
+      right answers broken (Stav, Jun 2026); constrained generation 15.0 to 45.0 on GPT-4 (Madaan, Mar
+      2023). Mixed on re-checks of correctness: significant
+      gains on BBEH Non-Choice for all five models and on HLE for two, with up to 13.25% of right answers
+      turned wrong (Stav, Jun 2026); MATH 52.8% to 51.8% with Self-Refine (Kumar,
+      Sep 2024); lower accuracy in 20 of 28 BoolQ settings (Zhang, Sep 2026); -2.5 to +2.6 points over
+      five turns for every RefineBench model (Lee, Nov 2025); Reflexion 87.8% against plain retry 92.0%
+      on HumanEval (Kapoor, Jul 2024); over 90% of in-thinking reflections confirmatory in reasoning models
+      (Kang, Oct 2025)'
+    basis: evidence
   cost:
     effect: degrades
     size: medium
-    basis: assessment
+    when: 'at least one critique and one revision call per round: Reflexion cost $3.90 on HumanEval against
+      $1.93 for one GPT-4 call and $2.51 for plain retry (Kapoor, Jul 2024); inside reasoning models,
+      reflections after the first answer took 16.8% to 47.8% of tokens for 1.4 to 3.5 points (Kang, Oct
+      2025)'
+    basis: evidence
   performance:
     effect: degrades
     size: medium
+    when: each round is a serial critique and revision call; no source here measures the latency
     basis: assessment
   security:
     effect: none
@@ -54,25 +115,201 @@ impact:
   brand:
     effect: improves
     size: small
+    when: Polished output where the critique is about form (tone, format, required items).
     basis: assessment
   primary:
   - quality
   - cost
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired eval on held-out items with ground truth the loop never sees: the loop against the single
+    pass with thinking on and against retries or best-of-N at matched tokens, per model; accuracy per
+    round, share of right answers turned wrong and of wrong answers fixed per round, tokens and latency'
+- method: monitor
+  how: rounds per item, share of rounds that change the answer, gate acceptance rate, check-pass rate
+    after each round, cap-hit rate; on a regularly audited sample, right-to-wrong flips
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Feedback & Iteration group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Feedback & Iteration group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: 'Madaan et al., "Self-Refine: Iterative Refinement with Self-Feedback", https://arxiv.org/abs/2303.17651'
   date: '2023-03-30'
   task: The same model generates, critiques its output and refines it iteratively
-  effect: '"improving by ~20% absolute on average in task performance" over one-step generation'
-  conditions: 7 tasks from dialog response generation to math reasoning; GPT-3.5, ChatGPT, GPT-4
+  effect: '"improving by ~20% absolute on average in task performance" over one-step generation. Per task,
+    GPT-4 base to Self-Refine: dialogue response preference 25.4 to 74.6, constrained generation 15.0
+    to 45.0, code optimization 27.3 to 36.0, math reasoning 92.9 to 93.1 (GPT-3.5 64.1 to 64.1), the math
+    gain being limited by "the inability to accurately identify whether there is any error". Up to 4 iterations;
+    most of the gain came early (code optimization 22.0 at the first output to 28.8 after three iterations).'
+  conditions: 7 tasks from dialog response generation to math reasoning; GPT-3.5, ChatGPT, GPT-4 as generator,
+    critic and refiner; baseline is one-step generation with the same model, not compute-matched
   direction: supports
-  locator: Abstract
+  locator: Abstract; §3.3 Table 1; §4 Figure 4
+  measured: true
+- source: 'Noah Shinn, Federico Cassano, Edward Berman, Ashwin Gopinath, Karthik Narasimhan, Shunyu Yao,
+    "Reflexion: Language Agents with Verbal Reinforcement Learning", https://arxiv.org/abs/2303.11366'
+  date: '2023-03-20'
+  task: After a failed trial (signaled by the environment, a stall heuristic, exact-match grading or the
+    agent's own generated unit tests) the same model writes a verbal self-reflection, kept in memory and
+    given to the next trial; ablations remove the reflection or the tests
+  effect: 'ALFWorld: ReAct + Reflexion completed "130 out of 134 tasks"; the ReAct-only agent, which also
+    reset and retried, stopped improving: "performance increase halts between trials 6 and 7". HotpotQA
+    (CoT with the gold context, exact-match success signal): self-reflection gave "an 8% absolute boost
+    over the episodic memory learning advantage". Pass@1, GPT-4 single sample vs Reflexion: HumanEval
+    Python 80.1 vs 91.0; MBPP Python 80.1 vs 77.1, where its self-generated tests passed wrong solutions
+    (false-positive rate 16.3% against 1.4% on HumanEval). Ablation on the 50 hardest HumanEval Rust problems:
+    base 0.60, self-reflection without test generation 0.52, tests without self-reflection 0.60, both
+    0.68.'
+  conditions: GPT-3 on ALFWorld (134 tasks, up to 12 trials, memory of the last 3 reflections); 100 HotpotQA
+    questions; GPT-4 on HumanEval, MBPP and their Rust translations, up to 6 self-generated tests, memory
+    of 1 reflection
+  direction: mixed
+  measured: true
+  locator: §4.1 Figure 3; §4.2 Figure 4; §4.3 Tables 1-3
+- source: Sayash Kapoor, Benedikt Stroebl, Zachary S. Siegel, Nitya Nadgir, Arvind Narayanan, "AI Agents
+    That Matter", https://arxiv.org/abs/2407.01502
+  date: '2024-07-01'
+  task: 'Reran Reflexion as released (at most 2 iterations, temperature 0.2 for its internal tests and
+    self-reflections) on HumanEval against plain baselines: retry, which re-invokes GPT-4 at temperature
+    0 up to five times when it fails the problem''s example tests, and warming, which also raises the
+    temperature from 0 to 0.5 across retries'
+  effect: 'Mean of 5 runs, accuracy and total cost: Reflexion (GPT-4) 87.8% and $3.90 (91.0 in its own
+    paper); retry 92.0% and $2.51; warming 93.2% and $2.45; one GPT-4 call 89.6% and $1.93. "Reflexion
+    and LDB cost over 50% more than the warming strategy"; "the question of whether debugging, reflection,
+    and other such “System 2” approaches ... are useful for code generation remains open".'
+  conditions: gpt-4-turbo-2024-04-09 at April 2024 prices; HumanEval, 164 problems (LDB version with example
+    tests for all); 5 runs
+  direction: contradicts
+  measured: true
+  locator: §2.2-2.3; Figure 1; Appendix A Table A1; Table A7; Appendix E.1
+- source: Aviral Kumar, Vincent Zhuang, Rishabh Agarwal, Yi Su, John D Co-Reyes, Avi Singh, et al. (Google
+    DeepMind), "Training Language Models to Self-Correct via Reinforcement Learning", https://arxiv.org/abs/2409.12917
+  date: '2024-09-19'
+  task: Two attempts per problem; the second-attempt instruction asks the model to find any mistake in
+    its first answer without saying whether it is correct. The untrained model and prompted Self-Refine
+    compared with fine-tuned variants and SCoRe, multi-turn RL that trains the same model to self-correct
+  effect: 'MATH, Gemini 1.5 Flash, first to second attempt: base model 52.6% to 41.4% (-11.2; 15.8% of
+    problems went from correct to incorrect, 4.6% the other way); Self-Refine 52.8% to 51.8% (-1.0; 4.2%
+    vs 3.2%); SCoRe 60.0% to 64.4% (+4.4; 1.4% vs 5.8%), "the first significantly positive delta". HumanEval,
+    Gemini 1.0 Pro: base 53.7% to 56.7%; Self-Refine 53.7% to 52.5% (11.0% correct to incorrect); SCoRe
+    52.4% to 64.6%. With the trained model and a 32-solution budget, "parallel sampling shows a 7.4% accuracy
+    gain, while combining it with sequential sampling using self-correction yields a 10.5% improvement".'
+  conditions: Gemini 1.5 Flash (MATH) and Gemini 1.0 Pro (trained on MBPP, tested on HumanEval); greedy
+    decoding; one round of self-correction
+  direction: mixed
+  measured: true
+  locator: §6.1 Tables 3-4; §6.2 Figure 1 (right)
+- source: Soumya Suvra Ghosal, Souradip Chakraborty, Avinash Reddy, Yifu Lu, Mengdi Wang, Dinesh Manocha,
+    Furong Huang, Mohammad Ghavamzadeh, Amrit Singh Bedi, "Does Thinking More always Help? Mirage of Test-Time
+    Scaling in Reasoning Models", https://arxiv.org/abs/2506.04210
+  date: '2025-06-04'
+  task: 'Reasoning models made to keep re-checking by suppressing the end-of-thinking token and appending
+    "Wait", against parallel thinking: the same token budget spread over independent traces with a majority
+    vote'
+  effect: 'DeepSeek-R1-Distill-Qwen-1.5B on GSM8K: "accuracy increases from 82.2% to 87.3% as the average
+    number of thinking tokens increases from 385 to 1100", then "pushing the average thinking token count
+    from 1100 to 15980 reduces accuracy from 87.3% to 70.3%". At a 16,000-token budget, "Wait & Think
+    More" gave "a 11.8% performance drop" against standard thinking, while parallel thinking with the
+    same budget "boosts accuracy by 10.1%". The authors report "a consistent non-monotonic trend in performance
+    across multiple tasks and datasets".'
+  conditions: DeepSeek-R1-Distill-Qwen-1.5B, -Qwen-7B and -Llama-8B; GSM8K (1,320), MATH-500, AIME 2024
+    (30)
+  direction: contradicts
+  measured: true
+  locator: §2.3 Figure 2; §4 Figures 6-7
+- source: 'Ken Tsui, "Self-Correction Bench: Uncovering and Addressing the Self-Correction Blind Spot
+    in Large Language Models", https://arxiv.org/abs/2507.02778'
+  date: '2025-07-03'
+  task: The same error is injected either into the user's message or into the model's own previous output,
+    all else identical, and the model's correction rate is compared; then "Wait" is appended after the
+    model's erroneous output
+  effect: 'Across 14 open-source non-reasoning models, a "64.5% average Self-Correction Blind Spot": "models
+    reliably correct external errors but fail on identical internal ones". Appending "Wait" "reduces the
+    blind spot by 89.3% on average" and "increases mean accuracy by 156%"; reasoning models "exhibit a
+    small, even negative" blind spot. Macro accuracy, base / with "Wait" / reasoning sibling: DeepSeek-V3-0324
+    0.567 / 0.902 / DeepSeek-R1-0528 0.908; Qwen3-32B non-thinking 0.045 / 0.793 / thinking 0.894. On
+    models'' own natural errors, "at least 4.3–10.8%" were ones they had the knowledge to catch.'
+  conditions: 14 open-source non-reasoning models plus reasoning counterparts; injected errors in SCLI5,
+    GSM8K-SC and PRM800K-SC; figures from v3 (Aug 2026), headline numbers unchanged since v1
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1; §4.4 Table 3; §6
+- source: 'Liwei Kang, Yue Deng, Yao Xiao, Zhanfeng Mo, Wee Sun Lee, Lidong Bing, "First Try Matters:
+    Revisiting the Role of Reflection in Reasoning Models", https://arxiv.org/abs/2510.08308'
+  date: '2025-10-09'
+  task: Splits reasoning-model rollouts at the first candidate answer and labels each later reflection
+    by whether it changes the answer's correctness
+  effect: '"over 90% of the reflections are confirmatory"; corrective ones (wrong to right) are "mostly
+    less than 2%". Reflections after the first candidate took 16.8% to 47.8% of the tokens for a gain
+    of 1.4% to 3.5%.'
+  conditions: eight reasoning models from 7B to 685B (DeepSeek-R1-0528, gpt-oss-20b, Magistral-Small-2506,
+    MiMo-7B-RL, Qwen3-8B, three R1 distills); AIME 2024 and 2025, AMC, Olympiad Bench, MATH-500; 3,427
+    rollouts per model; answers checked with Math-Verify
+  direction: contradicts
+  measured: true
+  locator: §2.2 Figures 3-4
+- source: 'Young-Jun Lee, Seungone Kim, Byung-Kwan Lee, Minkyeong Moon, Yechan Hwang, Jong Myoung Kim,
+    Graham Neubig, Sean Welleck, Ho-Jin Choi, "RefineBench: Evaluating Refinement Capability of Language
+    Models via Checklists", https://arxiv.org/abs/2511.22173'
+  date: '2025-11-27'
+  task: Up to five turns of self-refinement (the model is asked to improve its own answer with no feedback
+    and decides when to stop) against guided refinement (told which checklist items failed) and against
+    self-refinement given the full checklist; each answer graded item by item by GPT-4.1
+  effect: 'Pass (all checklist items met), turn 1 to turn 5, self-refinement: Gemini 2.5 Pro 29.5 to 31.3;
+    GPT-5 27.5 to 29.1; o1 18.5 to 18.3; DeepSeek-R1 8.1 to 7.9; across all models in Table 3 the change
+    ranged from -2.5 to +2.6. Guided refinement: Gemini 2.5 Pro 29.5 to 94.7, Claude-Opus-4.1 18.7 to
+    98.4. Given the full checklist but no feedback, "LLaMA-3.1-70B-Instruct improves by +43.6% and Gemini
+    2.5 Pro by +44.5%" at turn 5 over plain self-refinement. DeepSeek-R1 from turn 2 to 3: 19.1% of answers
+    went from correct to incorrect, 8.1% the other way.'
+  conditions: 1,000 problems in 11 domains; 34 models including o1, o3-mini, o4-mini, GPT-5, Claude 4
+    and 4.1, Gemini 2.5, DeepSeek-R1; OpenAI reasoning effort medium, 10K-token limit for reasoning models
+  direction: contradicts
+  measured: true
+  locator: §4.2 Table 3; §5.1 Table 4; §5.3 Figure 9
+- source: Elroy Stav, Dvir Berlowitz, Maayan Orner, Sarit Kraus, "When Does Intrinsic Self-Correction
+    Help? A Task-Sensitive Analysis", https://arxiv.org/abs/2606.23196
+  date: '2026-06-22'
+  task: The same model reviews and revises its own answer with no labels, tools or new information (prompts
+    checked for fairness), on tasks chosen so the revision can check explicit constraints (SAT), revisit
+    long reasoning (BBEH, HLE) or weigh alternatives (Wordle, Hangman, Codenames)
+  effect: 'SAT accuracy, first answer to self-correction: Mistral Large 34.62 to 64.96, Claude Haiku 4.5
+    75.64 to 93.59, DeepSeek V3.1 78.63 to 92.74, Gemini 3.1 Flash Lite 60.68 to 82.91, Gemini 3 Pro 97.00
+    to 100; it "eliminates an average of 65.66% of the baseline errors", and turned right answers wrong
+    "at a rate of at most 2.1%" on SAT against "up to 13.25%" on BBEH and HLE. BBEH Choice: Mistral Large
+    27.75 to 26.50, Claude Haiku 4.5 35.00 to 34.50. BBEH Non-Choice improved significantly for all five
+    models, HLE for two. Gains on BBEH sub-tasks correlated with judged verifiability
+    (Spearman 0.65) and reasoning intensity (0.54); sub-tasks low on both gave "negligible or negative"
+    gains. Gemini Pro gained least; Claude Haiku 4.5 changed its Codenames clue in 98.7% of turns and
+    its score fell from 0.990 to 0.889.'
+  conditions: five models at temperature 0; SAT 234, BBEH Choice 400, BBEH Non-Choice about 500, HLE text
+    200 items, plus three word games; baseline is one zero-shot answer, no sampling baseline at equal
+    compute
+  direction: supports
+  measured: true
+  locator: §4 Tables 1-2; Appendix A Tables 3-4; Appendix B.5 Table 5
+- source: Tianzhu Zhang, "When Should LLMs Trust Their Own Revisions? A Risk-Aware Study of Intrinsic
+    Self-Correction", https://arxiv.org/abs/2609.35832
+  date: '2026-09-23'
+  task: One revision pass by the same model with no new evidence; tracks right-to-wrong and wrong-to-right
+    transitions and compares keeping the first answer, always taking the revision, and a gate trained
+    to decide per item from first-pass features
+  effect: '"Unconditional revision reduces accuracy in 20 of 28 BoolQ settings, 10 of 28 GSM8K settings,
+    and 9 of 26 Corr2Cause settings." Llama-3.1-8B on GSM8K rose 25.5 points (17.44% to 42.99%) while
+    turning 19.1% of its initially correct answers wrong; DeepSeek-R1-Distill-Qwen-14B +6.5 points with
+    4.2% harm. Qwen2.5-7B on BoolQ: always revising 80.83% to 72.32%, gate 86.02%; Qwen3-Coder-30B-A3B
+    on Corr2Cause: always revising 56.06% to 83.70%, gate stayed at 56.06%. All five BoolQ refinement
+    prompts lowered mean accuracy, the neutral one least; "More forceful instructions to switch answers
+    increase harmful transitions more than helpful ones." The author flags the gate gains as unverified.'
+  conditions: 29 open-weight models up to 123B (no closed models), 82 model-task settings; BoolQ (3,270), GSM8K (1,319), Corr2Cause
+    (2,246); decoding and protocol differ across settings; the gate needs labeled development data; one
+    author
+  direction: mixed
+  measured: true
+  locator: §3.1-3.3; Table 2; Figure 2; §4.3
 assessment:
   qa:
     unit: Threshold and iteration cap.
@@ -110,6 +347,15 @@ assessment:
     primary:
     - quality
     - cost
+related:
+- 9.a.i
+- 7.c.iii
+- 7.c.ii
+- 9.c.ii
+- 1.b.i
+- 9.c.i
+- 7.b.ii
+- 4.c.i
 provenance:
   layer: target
   origin: observed
@@ -117,3 +363,12 @@ provenance:
   sub_type: reflection
   library_group: Feedback & Iteration
   library_source: catalog
+caveats: Most of the evidence is math, code and puzzles with ground truth; the form-critique gains come
+  from Self-Refine's 2023 GPT-3.5 and GPT-4 runs against one-step generation, not against best-of-N at
+  equal compute, and no source here measures the loop's latency. Reflexion's signals are sometimes close
+  to an oracle (HotpotQA graded by exact match against the gold answer), and its HumanEval gain did not
+  hold against plain retries in an independent rerun. The supporting 2026 study runs at temperature 0
+  against a single zero-shot answer with no sampling baseline, and the 29-model study mixes protocols
+  across settings, its largest gain starting from an unusually low 17.44% on GSM8K. Trained self-correction
+  (SCoRe) is the one result where same-model revision beat parallel sampling at the same number of samples,
+  but it needs multi-turn RL on the model itself.

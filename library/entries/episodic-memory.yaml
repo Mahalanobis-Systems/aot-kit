@@ -5,7 +5,7 @@ legacy_id: P55
 slug: episodic-memory
 name: Episodic memory retrieval
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it adds a cross-session memory architecture
@@ -16,66 +16,315 @@ domains:
 - memory
 evidence_domains:
 - code-generation
+- data-analysis
+- computer-use
+- tool-use
+- web-research
+- conversation
+- planning
+- reasoning
 categories:
 - memory.reuse
-summary: Episodic memory retrieval
+summary: 'Log every agent session as a raw trace, distill a few verified lessons from them (user corrections,
+  definitions, workflows that worked, mistakes) into short memory files, show the agent an index of those
+  files at the start of each task, and let it search both. It pays where later tasks need what earlier
+  ones learned: Databricks'' data agent went from 22.3% to 68.4% on tasks built from its users'' past
+  sessions, with 31% fewer tokens. Elsewhere the gains mostly vanish: with three frontier models two memory
+  methods moved average accuracy by -1.1 to +3.0 points over six benchmarks, a no-memory web agent given
+  the same tokens beat ReasoningBank by 5.1 to 8.1 points, and off-the-shelf memory systems were at or
+  below memory off on coding tasks in 11 of 12 pairings. Unverified lessons reproduce mistakes, and an
+  agent that writes memory from what it reads can be poisoned: one crafted email planted a lasting instruction
+  in up to 87.5% of test cases.'
+how: '1. Start from two baselines on the same tasks and model: no memory, and a no-memory agent that gets
+  the memory''s token budget as extra steps (7.b.iii) or reasoning effort (1.b.i). A no-memory web agent
+  allowed 15 steps instead of 10 beat ReasoningBank by 5.1 to 8.1 points with three 2026 models, mostly
+  at fewer total tokens, and with GPT-5.4, Gemini 3.1 Pro and Claude Opus 4.7 two memory methods moved
+  average accuracy by -1.1 to +3.0 points. Build the evaluation stream so later tasks need what earlier
+  ones learned (a user''s corrections, metric or table definitions, repository conventions, a workflow
+  that was costly to find): that is where memory paid, 22.3% to 68.4% on tasks built from real user sessions.
+  2. Log every session as an append-only raw trace (task, steps, tool results, outcome, user feedback),
+  and keep a separate set of short distilled memory files (preferences, definitions, workflows, mistakes)
+  under an auto-generated index file that says what each file holds. In Databricks'' ablation, raw traces
+  alone reached 35.8% (the agent searched them in only about a third of cases), distilled files with the
+  index 66.1%, and both 68.4%. 3. Persist a distilled lesson only after a check against ground truth (tests
+  pass, the user confirms, the outcome is verified), never on the agent''s own success judgment: on one
+  site 52.9 to 59.5% of ReasoningBank''s success-labeled lessons came from tasks that had failed, stored
+  lessons trailed raw trajectories in 7 of 9 settings, and a GPT-5.5 check before admitting each lesson
+  raised stored-lesson memory from 38.7% to 46.0%. Where nothing can verify a lesson, synthesize guidance
+  from the retrieved raw traces for the current task and discard it afterwards (+3.3 to +28.0 points over
+  storing it). Write explicit user requests (“Never write scripts in the /tmp dir”) at once. 4. At session
+  start inject the index, give the agent search and fetch tools over both stores, and retrieve only a
+  few records (the studies used one to five). Inject a short record anchored to the files, tables or fix
+  it concerns, not raw transcript chunks or loosely extracted facts: off-the-shelf memory systems were
+  at or below memory off in 11 of 12 coding pairings, mostly because the record they injected buried or
+  dropped the fix. Keep a separate store per user or domain (an unrelated passage cost 0.7 to 3.4 points)
+  and tell the agent a memory is a hint to check against the current task, not an instruction. 5. Consolidate
+  offline on a schedule: distill new sessions into the files, merge duplicates, split oversized files,
+  resolve conflicts and delete stale entries (offline distillation 63.5% against 53.9% for writes made
+  during the session, 66.1% with both). 6. Treat a memory write as a privileged action (10.c.i): only
+  the user and verified outcomes may write; never store instructions found in email, web pages, documents
+  or tool output; record each entry''s source and show every write to the user. One crafted email made
+  agents store and later act on a poisoned memory in 87.5% (GPT-5.4) and 71.4% (Sonnet 4.6) of held-out
+  cases when mail was processed in the background, past input, model and trace defenses; asking the agent
+  to report what it checked and did cut foreground success from 75.0% to 1.8% and from 48.2% to 23.2%.
+  7. Measure with paired runs against both baselines, memory frozen during evaluation, at least three
+  seeds: pass rate split into tasks memory rescues and tasks it breaks (it helps where the model fails
+  without it and can hurt where it already succeeds), tokens including memory-side calls, steps and latency
+  (1.35x faster and 1.44x fewer tokens in Databricks'' test; A-Mem cost up to 6.37x of no memory on GPT-5.4),
+  and a poisoning probe; re-run after every model change.'
 detect:
-  static: A vector store; write after each episode; top-k retrieval; TTL or decay.
-  traces: Memories retrieved per task; relevance.
-  evals: Repeat-mistake rate over time.
+  static: Raw session traces kept across tasks or sessions; distilled memory files or a vector store of
+    lessons; an index or retrieval step at task start; writes after each task or on user request; a consolidation,
+    TTL or decay job.
+  traces: Memories retrieved per task, whether the agent read and followed them, and whether they applied;
+    memory writes and their source; repeated mistakes the store should have prevented.
+  evals: Repeat-mistake rate over time; pass rate with and without memory on a task stream, split into
+    rescues and regressions.
   judge: Rate retrieved memories for relevance.
   probes:
-    what: A task pair where the first teaches a lesson the second needs.
-    construct: Run task A with a known pitfall, then task B with the same pitfall.
+    what: A task pair where the first teaches a lesson the second needs, an unrelated task the lesson
+      could mislead, and untrusted content that asks to be remembered.
+    construct: Run task A with a known pitfall or a user correction, then task B with the same pitfall
+      and task C where the lesson does not apply; then feed a page or email containing a "remember this"
+      instruction and check whether it is stored and acted on in a later session.
   primary:
   - evals
   - probes
 impact:
   quality:
-    effect: improves
-    size: medium
-    basis: assessment
-  cost:
-    effect: degrades
-    size: small
-    basis: assessment
-  performance:
-    effect: degrades
-    size: small
-    basis: assessment
-  security:
     effect: mixed
     size: medium
-    when: Memory poisoning.
-    basis: assessment
+    when: 'tasks built to need earlier sessions: 22.3% to 68.4% pass rate (Databricks, Oct 2026); with
+      GPT-5.4, Gemini 3.1 Pro and Claude Opus 4.7 over six benchmarks, A-Mem and ReasoningBank moved average
+      accuracy by -1.1 to +3.0 points (Yan, Jul 2026); a no-memory web agent given the same tokens beat
+      ReasoningBank by 5.1 to 8.1 points (Hajimiri, Jun 2026); memory systems at or below memory off in
+      11 of 12 coding pairings, a test-verified record +0.0 to +4.5 (Fan, Sep 2026); stored lessons trailed
+      raw trajectories in 7 of 9 settings and discarding them gained 3.3 to 28.0 points (Wang, Oct 2026);
+      under a tight budget several memory methods fell below no memory, MemRL 4.7% against 30.7% (Lai,
+      Oct 2026)'
+    basis: evidence
+  cost:
+    effect: mixed
+    size: medium
+    when: 1.44x fewer tokens per task than no memory (Databricks, Oct 2026); per-task cost 0.62x to 0.98x
+      of no memory for ReasoningBank but up to 6.37x for A-Mem on GPT-5.4 (Yan, Jul 2026); ReasoningBank
+      82.6K tokens per task against 73.6K for a stronger no-memory agent, its module adding 16.5K to 26.1K
+      prompt tokens (Gemini 3 Flash) (Hajimiri, Jun 2026); 9.31 against 9.48 to 10.17 LLM calls per task
+      for designs that store lessons (Wang, Oct 2026)
+    basis: evidence
+  performance:
+    effect: mixed
+    size: medium
+    when: 1.35x faster per task, and one repeated workflow from nearly six minutes to 41 seconds (Databricks,
+      Oct 2026); steps per task down 6.6% to 23.2% with A-Mem and ReasoningBank on GPT-5.4 and Gemini
+      3.1 Pro (Yan, Jul 2026); tasks must run in order, so they cannot run in parallel (Hajimiri, Jun
+      2026)
+    basis: evidence
+  security:
+    effect: degrades
+    size: large
+    when: 'when the agent reads untrusted content and can write memory: one crafted email made agents
+      store and act on a poisoned memory in 87.5% (GPT-5.4) and 71.4% (Sonnet 4.6) of held-out cases in
+      background mode, also with a Mem0 backend (85.7%), past input, model and trace defenses; handcrafted
+      payloads scored 0.0% on both models (Zhang, Jul 2026)'
+    basis: evidence
   governance:
     effect: mixed
     size: medium
-    when: Retention of user data.
-    basis: assessment
+    when: distilled memory kept as files with an index is a reviewable record that can move between agents
+      (Databricks, Oct 2026); writes can be hidden from the user, with 100% stealth in background mode
+      on GPT-5.4 (Zhang, Jul 2026); the store depends on task order, so one failed task cannot be re-run
+      in isolation (Hajimiri, Jun 2026); stored sessions retain user data
+    basis: evidence
   brand:
     effect: improves
     size: small
     basis: assessment
   primary:
   - quality
-  - governance
+  - cost
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs on a held-out stream that mixes tasks reusing what earlier ones learned (user corrections,
+    definitions, repository conventions) with tasks that share nothing, memory frozen during evaluation
+    and at least three seeds: memory against no memory and against a no-memory agent given the same total
+    tokens as extra steps or effort; report pass rate split into rescues and regressions, tokens including
+    memory-side calls, steps and latency; ablate raw traces only, distilled files only and both; add a
+    poisoning probe (a document or email asking the agent to remember an instruction) and count writes
+    and later effects'
+- method: monitor
+  how: memory writes per session by source (user, verified outcome, untrusted content) and whether the
+    user saw them; retrievals per task and how often the agent followed a memory that did not apply; repeat-mistake
+    rate; regressions on task types solved before memory; store size, duplicates and conflicts after each
+    consolidation; tokens per task
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Context & Memory group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Context & Memory group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: 'Shinn et al., "Reflexion: Language Agents with Verbal Reinforcement Learning", https://arxiv.org/abs/2303.11366'
   date: '2023-03-20'
-  task: Agents write verbal reflections on task feedback into an episodic memory buffer and read them on later trials
-  effect: '"91% pass@1 accuracy on the HumanEval coding benchmark, surpassing the previous state-of-the-art GPT-4
-    that achieves 80%"'
-  conditions: HumanEval; also sequential decision-making and language reasoning tasks
+  task: Agents write a verbal reflection after each failed trial into a memory buffer and read it on later
+    trials of the same task (retries, not separate tasks)
+  effect: '"91% pass@1 accuracy on the HumanEval coding benchmark, surpassing the previous state-of-the-art
+    GPT-4 that achieves 80%"'
+  conditions: GPT-4; HumanEval Python pass@1 80.1 for a single sample against 91.0 with Reflexion, while
+    MBPP Python fell from 80.1 to 77.1 (Table 1); memory bounded to 1 to 3 reflections (1 for programming);
+    also ALFWorld and HotpotQA. Memory spans retries of one task, the mechanism of 7.c.i, not a store
+    across tasks
   direction: supports
   locator: Abstract
+- source: 'Databricks AI Research (Veronica Lyu, Wenhao Zhan, Sam Havens, et al.), "MemCurrent: Designing
+    Persistent Memory for Production Agents", https://www.databricks.com/blog/memcurrent-designing-persistent-memory-production-agents'
+  date: '2026-10-20'
+  task: Keep raw session traces (episodic memory, append-only) and distilled memory files (derived memory)
+    under an auto-generated memory.md index injected at session start; the agent searches and fetches
+    both with tools, writes explicit requests with tools, and an offline "dreaming" pipeline distills
+    new sessions and consolidates the store (splits oversized files, merges duplicates, resolves conflicts)
+  effect: 'Internal Memory Benchmark (Genie agent): pass rate 22.3% with no memory, 68.4% with MemCurrent,
+    78.6% with the gold memories injected, Mem0 43.9%; MemCurrent 252 s and 418K tokens per task, 1.35x
+    faster and 1.44x fewer tokens than no memory ("31% fewer tokens and running 26% faster"). Ablations:
+    raw episodic memory alone 35.8% (searched in about a third of cases), derived memory alone 66.1%,
+    both 68.4%; offline dreaming alone 63.5% against online tools alone 53.9%. On LoCoMo, LongMemEval
+    and ConvoMem, 88.1% against 87.8% for full context at 8.4K against 103K input tokens per question.
+    A repeated workflow saved to memory took a related question from nearly six minutes to 41 seconds.'
+  conditions: 'Databricks'' own benchmark: 114 cases, 29 users, 2,233 history sessions mined from its
+    own agent''s sessions, each checked that the needed knowledge is present and required (plus some memory-independent
+    questions); scored by an LLM judge with rubrics; 3 repeats; Claude Opus 4.6 agent, GPT 5.6 sol memory
+    model; cost is tokens, not dollars; vendor evaluating its own product'
+  direction: supports
+  measured: true
+  locator: How We Designed Memory; Results (Figure 6); MemCurrent in Action (Example 2); What Makes MemCurrent
+    Work (Figures 9 and 10)
+- source: 'Ruhan Wang, Kishan Panaganti, Dongruo Zhou, "More Memory, Worse Agents: Error Reproduction
+    and Anti-Persistence in LLM Agents", https://arxiv.org/abs/2610.27406'
+  date: '2026-10-19'
+  task: 'Compare memory designs over ten rounds of self-improvement: stored trajectories, stored abstractions
+    (rules, summaries, skills), both, and anti-persistence (store trajectories and outcomes, synthesize
+    guidance for the current task on demand and discard it afterwards)'
+  effect: 'Held-out success, equal-weight mean over nine settings: anti-persistence 59.9%, trajectory
+    memory 53.5%, abstraction memory 49.0%, joint memory 49.3%, Reflexion 52.9%; anti-persistence +19.2
+    points over ReAct with no memory. Stored abstractions (alone or joint) trailed trajectory memory in
+    7 of 9 settings. Discarding instead of storing synthesized guidance: +28.0 and +12.3 points (Llama-4-Scout,
+    ALFWorld and WebShop), +3.3 and +6.7 (Qwen3-Coder-Next). A GPT-5.5 check before admitting each skill
+    raised abstraction memory from 38.7% to 46.0% (WebShop, Qwen3-Coder-Next). On 30 AppWorld tasks, correct
+    skills raised success from 23.0% to 40.0% and incorrect ones lowered it to 20.0%. LLM calls per task
+    9.31 against 9.48 to 10.17 for the stored designs (mean of Table 6''s nine settings).'
+  conditions: Llama-4-Scout, Qwen3-Coder-Next, Gemma-4-31B-it; ALFWorld (134 held-out tasks), WebShop
+    (100), ScienceWorld (60); 3 seeds; up to 5 retrieved trajectories; the authors' own method; the filter
+    and AppWorld tests are auxiliary and lack seed-level uncertainty
+  direction: mixed
+  measured: true
+  locator: Section 4.2 Table 1; Section 4.4 Table 2; App. E.2 Table 6; App. F.1 to F.3 Table 7
+- source: 'Guannan Lai, Zi-Yang Bai, Jun-Peng Jiang, Han-Jia Ye, "Learning What to Remember: Resource-Efficient
+    Self-Improvement for Lifelong Agents", https://arxiv.org/abs/2610.26453'
+  date: '2026-10-19'
+  task: Under a tight joint budget (one retrieved memory per task, 64-entry bank, 128 to 512 output tokens,
+    3 to 15 rounds), compare a no-memory agent, plain retrieval and eight lifelong-memory methods with
+    TokenWorth, which learns from execution feedback which memories are worth retrieving and keeping
+  effect: 'LifelongAgentBench success, local Qwen2.5-14B / API DeepSeek-V4-Flash: no memory 25.2/26.2
+    (DB), 50.2/67.2 (OS), 30.7/12.7 (KG); plain retrieval 33.0/29.4, 54.6/66.6, 11.3/31.3; TokenWorth
+    65.0/62.2, 59.4/73.2, 36.7/36.7. Several methods fell below no memory: on local KG MemRL 4.7% and
+    plain retrieval 11.3% against 30.7%; on local DB Mem0 21.2% and Reflexion 22.0% against 25.2%. TokenWorth
+    used 9.3% to 58.3% fewer output tokens than the no-memory agent.'
+  conditions: One stringent budget, which the authors say they do not claim generalizes; no repeated runs
+    reported; output tokens include memory-side generation; the authors' own method
+  direction: mixed
+  measured: true
+  locator: Section 5.1; Table 1; Figure 3(a)
+- source: 'Liyang Fan, Yingcheng Shi, Yongbin Li, Chenghao Sun, Xin Chen, Xander Xu, Hu Wei, Shiwen Ni,
+    Min Yang, Jieping Ye, "VibeMemBench: Evaluating Memory Systems for Coding Agents on Real Repository
+    Coding Tasks", https://arxiv.org/abs/2609.23570'
+  date: '2026-09-20'
+  task: On repository coding tasks whose own history holds an experience verified by executing tests to
+    help, inject that short verified record, an unrelated passage, or the top record that each of four
+    memory systems (Mem0, SimpleMem, MemoryOS, A-MEM) retrieves after ingesting the history, against memory
+    off
+  effect: 'Verified record against memory off: +1.1 to +4.5 points on four of five solvers and +0.0 on
+    deepseek-v4-pro, every 95% interval crossing zero; fewer agent steps for all five. Unrelated passage:
+    0.7 to 3.4 points below memory off. Memory systems: 11 of 12 solver and system pairings at or below
+    memory off (glm-5 with Mem0 -5.5, interval -10.59 to -0.45), a net loss of 127 resolved seeds over
+    1,332 pairings. Of 231 failing pairings, 69.3% reached the relevant history but lost the fix in the
+    record''s form (instructions copied from raw transcripts in 40.0% of those, overgeneralized extracted
+    facts in 18.1%), 16.0% never stored it and 1.3% were ranking misses. Where one record moved two solvers
+    in opposite directions, the solver weaker without memory gained in 61 of 64 cases.'
+  conditions: 111 targets from 90 SWE-rebench V2 repositories, 3,634 history trajectories, 4 seeds; MiniSWEAgent;
+    solvers deepseek-v4-pro, glm-5, glm-5.2, kimi-k2.7-code, qwen3.8-max (no Claude or GPT); targets kept
+    only where a record helped the reference solver, so the verified-record gain is an upper bound; one
+    record injected per target; memory-side tokens not counted; independent of the memory systems' authors
+  direction: mixed
+  measured: true
+  locator: Abstract; Section 3.3; Section 4.2 Tables 1 and 2; Section 4.3 Table 3; Section 4.4 Tables
+    4 and 5
+- source: 'Dong Yan, Jian Liang, Dapeng Hu, Ran He, Nicholas Jing Yuan, Qi Zhang, Tieniu Tan, "AgentStream:
+    How Well Do Self-Evolving LLM Agents Perform Under Streaming Tasks?", https://arxiv.org/abs/2608.00155'
+  date: '2026-07-31'
+  task: Run five self-evolving methods (two episodic memories, A-Mem and ReasoningBank, plus ACE, AutoSkill
+    and a harness-evolution method) over task streams from six benchmarks, each benchmark with its own
+    state or all sharing one, with three frontier models, against the same model with no evolved state
+  effect: 'Average accuracy over the three stream types, no memory / A-Mem / ReasoningBank: GPT-5.4 45.8
+    / 48.8 / 44.7; Gemini 3.1 Pro 56.6 / 57.8 / 59.4; Claude Opus 4.7 63.9 / 65.6 / 65.3. Across all methods
+    the average gain was +1.37 points with a separate state per benchmark and +0.75 and +0.90 with one
+    shared state, and 11, 16 and 17 of 45 configurations fell below no memory; GPT-5.4 lost on average
+    in every stream type (-0.35 to -0.78). Per-task cost, single run: ReasoningBank 0.62x to 0.66x of
+    no memory on Gemini 3.1 Pro and 0.87x to 0.98x on GPT-5.4; A-Mem 4.78x to 6.37x on GPT-5.4. Steps
+    per task fell 6.6% to 23.2% with both memories on both models.'
+  conditions: AppWorld, BFCL, BrowseComp-Plus, HLE, SWE-bench Verified, Tau2; 50 tasks each; 3 seeds that
+    shuffle task order; learning from self-generated feedback only, no ground truth; GPT-5.4 and Gemini
+    3.1 Pro at medium effort, Claude Opus 4.7 at high; cost tables from one run and only for GPT-5.4 and
+    Gemini 3.1 Pro; independent of the methods' authors
+  direction: mixed
+  measured: true
+  locator: Section 4 (Experimental Settings); Tables 1, 2, 3 and 4; App. A Tables 7 and 8
+- source: 'Yechao Zhang, Shiqian Zhao, Jiawen Zhang, Jie Zhang, Gelei Deng, Xiaogeng Liu, Chaowei Xiao,
+    Tianwei Zhang, "When Claws Remember but Do Not Tell: Stealthy Memory Injection in Persistent Personal
+    Agents", https://arxiv.org/abs/2607.05189'
+  date: '2026-07-06'
+  task: Send a persistent personal agent with long-term memory one email, generated by an attacker model
+    trained with supervised fine-tuning and RL against a shadow agent, that must make it write a poisoned
+    fact or preference to memory, hide this from the user, and change its later behavior
+  effect: 'End-to-end success on 56 held-out cases, background / foreground: OpenClaw with GPT-5.4 87.5%
+    / 75.0%; a Claude Code SDK agent with Sonnet 4.6 71.4% / 48.2%; five handcrafted injection payloads
+    0.0% on both models. Payloads transferred to NanoClaw and Hermes (80.4% and 82.1% in background) and
+    to a Mem0 vector backend (85.7%). Defenses: an input detector missed 91.59%; Meta-SecAlign still let
+    49.07% be written; a trace auditor missed 93.46% (OpenClaw) and 40.38% (Claude Code SDK). Asking the
+    agent to report what it checked and did cut foreground end-to-end success to 1.8% (GPT-5.4) and 23.2%
+    (Sonnet 4.6), mainly by exposing the write.'
+  conditions: 'WhisperBench: 108 cases (52 for training the attacker, 56 held out) in five risk categories
+    on a real IMAP/SMTP email workflow; filesystem memory unless noted; success judged by GPT-5.4-nano;
+    the attacker is the authors'' own, built on Qwen-4B; the abstract''s 87.5% and 71.4% are background-mode
+    figures'
+  direction: mixed
+  measured: true
+  locator: Abstract; Section V-A and V-B Table I; Section V-C Table II; Section V-E Tables IV and V; App.
+    A (Victim Configurations)
+- source: Sina Hajimiri, Masih Aminbeidokhti, Jose Dolz, Ismail Ben Ayed, Issam H. Laradji, Spandana Gella,
+    Nicolas Gontier, "Are Online Skill and Memory Modules Always Worth Their Tokens? A Budget-Constrained
+    Study of Web Agents", https://arxiv.org/abs/2606.15017
+  date: '2026-06-12'
+  task: Run ReasoningBank (lessons distilled from successes and failures and retrieved per task), AWM
+    and ASI with a 10-step actor, against a no-memory actor that spends a similar total token budget on
+    15 steps (plus rule-based page pruning), counting all module and actor tokens
+  effect: 'WebArena success / total tokens per task, no-memory 15-step actor against ReasoningBank: Gemini
+    3 Flash 44.78% / 73.6K against 39.33% / 82.6K; GPT-5.4-mini 32.67% / 90.2K against 24.58% / 81.0K;
+    Qwen 3.6-27B 42.14% / 95.5K against 37.00% / 101.9K. WorkArena-L1 (Qwen 3.6-27B): tied at 55.56%,
+    109.4K against 120.3K tokens. A plain 10-step actor with no memory scored 45.81 / 45.28 / 48.72 /
+    27.22 on Shopping / Reddit / Admin / GitLab against ReasoningBank''s 45.45 / 39.93 / 48.90 / 22.96
+    (Gemini 3 Flash). ReasoningBank''s module added 16.5K to 26.1K prompt tokens per task (Gemini 3 Flash).
+    On Shopping, 52.9% (Gemini) and 59.5% (GPT-5.4-mini) of its success-labeled lessons came from tasks
+    that failed by the ground-truth check, and retrieved memories were referenced in over 95% of Gemini
+    tasks, sometimes over-applied. Memory made tasks sequential: no parallel runs, and a transient failure
+    silently changes later state.'
+  conditions: WebArena (655 tasks in four domains) with three models, 3 runs each; WorkArena-L1 with Qwen
+    3.6-27B only; budget matching by step count is approximate; four-domain figures from v2 (Aug 2026);
+    the authors note these tasks are largely self-contained; independent of the methods' authors
+  direction: contradicts
+  measured: true
+  locator: Abstract; Section 3.2; Tables 1, 2, 3 and 5; Section 6; App. F.3 Table 10; Section 8
 assessment:
   qa:
     unit: Store, retrieve, decay.
@@ -113,6 +362,16 @@ assessment:
     primary:
     - quality
     - governance
+related:
+- 4.c.ii
+- 4.b.iii
+- 4.b.i
+- 7.c.i
+- 3.a.i
+- 10.c.i
+- 1.b.i
+- 7.b.iii
+- 8.a.i
 provenance:
   layer: target
   origin: observed
@@ -120,3 +379,13 @@ provenance:
   sub_type: memory
   library_group: Context & Memory
   library_source: catalog
+caveats: 'The large gains come from benchmarks built so that memory is needed, and the biggest is Databricks''
+  own (114 cases from its own agent, scored by an LLM judge); the independent tests that found small or
+  negative effects used largely self-contained tasks (WebArena, SWE-style coding, 50-task benchmark streams),
+  mostly open or mid-size models, and intervals that often cross zero, and none of them compares memory
+  with a budget-matched baseline on tasks that depend on earlier ones. Memory makes tasks depend on their
+  order, so they cannot run in parallel and a transient failure silently changes what later tasks see.
+  It helps weaker models and unsolved tasks more and can break tasks a strong model already solves: where
+  one record moved two solvers in opposite directions, the one weaker without memory gained in 61 of 64
+  cases. The 87.5% poisoning rate needs an attacker model trained against a copy of the agent; handcrafted
+  payloads scored 0.0% on GPT-5.4 and Sonnet 4.6.'

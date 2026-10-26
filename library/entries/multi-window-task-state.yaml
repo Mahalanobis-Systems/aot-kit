@@ -270,6 +270,22 @@ evidence:
   direction: supports
   measured: true
   locator: Abstract; §2; §5.1; §5.4 Table 4
+- source: Maciej Besta et al., "Affordable AI Assistants with Knowledge Graph of Thoughts", https://arxiv.org/abs/2504.02670
+  date: '2025-04-03'
+  task: The agent keeps its task state in an external knowledge graph that its tool calls (web, Python,
+    file readers) keep extending and that it queries (Cypher, SPARQL or Python) to answer, instead of
+    holding that state in context
+  effect: 'GAIA validation, GPT-4o mini, tasks solved of 165: single knowledge-graph variants 36 to 44,
+    "between 42% to 62% lower costs", against 30 and 33 for the same pipeline without the graph ("No KG")
+    and 35 for Hugging Face Agents. A fusion of all graph variants solved 71, against 40 for the no-graph
+    fusion. Open models (Neo4j + Cypher variant): DeepSeek-R1-7B solved 13 zero-shot but 6 with the graph,
+    R1-32B 14 against 21, R1-70B 20 against 22.'
+  conditions: GAIA validation (165) and test (301); GPT-4o mini, Qwen2.5, QwQ-32B and DeepSeek-R1 distills;
+    single runs; fusion runs "simulate the effect from KGoT runs with both graph backends available simultaneously";
+    a graph store, not files
+  direction: mixed
+  measured: true
+  locator: §5.1; §5.3; §5.6; Appendix Table 2 (GAIA, per model)
 - source: 'Axel Backlund, Lukas Petersson, "Vending-Bench: A Benchmark for Long-Term Coherence of Autonomous
     Agents", https://arxiv.org/abs/2502.15840'
   date: '2025-02-20'

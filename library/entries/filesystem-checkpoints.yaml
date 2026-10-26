@@ -5,7 +5,7 @@ legacy_id: P54
 slug: filesystem-checkpoints
 name: Filesystem-based agent state and checkpoints
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 2
   why: 'operational hardening: checkpoint and resume'
@@ -14,63 +14,264 @@ levers:
 - state
 domains:
 - general
-evidence_domains: []
+evidence_domains:
+- code-generation
+- tool-use
 categories:
 - memory.resume
-summary: Filesystem-based agent state and checkpoints
+summary: 'Save the agent''s state at each step boundary (the conversation, the workspace files, process
+  state when it matters, and a ledger of external side effects) so a crashed or stuck run resumes or rolls
+  back instead of starting over. With one crash injected per task, restoring all of that recovered every
+  task within 1.9% of fault-free time, while resuming from the conversation alone recovered 8 to 13% of
+  Terminal-Bench tasks and restarting cost up to 1.67x the time; in one study, letting the agent roll
+  back workspace and conversation together, with a note on what failed, raised success on long engineering
+  tasks from 62.2% to 87.8%. The risks are side effects and partial restores: widely used framework checkpointers
+  re-ran completed steps after a real crash, restores that bring back some state but not the rest let
+  approvals and validations carry over to the wrong action, and rewinding the conversation without the
+  files did worse than not rewinding.'
+how: '1. Start from the baseline: restart the run from scratch on a crash, and resume from the conversation
+  history alone (what most framework checkpointers and hosted agents restore). On 100 solved tasks per
+  setup with one injected crash each, restart recovered every task but added up to 1.52x (Terminal-Bench)
+  and 1.67x (SWE-bench) to completion time, and conversation-only resume recovered 8 to 13% of Terminal-Bench
+  tasks and 9% of SWE-bench tasks (Wu, Apr 2026). 2. Checkpoint what the next step depends on, not only
+  the transcript: at each turn boundary (after tool results, before the next model call) record the conversation
+  and the workspace together, for example a commit per step in a bare git repository kept outside the
+  project''s own history, with secrets excluded and caches dropped (Zhuang, Aug 2026), and add a process
+  or sandbox snapshot when the task leaves services running or packages installed: conversation plus files
+  recovered 100% on SWE-bench but only 28 to 42% on Terminal-Bench, where processes matter (Wu, Apr 2026).
+  Always restore conversation and workspace from the same point: inconsistent restored state appeared
+  only in the two tools that let files and conversation be restored separately, and a workspace rollback
+  that kept the agent''s passing malware scan released the uncleaned repository (Wu, Aug 2026). 3. Size
+  checkpoints to what changed: skip turns with no net file or process change (up to 87% of turns), take
+  file snapshots (about 20 to 100 ms) where only files changed and process snapshots (700 to 1,000 ms)
+  only where processes changed, and run them during the next model call; that kept a crashed run within
+  1.9% of fault-free time, while a full checkpoint every turn was 3.78x slower at 96 sandboxes per host,
+  worse than restarting (Wu, Apr 2026). 4. Treat external side effects (payments, messages, deploys, approvals)
+  as the hard part: record each call and its result in a durable ledger keyed by the step, outside the
+  checkpoint, and on resume return the recorded result instead of calling again. Test this with a real
+  kill, not a raised exception: LangGraph 1.2.9 re-ran a completed step whose result was durably written
+  after a SIGKILL, CrewAI 1.15.2''s checkpoint restore re-ran a completed effect while its state looked
+  correct, and an embedded DBOS engine ran each step''s effect once (Khan, Aug 2026). Ordering the effect
+  and the checkpoint write does not close the gap: with a failure between them, execute-then-commit repeated
+  or skipped the effect in 90 of 96 workflows and commit-then-execute in 93 (Wu, Aug 2026); use idempotency
+  keys or a transactional effect record (2.b.i). 5. Make resumes single-shot and re-check what a restore
+  carries forward: claim a parked step or approval in the shared store with a compare-and-swap before
+  running it (when 2 to 16 processes resumed one parked approval, every racer fired the gated effect in
+  36 of 40 cells) (Khan, Aug 2026). After any restore, re-validate approvals, checks and external bindings
+  (the active account or mailbox, recipients) against the live world, and store concrete values (timestamps,
+  object IDs, versions) rather than references such as "now" or "current state": rollback re-ran a test
+  mail-forwarding rule on a live mailbox and paid an invoice twice under one approval (Wu, Aug 2026);
+  gate irreversible actions (10.b.i). 6. Use checkpoints for rollback, not only crash recovery: give the
+  agent a rewind tool that restores workspace and conversation to an earlier step and adds a short note
+  on what failed. On 82 long engineering tasks with GPT-5.4 this raised success from 62.2% (continue)
+  and 78.0% (restart with notes) to 87.8%, and recovered 30% of 50 stuck runs against 8%; rewinding the
+  conversation without the workspace scored 43.9%, below not rewinding (Zhuang, Aug 2026). External effects
+  are not rewound, so keep steps 4 and 5; for branching search over snapshots see 7.c.v. 7. Measure with
+  crash-injection runs on tasks the agent already solves: one fail-stop per task at a random step, recovered
+  by restart, transcript-only resume and your checkpoints, scoring recovery correctness, redo time and
+  tokens, duplicate effects counted in a ledger the agent cannot see, and checkpoint latency exposed in
+  fault-free runs; for rollback, compare runs with and without the rewind tool at a fixed token budget.'
 detect:
-  static: Checkpoint writes with metadata; resume logic on start.
-  traces: Resume events; steps skipped on resume.
-  evals: Recovery from injected failure.
+  static: What a checkpoint covers (transcript only, workspace files, sandbox processes, a ledger of external
+    effects) and when it is written; whether resume serves recorded tool results or re-executes them;
+    whether conversation and workspace can be restored from different points; whether a parked step or
+    approval is claimed atomically before it runs; resume logic on start.
+  traces: Resume and rollback events; steps re-executed after a resume; an external effect issued twice
+    for one step; checkpoint latency exposed on the critical path; rollbacks per run and what followed
+    them.
+  evals: 'Recovery from injected crashes (a real kill, not only an exception) on tasks the agent already
+    solves, against restart and transcript-only resume: recovery correctness, redo time and tokens, duplicate
+    effects in an external ledger.'
   probes:
     what: Kill mid-run and resume.
-    construct: Terminate after an expensive step and confirm it is not redone.
+    construct: Kill right after an expensive step, after each durable write, and between an external effect
+      and its checkpoint; resume and confirm the step is not redone and the effect fires once in a ledger
+      the agent cannot see; resume one parked approval from two processes at once; roll back after a validation
+      or approval and confirm it does not carry over to the restored files or a changed external binding.
   primary:
   - probes
 impact:
   quality:
     effect: improves
-    size: small
-    basis: assessment
+    size: medium
+    when: after one injected crash, restoring files and processes recovered 100% of solved tasks against
+      28 to 42% for conversation plus files and 8 to 13% for conversation only on Terminal-Bench (Wu,
+      Apr 2026); a rewind tool restoring workspace and conversation raised success from 62.2% (continue)
+      and 78.0% (restart with notes) to 87.8% on 82 long tasks with GPT-5.4, and from 78.7% to 83.1% on
+      Terminal-Bench 2.0, but rewinding the conversation without the workspace scored 43.9% (Zhuang, Aug
+      2026); framework checkpointers re-ran completed steps after a crash (Khan, Aug 2026)
+    basis: evidence
   cost:
     effect: improves
     size: medium
-    basis: assessment
+    when: 'a crash with no checkpoint re-runs prior work: restart added up to 1.52x to 1.67x completion
+      time against within 1.9% with checkpoints, and forking from a checkpoint instead of re-running a
+      shared prefix cut RL rollout tokens 40.0 to 64.2% (Wu, Apr 2026); the rollback study reports no
+      token cost and set no budget (Zhuang, Aug 2026)'
+    basis: evidence
   performance:
-    effect: improves
-    size: small
-    basis: assessment
+    effect: mixed
+    size: medium
+    when: checkpointing only turns with net changes and overlapping snapshots with the model call kept
+      a crashed run within 1.9% of fault-free time, with p95 exposed delay of 0.44% at 64 sandboxes per
+      host; a full file-and-process checkpoint every turn was 3.06x and 3.78x slower at 64 and 96 sandboxes,
+      worse than restarting (up to 1.52x); process snapshots took 0.7 to 1.0 s against 20 to 100 ms for
+      file snapshots (Wu, Apr 2026)
+    basis: evidence
   security:
     effect: mixed
-    size: small
-    when: State files persist.
-    basis: assessment
-  governance:
-    effect: improves
     size: medium
-    basis: assessment
+    when: 'restores combine state from different points: incomplete internal state in 67.2% of 1,735 executions
+      across five frameworks, and attacks that kept a passing malware scan for an uncleaned repository,
+      re-ran a mail-forwarding rule on a live mailbox and paid twice under one approval (Wu, Aug 2026);
+      2 to 16 processes resuming one parked approval each fired its effect (Khan, Aug 2026); rollback
+      also restores a known-good state after a destructive action, such as overwritten test fixtures (Zhuang,
+      Aug 2026)'
+    basis: evidence
+  governance:
+    effect: mixed
+    size: medium
+    when: 'per-step commits and checkpoints give a reviewable history and an undo (Young, Nov 2025; Zhuang,
+      Aug 2026), but framework records can misstate what happened: CrewAI''s restore re-ran an effect
+      while its state looked correct, and LangGraph persisted schema-invalid state silently and served
+      a second, different approval the first answer''s branch (Khan, Aug 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
+  - quality
   - cost
-  - governance
+measure:
+- method: experiment
+  tier: 2
+  how: 'crash-injection runs on tasks the agent already solves: one fail-stop per task at a random step
+    (SIGKILL of the agent process or sandbox, not a raised exception), recovered by restart, transcript-only
+    resume, transcript plus files, and the full checkpoint; score recovery correctness, redo time and
+    tokens, duplicate external effects counted in a ledger the agent cannot see, and exposed checkpoint
+    latency in fault-free runs; add probes that kill right after each durable write and between an effect
+    and its checkpoint, resume one parked approval from two processes, and roll back after a validation;
+    for rollback, paired runs with and without a rewind tool on long tasks at a fixed token budget (success,
+    tokens, rewinds per run)'
+- method: monitor
+  how: resume and rollback events per run, steps re-executed per resume, external effects issued more
+    than once per step key, approvals consumed more than once, checkpoint latency exposed on the critical
+    path, checkpoint size and retention, and task outcomes after each rewind
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Context & Memory group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Context & Memory group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
   date: '2025-11-26'
-  task: Each session leaves a progress log and git commits so the next session can resume from a known state
-  effect: The initializer sets up "an init.sh script, a claude-progress.txt file that keeps a log of what agents
-    have done, and an initial git commit"; later sessions "make incremental progress, then leave structured updates."
+  task: Each session leaves a progress log and git commits so the next session can resume from a known
+    state
+  effect: The initializer sets up "an init.sh script, a claude-progress.txt file that keeps a log of what
+    agents have done, and an initial git commit"; later sessions "make incremental progress, then leave
+    structured updates." Committing progress to git with descriptive messages "allowed the model to use
+    git to revert bad code changes and recover working states of the code base."
   direction: supports
   measured: false
-  locator: The long-running agent problem
+  locator: The long-running agent problem; Incremental progress
+- source: Guanlong Wu, Dahui Li, Ke Jiang, Jianyu Niu, Cong Wang, Yinqian Zhang, "Safe to Resume? Breaking
+    Execution Continuity of Agent Execution via Rollback", https://arxiv.org/abs/2608.29381
+  date: '2026-08-29'
+  task: 'Security study of checkpoint and rollback in five agent systems (LangGraph, CrewAI, Hermes, Cline,
+    E2B): five failure modes, three end-to-end attacks, a rollback-validated prevalence study, and a microbenchmark
+    of effect and checkpoint ordering'
+  effect: 'Across 1,735 framework-task executions (one random recovery point each): incomplete internal
+    state coverage in 1,166 (67.2%), inconsistent checkpoint state in 489, external state mismatch in
+    198, divergent nondeterministic replay in 1,174 (67.7%), unrecorded external effects in 40 (2.3%).
+    E2B''s full sandbox snapshots showed no incomplete or inconsistent internal state but still allowed
+    external mismatch and replay divergence; Cline and Hermes, which restore files and conversation separately,
+    were the only systems with inconsistent restored state (249 and 240 executions). Attacks: a Hermes
+    workspace rollback kept a passing malware scan and released the uncleaned repository; a Cline task-history-only
+    restore re-ran a forwarding rule on the live mailbox the service had switched to; a LangGraph payment
+    node re-ran after a failure between payment and checkpoint, paying twice under one approval. With
+    a failure injected between an external effect and its checkpoint write, execute-then-commit repeated
+    or skipped the effect in 90 of 96 workflows (93.8%) and commit-then-execute in 93 (96.9%). 1,357 context-dependent
+    references ("now", "current state") in checkpointed state; 30 of 30 sampled findings were exploitable.'
+  conditions: 347 traces (241 Terminal-Bench, 106 AgentBench OS, DB and ALFWorld), DeepSeek-v4 as the
+    agent and in the authors' detection pipeline (98.7% precision, 99.9% recall on manual inspection);
+    a failure counts only when marked security-relevant; LangGraph and CrewAI ran one fixed agent-tool
+    workflow; the authors say counts are not a security ranking of frameworks
+  direction: mixed
+  measured: true
+  locator: §II Table I; §IV; §V-A to V-C; §VI-C Table II; §VI-D Tables III and IV
+- source: 'Yu Zhuang, Kefei Chen, Yitong Duan, Shuxin Zheng, Jian Li, Xu-Yao Zhang, "AgentRewind: Recoverable
+    Execution for Long-Horizon LLM Agents", https://arxiv.org/abs/2608.14380'
+  date: '2026-08-14'
+  task: 'Let the agent rewind to an earlier step: restore the workspace (a git commit per model or tool
+    call in a bare repository outside the project) and the conversation together, serve the retained prefix
+    from the log, and add a note on the abandoned attempt; compared with continuing, restarting with notes
+    from failed attempts, and per-action safety review'
+  effect: 'MettleBench (82 tasks), GPT-5.4 with mini-SWE-agent, success / checklist progress: continue
+    62.2% / 81.4%, restart with experiences 78.0% / 88.8%, safety review 34.1% / 54.4%, AgentRewind 87.8%
+    / 94.3%; GPT-5.4 mini success: 33.7%, 43.1%, 36.2%, 51.2%. Other harnesses with GPT-5.4, continue
+    against AgentRewind: FnCallAgent 58.5% / 81.7%, smolagents CodeAgent 67.1% / 82.9%. Terminal-Bench
+    2.0 (89 tasks): continue 78.7%, restart with experiences 70.8%, AgentRewind 83.1%. From 50 stuck endpoints,
+    recovery 30.0% against 8.0% for continuing. Ablation: without workspace rewind 43.9%, without conversation
+    rewind 65.9%, without the note 51.2%. Network requests and external-service calls are not undone;
+    the retained prefix is served from the log, so they do not fire again.'
+  conditions: Authors' own benchmark (criteria written by an LLM under their protocol) and runtime; temperature
+    0, three runs, 74.7% of task-strategy-model triples agree across runs; no step, time or token limit
+    and no cost reported; the success gain over restart with experiences is not significant for GPT-5.4
+    mini after Holm correction
+  direction: supports
+  measured: true
+  locator: AgentRewind Framework section; Tables 1 to 5; App. B Table 13; App. C.4 and C.5; App. D
+- source: 'Sajjad Khan, "Resume Means Resume: A Machine-Checked Conformance Contract for Checkpoint, Interrupt,
+    and Resume Semantics in Workflow Persistence Layers", https://arxiv.org/abs/2608.03836'
+  date: '2026-08-04'
+  task: Define six resume properties (including effect exactly-once and consume-once), model-check them,
+    and measure five agent workflow frameworks' checkpoint, interrupt and resume APIs with a deterministic
+    LLM-free harness and an external effect ledger, plus live-model runs
+  effect: 'LangGraph 1.2.9 (in-memory, SQLite and PostgreSQL savers): after a SIGKILL following a durable
+    write, resume re-executed the completed task (effect count 1 before, 2 after), and killing after each
+    of five persistence writes re-executed completed work at all four incomplete boundaries ("exactly-once
+    across interrupts, at-least-once across crashes"); a second resume with a different approval value
+    was served the first decision; schema-invalid state was persisted silently. CrewAI 1.15.2 checkpoint
+    restore re-ran a completed effect-bearing method (effect counter 2) while its state, rebuilt from
+    initial values, looked correct. pydantic-graph 1.x refused to restore after a crash inside a node.
+    Concurrent resumes of one parked interrupt (2 to 16 racers): 2,628 gated effects where exactly-once
+    predicts 400 over 40 cells, every racer firing in 36 of 40 cells, 16 fires from one approval in 10
+    of 10 runs at 16 racers; a compare-and-swap gate in the shared store served one racer. An embedded
+    DBOS 2.27.0 worker conformed on every probed cell, running each step''s effect once across process
+    death; an OpenAI Agents SDK file-backed session restore did not re-invoke a tool in a live run.'
+  conditions: Pinned releases; pure-Python probes with no model calls (crashes by exception and by SIGKILL),
+    plus 240 live runs on claude-haiku-4-5, claude-sonnet-4-6, gpt-4o-mini and gpt-4.1-mini; single independent
+    author who also ships a repair layer (Remit); existence results, no prevalence claimed
+  direction: mixed
+  measured: true
+  locator: Abstract; §II Table I; §VI-A to VI-G; Tables V and VI
+- source: 'Tianyuan Wu, Chaokun Chang, Lunxi Cao, Wei Gao, Wei Wang, "Crab: A Semantics-Aware Checkpoint/Restore
+    Runtime for Agent Sandboxes", https://arxiv.org/abs/2604.28138'
+  date: '2026-04-30'
+  task: 'Inject one crash per task and compare recovery for sandboxed agents: restart from scratch, conversation
+    only, conversation plus files, a full file-and-process checkpoint every turn, and Crab (classifies
+    each turn''s net file and process changes, checkpoints only what changed at turn boundaries, overlaps
+    snapshots with the model call)'
+  effect: '100 solved tasks per setup, one crash each: Crab, restart and every-turn full checkpoints recovered
+    100%; conversation plus files 100% on SWE-bench but 28% (Claude Code) and 42% (iFlow-cli) on Terminal-Bench;
+    conversation only 13% and 8% on Terminal-Bench and 9% on SWE-bench. Crab stayed within 0 to 1.9% of
+    fault-free time; restart added up to 1.52x (Terminal-Bench) and 1.67x (SWE-bench); full checkpoints
+    every turn were 3.06x and 3.78x slower at 64 and 96 sandboxes per host (Claude Code, Terminal-Bench).
+    Up to 87% of turns needed no checkpoint; file snapshots took about 20 to 100 ms and process snapshots
+    700 to 1,000 ms; p95 exposed checkpoint delay 0.44% of task time at 64 sandboxes. Live-model pilot
+    (50 tasks): conversation only 28%, conversation plus files 34% (48% under replay) as the agent''s
+    corrective actions perturbed the restored run; restart 1.55x median time. Forking from a checkpoint
+    cut RL rollout tokens 40.0 to 64.2%; in a counterfactual two-run case study a rollback tool shortened
+    one run 29%.'
+  conditions: Claude Code (Claude Opus 4.6) and iFlow-cli (iFlow-ROME) on Terminal-Bench, SWE-agent (MiniMax-M2.7)
+    on SWE-bench; deterministic replay of recorded traces of tasks each agent had solved; 16 to 96 sandboxes
+    on one 128-core host; authors' own runtime; the abstract's "checkpoint traffic" cut of up to 87% is
+    the share of turns skipped
+  direction: supports
+  measured: true
+  locator: §1; §3.1 Figure 1; §3.2; §7.2 Figures 12, 13 and 15; §7.3 Figure 17; §7.4; §7.5
 assessment:
   qa:
     unit: Checkpoint round-trip.
@@ -108,6 +309,15 @@ assessment:
     primary:
     - cost
     - governance
+related:
+- 4.b.iii
+- 4.b.ii
+- 7.d.i
+- 2.b.i
+- 10.b.i
+- 10.a.i
+- 7.c.v
+- 7.b.i
 provenance:
   layer: target
   origin: observed
@@ -115,3 +325,14 @@ provenance:
   sub_type: memory
   library_group: Context & Memory
   library_source: catalog
+caveats: 'The quality gains come from the authors'' own systems: rollback was tested on the authors''
+  own 82-task benchmark with one model family, no token or step limit and no cost reported, and 74.7%
+  of task-strategy-model triples agreed across three runs (Zhuang, Aug 2026); the crash-recovery comparison
+  replays recorded traces of tasks the agents had already solved (Wu, Apr 2026). A restored run is not
+  a replay: with a live model, conversation plus files recovered 34% against 48% under replay because
+  the agent''s corrective actions perturbed the run (Wu, Apr 2026), and widely used framework checkpointers
+  differ in what they re-execute, so a framework''s exactly-once claim has to be tested with real kills
+  (Khan, Aug 2026). Checkpoints cannot undo external effects and ordering the effect and the checkpoint
+  write does not fix that (90 and 93 of 96 workflows still repeated or skipped the effect); the security
+  study''s prevalence counts come from its own model-built detection pipeline (98.7% precision on manual
+  inspection) at one recovery point per run (Wu, Aug 2026).'

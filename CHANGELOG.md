@@ -7,6 +7,8 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-26
+
 - 20 optimizations go from outline to full card, with a summary, a how-to and the signals that say
   each applies, backed by 122 new sources (each dated, quoted and located in its entry): few-shot
   examples (3.a.i), self-discover reasoning (3.c.i), filesystem checkpoints (4.b.i),

@@ -60,6 +60,12 @@ Spawn parallel sub-agents when the work splits into independent, breadth-first p
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
 - `aot-kit:verify-completion` (9.b.iii, Verify completion against the environment before the agent stops)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
+- `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
+- `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

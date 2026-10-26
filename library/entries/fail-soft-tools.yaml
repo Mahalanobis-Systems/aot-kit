@@ -17,37 +17,99 @@ domains:
 evidence_domains:
 - web-research
 - code-generation
+- tool-use
+- reasoning
 categories:
 - tools.misuse
 - orchestration.bound
-summary: 'Guard the tool-call parser against calls in an unexpected shape (a string where a dict is expected),
-  catch errors inside tools (bad file format, failed fetch, extraction failure) and return a usable message
-  instead of raising, and replace custom extraction code (HTML, tables) with a standard parser. A failed
-  call must never crash the loop. Evaluate the errored cases first: a tool fix can break the agent outright.
-  Retry transient failures (rate limits, timeouts and server errors from the model provider or a tool''s
-  backend) with backoff and a bounded count, and when the count runs out, return that to the loop as a
-  result rather than ending the run.'
-how: 1. From traces, list unhandled exceptions by tool and by parser. 2. Add type guards where calls and
-  results are built. 3. Wrap each tool body; on error return a short message the model can act on. 4.
-  Replace hand-written HTML or table extraction with a library parser. 5. Add bounded retries with backoff
-  for transient errors on model and tool calls. 6. Re-run the errored cases; then the full set.
+summary: 'Keep a failed call from ending the run: validate tool calls and model responses, return tool
+  errors to the agent as results, and retry only failures that are transient and safe to repeat. Concretely,
+  guard the parser against calls in an unexpected shape (a string where a dict is expected, a missing
+  required argument), catch errors inside tools (bad file format, failed fetch, extraction failure) and
+  return a usable message instead of raising, replace custom extraction code (HTML, tables) with a standard
+  parser, and retry rate limits, timeouts and server errors with backoff and a bounded count, returning
+  exhaustion to the loop as a result. The harness often decides the outcome: under injected faults, tool-call
+  faults that tool error handling caught cost under 5 points while unchecked truncated arguments cost
+  one pipeline 52.63 points, and in real benchmark runs a repeat detector that ended runs after repeated
+  malformed calls, with no final message to the model, ended 55 runs, only one of which scored above zero.
+  The limits: fixing crashes rarely turned them into passes (3 and 1 of 11 in one study), a tool fix can
+  break the agent outright, 91.3% of failures mined from MCP server issues were permanent so retrying
+  them only burns tokens, and blindly retrying a write whose reply was lost duplicated it in 53.33% of
+  trials, so retry writes only with server-side idempotency or after checking whether the first call landed.'
+how: '1. Start from the harness as it is: from traces, list unhandled exceptions by tool and by parser,
+  and runs the harness ended rather than the model (a repeat detector after malformed calls, a provider
+  stream error, the output cap); then inject faults at the tool and model-API boundaries (explicit errors,
+  timeouts, rate limits, empty and truncated responses, malformed arguments) for a baseline, since in
+  two fault-injection studies robustness varied with the agent system more than with the model. 2. Validate
+  every call and response before using it: add type guards where calls and results are built (a tool call
+  emitted as a string rather than a dict crashed one agent), check each model response''s finish_reason,
+  emptiness and tool-call arguments against the tool''s schema, and return the validation error as the
+  tool result (its wording is 7.b.ii). Empty or truncated responses arrive as successful calls and bypass
+  error handling: tool-call faults that error handling caught cost under 5 points of pass@1, while a pipeline
+  that passed truncated arguments on unchecked lost 52.63 points. When the same malformed call repeats,
+  warn the model before a repeat detector (7.b.i) ends the run: a detector that ended runs after repeated
+  malformed edit calls, with no final message, ended 55 runs and one scored above zero, while the same
+  model repaired such failures in other harnesses. 3. Wrap each tool body; on error return a short result
+  marked as an error that the model can act on (what the error says is 7.b.ii). 4. Replace hand-written
+  HTML or table extraction with a library parser. 5. Retry in the harness only what is transient: rate
+  limits, timeouts, server errors and dropped streams from the model provider or a read-only tool, with
+  backoff and a bounded count (provider stream errors cut off turns in 25 of one model''s 62 runs in one
+  harness, all scored as failures). Resume a turn cut off by the output cap instead of ending the run:
+  one harness resumed 100 such runs and 48 went on to score above zero. Return permanent errors at once,
+  marked as not retryable: 91.3% of failures mined from MCP server issues were permanent, and in the traces
+  examined, agents left to decide never told permanent from transient failures and retried a failing tool
+  up to 12 times in a row. When the count runs out, return that to the loop as a result. 6. For tools
+  with side effects, retry automatically only if the call failed before it was sent, the server honors
+  an idempotency key, or a check shows the first call did not land; gate irreversible writes with 10.b.i.
+  Blind retries (up to 3, with exponential backoff) of writes whose reply was lost duplicated them in
+  53.33% of trials; client-side keys helped only on endpoints that deduplicate; server-side idempotency
+  on every endpoint gave 97.24% recovery with no duplicates, and checking before retrying raised recovery
+  from 43.13% to 75.00% on four composite workflows. 7. Re-run the errored cases first (a tool fix can
+  crash the agent outright), then the full set, then paired runs with the same injected faults: task success,
+  runs ended by the harness, recovery per fault type, retries per failure, duplicate side effects, and
+  LLM calls and tokens per task.'
 detect:
-  static: parsing that assumes a fixed call shape; tool bodies with no try/except; custom HTML or table
-    extraction code
+  static: parsing that assumes a fixed call shape; model responses used without checking finish_reason,
+    empty content or tool-call arguments against the schema; tool bodies with no try/except; custom HTML
+    or table extraction code; retry wrappers that retry every error, including permanent ones and writes
+    without an idempotency key the server honors
   traces: runs ending in an unhandled exception (AttributeError, parse or fetch errors) rather than an
     answer; tool spans returning empty or garbled text; failure rows labeled tool-recovery-failure or
     observation-failure; requests failing on rate limits or transient server errors with no retry, or
-    with retries exhausted; failure rows labeled service-failure or recovery-failure-external
+    with retries exhausted; failure rows labeled service-failure or recovery-failure-external; runs ended
+    by the harness rather than the model (a repeat detector after malformed calls, a provider stream error,
+    the output cap); three or more consecutive calls to a tool that keeps failing; a write retried after
+    a timeout and committed twice
   evals: crash outcomes as a share of failures; request-failure outcomes
+  probes:
+    what: 'Faults at the tool and model-API boundaries: malformed calls, errors, timeouts, empty and truncated
+      responses, permanent failures, and lost replies on writes.'
+    construct: Wrap the model client and each tool so a seeded schedule returns an explicit error, a timeout,
+      a rate limit, an empty or truncated response, or arguments missing a required field, as permanent
+      and as transient faults, and drop the reply after a write commits; pass when the run continues to
+      an answer or a reported failure, no permanent fault is retried, retries stay within the bound, and
+      no write is committed twice.
 impact:
   quality:
     effect: improves
-    size: small
-    when: 'VeRO: removed all 11 parser crashes in 2 of 3 runs, but only 1-3 became passes; a parser switch
-      on SimpleQA went 0.62 to 0.86 against the last working version'
+    size: medium
+    when: 'tool-call faults caught by tool error handling cost under 5 points of pass@1, while a pipeline
+      that passed truncated arguments on unchecked lost 52.63 points (Tan, Aug 2026); a repeat detector
+      ending runs on malformed calls ended 55 runs, one scoring above zero, and resuming output-capped
+      turns let 48 of 100 runs go on to score (Li, Oct 2026); after lost replies on writes, server-side
+      idempotency gave 97.24% recovery against 33.20%, and verify-before-retry 75.00% against 43.13% (Sah,
+      Oct 2026); limits: VeRO removed all 11 parser crashes in 2 of 3 runs but only 3 and 1 became passes,
+      and a table-extraction fix crashed one agent (validation 0.10) until a standard parser took it to
+      0.86 (VeRO, Feb 2026); calibrated MCP faults still cut task-completion score from 8.08 to 3.23 with
+      errors returned to the model (Iannillo, Oct 2026)'
     basis: evidence
   cost:
-    effect: none
+    effect: degrades
+    size: small
+    when: no extra calls when nothing fails; under injected faults, retries raised AutoGen's LLM calls
+      per task from 1.72 to 7.3 (4.24x) while a pipeline that failed early used fewer (0.71x) (Tan, Aug
+      2026); agents retried a failing MCP tool three or more times in a row in 38 runs, the costliest
+      of these runs reaching 52 tool calls and 107,849 tokens (Iannillo, Oct 2026)
     basis: evidence
   performance:
     effect: none
@@ -55,39 +117,177 @@ impact:
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: mixed
+    size: medium
+    when: blind retries (up to 3, with exponential backoff) of writes whose reply was lost duplicated
+      the external effect in 53.33% of trials, 65.62% with Gemini 3.8 Flash and 51.25% with GLM-5.2; server-side
+      idempotency took duplicates to 0.00%, and retries of calls that failed before dispatch caused none
+      in 3,028 capable trials (Sah, Oct 2026)
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
-- method: before-after
+- method: experiment
   tier: 2
-  how: unhandled-exception rate, crash outcomes and request-failure rate on the same cases or load stream
+  how: 'paired runs on the same tasks and model, the harness as is against the change, with faults injected
+    at the tool and model-API boundaries at fixed steps: explicit errors, timeouts, rate limits, empty
+    and truncated responses, malformed or schema-violating arguments, permanent as well as transient failures
+    (most real MCP failures are permanent), and lost replies on write calls; report task success, runs
+    ended by the harness rather than the model, recovery per fault type, retries per failure, duplicate
+    external effects, and LLM calls and tokens per task; re-run the errored cases first, since a tool
+    fix can crash the agent'
+- method: monitor
+  how: 'in production traces: unhandled-exception and crash outcomes; runs ended by the harness (repeat
+    detector, provider stream error, output cap); schema-validation failures of tool calls per model and
+    provider; request failures and retries per request by error class, and retry exhaustion; consecutive
+    calls to a failing tool; writes committed twice (same idempotency key or same arguments)'
 evidence:
 - source: paper Figure 14
   task: GAIA
   effect: '"Robust file/Wikipedia tools" flat (0.24 to 0.22); the follow-up "fix Wikipedia tool file errors"
     0.22 to 0.26.'
+  date: 2026-02
 - source: paper Figure 15
   task: SimpleQA
   effect: A Wikipedia table-extraction fix crashed the agent (validation to 0.10) before being replaced
     by T18.
+  date: 2026-02
 - source: paper §A.4, Table 16
   task: TerminalBench-2 (Terminus-KIRA on Haiku 4.5)
   effect: Eliminated all 11 baseline AttributeError crashes in two of three runs; only 3 and 1 of those
     samples became passes, the rest failed differently.
+  date: 2026-02
 - source: paper §5.4
   task: TerminalBench-2
   effect: Found independently by the Tools-B=89 and Filesystem-B=178 runs. Tools-B=178 guarded three result
     builders but not the parser and left the crash intact, yet had the best pass rate.
+  date: 2026-02
 - source: paper Figure 15
   task: SimpleQA
   effect: Validation 0.10 to 0.86 and test 0.58 to 0.86; the best SimpleQA result in Table 2 (0.86 max).
-caveats: Tool fixes can break the agent outright; evaluate the errored samples first. Reliably
-  discoverable but neither necessary nor sufficient for a pass-rate gain.
+  date: 2026-02
+- source: 'Antonio Ken Iannillo, Joshua Segun Owotogbe, Roberto Natella, Francesco Avallone, Kristina
+    Kudryavtseva, Indika Kumara, "Tool-Calling LLM Agents Under Realistic MCP Faults: Scale Does Not Purchase
+    Fault Tolerance", https://arxiv.org/abs/2610.32555'
+  date: '2026-10-23'
+  task: Inject MCP tool faults drawn from a profile calibrated on 57,240 issue and pull-request threads
+    from 1,774 MCP server repositories (explicit errors, wrong or invalid output, delays, silent drops;
+    permanent, intermittent or transient) into three agent stacks that all return tool errors to the model,
+    and record quality, completion and what the agent does after each failure
+  effect: 'Profile: "91.3% permanent, 8.0% intermittent, 0.75% transient; EXPLICIT_ERROR/PERMANENT alone
+    carries 65.6%" (N=13,824 classified failures). Pooled, "task completion score drops 60% (8.08 to 3.23)";
+    completion fell from 95-100% without faults to 88-97%. LangChain absorbed faults best; MCPBench lost
+    a further 0.93 points relative to LangChain (p=0.048) and the OpenAI Agents SDK a further 0.84 (p=0.074),
+    which the authors "treat as suggestive rather than established". After a failure the next action was
+    a different tool 57% of the time, a final answer 22% and a retry 21%; "Precise fault diagnosis, for
+    instance distinguishing a permanent error from a transient one, is absent in all examined traces."
+    38 runs made three or more consecutive calls to the same failing tool; the longest had "12 consecutive
+    retries over 22 tool calls and 47,761 tokens", the costliest "52 tool calls, 107,849 tokens". The
+    120B model kept no larger share of its fault-free score than the 20B (p=0.96).'
+  conditions: gpt-oss-20B and gpt-oss-120B served locally (MXFP4, 16K context); MCP-Bench plan-and-execute
+    loop, OpenAI Agents SDK and LangChain create_agent with loop bounds of 40, 40 and 25; 25 single-server
+    MCP-Bench tasks, 3 seeds, 1,350 cells; gpt-4o-mini judge; GitHub issues over-represent persistent
+    failures, so the profile is a stress test, and only 9 of 1,905 fired faults were transient or intermittent;
+    the stack effect is confounded with fault exposure
+  direction: mixed
+  measured: true
+  locator: Abstract; §4 (Profile synthesis, What is calibrated, Table 2); §5.2-5.3; §6.1-6.3; §7; App.
+    F Table 6; App. G
+- source: 'Dolly Sah, Tanmay Sah, Harshul Jain, Tanya Sah, "UndoBench: Separating Task Competence from
+    Recovery Capability in Tool-Using AI Agents", https://arxiv.org/abs/2610.05622'
+  date: '2026-10-04'
+  task: 'Inject a fault after a write tool''s mutation commits but before its reply arrives (and, in extensions,
+    before dispatch and mid-mutation) and compare recovery policies: naive retry, client-side idempotency
+    keys, a zero-privilege mutation journal, server-side idempotency on every endpoint, and verify-before-retry'
+  effect: 'Lost-reply faults, 2,880 paired trials: nominal success 83.54% against 46.72% conditional recovery.
+    Naive retry ("re-issuing tool calls up to 3 times with exponential backoff upon receiving any error"):
+    42.77% recovery and duplicate external effects in 53.33% of trials; client-side idempotency keys:
+    53.49% and 45.42%, since only three endpoints deduplicated and "retrying unacknowledged calls blindly
+    produced duplicates in 100% of trials across five workflows". Commercial models under naive retry:
+    duplicates in 65.62% (Gemini 3.8 Flash) and 51.25% (GLM-5.2) of trials, recovery 21.08% and 21.89%.
+    Server-side idempotency on every endpoint: 97.24% recovery and 0.00% duplicates, against 33.20% with
+    standard keys. Faults before dispatch: naive retry recovered 78.44% with zero duplicate effects among
+    3,028 nominally capable trials. On four composite workflows verify-before-retry recovered 75.00% after
+    commit against 43.13% for naive retry, and 25.89% against 0.00% mid-mutation.'
+  conditions: Llama-3.1-8B and Llama-3.2-3B (Q4) under direct tool calling and LangGraph (equivalent within
+    10 points), plus Gemini 3.8 Flash and GLM-5.2 in a secondary extension; 12 held-out workflows in 8
+    domains on mocked APIs (SQLite, local Git, mocked Stripe and AWS), one fault per run, 20 seeds; the
+    +10.72-point gain from client-side keys had a bootstrap CI of 0 to +24.23 and adjusted p=1.00; verify-before-retry
+    was evaluated post hoc; the authors' own journaling baseline ran at parity with naive retry
+  direction: mixed
+  measured: true
+  locator: Abstract; §3 (Recovery Baselines); §4.1-4.3, Tables 1-2; §4.5 Table 3; §5 Table 4; §6; Limitations
+- source: 'Yixuan Li, Yiyun Zhou, Yao Long Teng, Fuchao Yang, Yanchen Deng, Zhiyi Lyu, Xuyu Dong, Feng
+    Chen, Bo An, "Finding the Right Fit: Model-Harness Interactions across Agent Tasks", https://arxiv.org/abs/2610.00917'
+  date: '2026-10-01'
+  task: Cross four configurable harnesses with five current models on three agent benchmarks, and code
+    how each harness handed failures back (malformed calls, provider stream errors, output-capped turns)
+    in matched trajectories
+  effect: In ten matched Terminal-Bench 4 pairs, "Almost all responses were model-initiated (180 of 192)"
+    and diagnosis or a targeted patch resolved the signal in 116 of 133 cases; "The decisive difference,
+    however, was usually not whether the model could repair an error but whether the harness returned
+    the failure as usable feedback." OpenHands' repeat detector "ended 55 runs, 48 of them Kimi re-issuing
+    an edit call without its required content argument, and only one of these runs scored above zero."
+    openJiuwen re-prompts the model after a turn is cut by the output cap ("100 runs resumed, 48 of which
+    went on to score above zero"). "Turns cut off by provider stream errors (25 of Kimi's 62 PI runs on
+    TB4) and sandbox stalls are scored as failures". Kimi K3 on Terminal-Bench 4 scored 11.11% (OpenHands),
+    17.46% (DeepSeek Harness), 11.11% (PI) and 28.57% (openJiuwen).
+  conditions: Claude Opus 5, GPT-6 Astra, GLM-5.3, Kimi K3 and DeepSeek V4 Pro via OpenRouter pinned to
+    first-party providers, high reasoning effort; OpenHands, DeepSeek Harness, PI and openJiuwen, plus
+    Codex and Claude Code natively; TUA-Bench (120), ALE-CLI (99) and Terminal-Bench 4 (63); 66 configurations,
+    6,204 scored trajectories; retries and limits at each harness's defaults; the failure-handling counts
+    come from the authors' coding of final attempts, and harness score gaps bundle error handling with
+    tools, prompts and limits
+  direction: supports
+  measured: true
+  locator: Abstract; §3.2; Table 1; §5.1; App. A Table 5
+- source: 'Gou Tan, Zhensu Sun, Jieke Shi, et al., "AgentChaos: Chaos Engineering for Agent Systems via
+    Programmatic Fault Injection", https://arxiv.org/abs/2608.06790'
+  date: '2026-08-07'
+  task: Inject faults into model API responses at runtime (errors, timeouts, empty, truncated, corrupted
+    and schema-violating content or tool-call arguments) across five agent systems and four backbones,
+    and measure the drop in pass@1, call counts and how failures surface
+  effect: 'All systems degraded, pass@1 dropping "from 0.87% (Mini-SE on SWE-bench Pro) to 49.66% (MapCoder
+    on HumanEval+ under GPT-5.2)", and the ranking held across backbones. With Claude-Sonnet-4.5: "Most
+    tool call faults cause Δpass@1 below 5% (e.g., error ranges from -12.5% to 4.05%), because tool error
+    handling catches them before they propagate to subsequent agents", but tool-call truncation cost MapCoder
+    52.63 points "because its pipeline passes corrupted tool call arguments to the next stage without
+    validation"; on MAD, "empty content causes a 38.46% drop, close to error content (37.5%) and higher
+    than timeout content (22.33%)". Under faults AutoGen went from 1.72 to 7.3 LLM calls (4.24x) and from
+    0.47 to 3.07 tool calls (6.55x) "because faulty responses trigger repeated retries"; silent failures
+    (plausible wrong output with no warning) were 21.82% to 65.71% of failed tasks. The authors advise
+    "output validation after each LLM API call, such as checking finish_reason, verifying code syntax
+    completeness, and confirming that tool call arguments match the expected schema."'
+  conditions: AutoGen, MAD, MapCoder, EvoMAC and Mini-SE reimplemented on Google ADK; Claude-Sonnet-4.5,
+    GPT-5.2, DeepSeek-V3.2 and Seed-1.8 at temperature 0.7; HumanEval, MBPP, HumanEval+, MBPP+, MMLU-Pro,
+    MATH-500 and SWE-bench Pro; 65 fault configurations, about 4.6 triggered tasks each; error and timeout
+    faults are written into the body of a successful response, so provider-level HTTP retries are not
+    exercised
+  direction: supports
+  measured: true
+  locator: Abstract; §4.3; §5.1-5.3, Tables 3, 4, 6, 7; §6.1-6.2
+caveats: 'Fail-soft handling is necessary but not sufficient: in VeRO removing all 11 crashes turned only
+  3 and 1 of them into passes, a tool fix crashed one agent outright, and even with errors returned to
+  the model, calibrated MCP faults cut task-completion scores by 60% (Iannillo, Oct 2026). Retries help
+  only where failures are transient and the call is safe to repeat: 91.3% of failures mined from MCP issue
+  threads were permanent (a stress profile, since issues over-represent reproducible bugs), agents retried
+  permanent failures on their own, and blind retries of writes duplicated them in 53.33% of trials in
+  a benchmark with mocked APIs and one fault per run; no study here tests marking errors as not retryable.
+  The fault-injection studies are small or synthetic (about 4.6 triggered tasks per fault configuration
+  in one, two gpt-oss models on an easy benchmark in another, 12 workflow clusters with verify-before-retry
+  tested post hoc in a third), and harness comparisons bundle error handling with tools, prompts and limits,
+  so measure the effect in your own agent.'
 related:
-- 9.b.i
-- 9.a.i
+- 7.b.ii
+- 7.b.i
 - 7.b.iii
+- 9.b.i
+- 2.a.ii
+- 10.b.i
+- 4.b.i
+- 9.a.i
 provenance:
   layer: target
   origin: observed

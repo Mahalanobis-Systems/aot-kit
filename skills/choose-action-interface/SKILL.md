@@ -67,6 +67,8 @@ The paper flags this as intuitively helpful but the test gain is within noise; M
 - `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

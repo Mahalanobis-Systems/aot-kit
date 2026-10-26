@@ -57,6 +57,7 @@ Applies only where a semantic layer already covers the metrics being asked about
 
 - `aot-kit:ground-queries-in-schema` (5.b.i, Give the model the schema it queries, in context: descriptions, keys, codes, sample values)
 - `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

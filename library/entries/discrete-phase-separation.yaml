@@ -5,7 +5,7 @@ legacy_id: P47
 slug: discrete-phase-separation
 name: Discrete phase separation
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it splits the work into isolated phases
@@ -14,65 +14,235 @@ levers:
 - context
 domains:
 - general
-evidence_domains: []
+evidence_domains:
+- code-generation
 categories:
 - context.isolate
-summary: Research, plan, execute; pass only distilled conclusions.
+summary: 'Run research, planning and implementation as separate agent sessions, each starting from a fresh
+  context that holds only the previous phase''s written output (a research document, then a plan file),
+  and have a person review that document before the next phase starts. It pays when the plan knows more
+  than the implementer would find on its own: on SWE-bench Verified, a plan written by a stronger model
+  at the agent''s first edit raised resolution by 6.0 to 16.8 points across three harnesses, and a fresh
+  implementer given only that plan did as well as continuing the original session with it (58.6% vs 58.2%)
+  while making more calls. The plan is also the risk: plans from the agent''s own model recovered 12 of
+  223 failures against 9 with no plan, a weaker planner''s plans broke 14.6% of runs that had passed,
+  and with incomplete instructions a read-only plan phase never raised task success and cut requirement
+  scores by 11.3 and 13.5 points for two of three models because it stopped exploring early. In practice
+  teams use it for large new features, read the specs only partially and see them go stale; no study we
+  found tests the full split with review against one continuous session.'
+how: '1. Start from one continuous session on your real tasks, with the harness''s own compaction (see
+  5.a.i), and record where it goes wrong: the wrong problem solved, the fix put in the wrong place, requirements
+  the request left out but the repository shows, rework after review. Split only the tasks that fail that
+  way, typically large new features or multi-file changes in unfamiliar code; practitioners skip it for
+  small fixes, bugs and one-off scripts, and 82.0% of the public specs studied describe new features.
+  2. Research: run a read-only session (no edit tools) that explores the code and writes a research document:
+  the relevant files with paths and line references, how the current behavior works, constraints and conventions,
+  and requirements the request does not state. Tell it to treat the request as evidence rather than the
+  full specification and to keep exploring until it can say how each requirement will be checked; a plan
+  phase that stopped exploring early wrote plans covering only part of the task, and HumanLayer traced
+  its own failed 7-hour attempt to research that did not go deep enough through the dependency tree. 3.
+  Plan: start a fresh session from the request and the research document only, and have it write a plan
+  file: every change file by file, the reason for each, and the test or command that validates it. Use
+  your strongest model here: a stronger planner''s plans raised resolution by 6.0 to 16.8 points, the
+  implementer''s own model as planner recovered 12 of 223 failures against 9 with no plan, and a weaker
+  planner''s plans broke 14.6% of passing runs. Keep detail that names classes, functions or library versions
+  scoped to this change; it is what goes stale first. 4. Review at each boundary: a person reads the research
+  document and the plan before the next phase starts and corrects or rejects them, because a wrong line
+  of research or plan turns into many wrong lines of code. Check that the review happens; most spec-driven
+  tool users read specs only partially or handed the review to another agent. 5. Implement: start a fresh
+  session with the request, the plan file and a structured handoff in fixed fields (files changed or to
+  change, validation commands and results, what failed, what is still uncertain, what to verify first),
+  and tell it to check the plan against the repository rather than trust it. Notes cost part of the raw
+  history''s gain (+4.4 to +5.0 against +6.1 points for the same model), so keep the research transcript
+  where the implementer can read it on demand. If research and planning used little context, appending
+  the plan to the same session is cheaper: a fresh implementer matched the continuing one (58.6% vs 58.2%)
+  but needed 2.0 times the executor calls on failed tasks. 6. After the change merges, update or archive
+  the research and plan files so no later session reads them as current (see 4.b.iii). 7. Measure with
+  paired runs on the same tasks and models: one continuous session, the plan in the same session, and
+  the phase split, with and without the boundary review; report task success, requirement coverage on
+  tasks whose request omits requirements, runs the baseline solved that the variant broke, tokens and
+  wall time per phase and human review minutes, and label each failure as research, plan, handoff or implementation.'
 detect:
   static: Phases with distilled handoffs rather than shared history.
-  traces: Phase boundaries; handoff size vs full history.
+  traces: Phase boundaries and what crosses them; handoff size against the full history; files the implement
+    phase re-reads that research already covered; edits made to the plan at review; research or plan files
+    older than the code they describe.
   evals: Quality vs monolithic run.
   judge: Rate handoffs for completeness.
   probes:
-    what: Tasks where premature implementation hurts.
-    construct: Tasks with a design decision that must precede coding.
+    what: Multi-file tasks whose request leaves out requirements the repository reveals, where a design
+      decision must precede coding.
+    construct: Give tasks with a hidden test per requirement and an instruction that states only some
+      of them; run one continuous session and the phase split on the same model and budget, and score
+      requirement coverage, passing work broken, and tokens per phase.
   primary:
   - static
   - traces
 impact:
   quality:
-    effect: improves
+    effect: mixed
     size: medium
-    basis: assessment
+    when: 'pays when the plan beats what the implementer finds alone: a stronger model''s plan at the
+      first edit +6.0 to +16.8 points on SWE-bench Verified, a fresh implementer from that plan alone
+      58.6% vs 58.2% for the continuing session; the implementer''s own model as planner 12 of 223 failures
+      recovered against 9 with no plan, and a weaker planner''s plans 43.4% against a 45.6% baseline with
+      14.6% of passing runs broken (Patel, Oct 2026); under incomplete instructions a read-only plan phase
+      never raised Success@1 and cut Score@1 from 68.8 to 55.3 and 66.3 to 55.0 for two of three models
+      (Liu, Oct 2026); distilled notes +4.4 to +5.0 points against +6.1 for the raw history, same model
+      (KC, Jun 2026); one team''s 35k LOC in 7 hours, anecdotal (Horthy, Aug 2025)'
+    basis: evidence
   cost:
-    effect: improves
-    size: small
-    basis: assessment
+    effect: mixed
+    size: medium
+    when: 'more when the next phase must re-explore: a fresh implementer from the same plan used 2.0 times
+      the executor calls and 22% more executor tokens on failed tasks, and 519.1M against 347.4M executor
+      tokens on 500 tasks (Patel, Oct 2026); planning itself adds tokens, one team reporting two to three
+      times those of direct prompting, self-reported (Agarwal, Oct 2026); fewer when bounded notes replace
+      a long history: a same-model successor given notes used 602k to 660k prompt tokens against 811k
+      with the raw trace, its first prompt about 10k characters against 87k (KC, Jun 2026)'
+    basis: evidence
   performance:
     effect: degrades
-    size: small
-    basis: assessment
+    size: medium
+    when: 'phases run in sequence and wait for review: a fresh implementer needed 2.0 times the executor
+      calls (Patel, Oct 2026); a successor working from notes took a median 53 to 55 steps against 41
+      with the raw trace (KC, Jun 2026); one team reported about twice the time, self-reported (Agarwal,
+      Oct 2026); 3 of 7 hours went to research and plans (Horthy, Aug 2025); no source measures review
+      wait time'
+    basis: evidence
   security:
     effect: none
     basis: assessment
   governance:
-    effect: improves
+    effect: mixed
     size: medium
-    when: Review at boundaries.
-    basis: assessment
+    when: research and plan files are a reviewable record of intent, and reading a 200-line plan instead
+      of 2,000 lines of code is the stated point (Horthy, Aug 2025); in practice most spec-driven tool
+      users read specs only partially or delegated review to other agents, 98.3% of spec files with history
+      had one author, 68.5% of inline spec comments came from bots, and specs went stale as code changed
+      (Agarwal, Oct 2026)
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
   - quality
   - governance
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs on the same tasks, model and budget: one continuous session with compaction, a plan
+    in the same session, and the phase split with fresh contexts, each with and without the boundary review;
+    include tasks whose instruction omits requirements that hidden tests check; report task success, requirement
+    coverage, baseline-solved runs the variant broke, tokens and wall time per phase and review minutes;
+    repeat with the planner on a stronger model and on the implementer''s model, and again after a model
+    upgrade'
+- method: monitor
+  how: 'per task: phases run, tokens and time per phase, handoff size, files the implement phase re-reads
+    that research already covered, edits made to the plan at review and whether a reviewer opened it,
+    failures traced to research, plan or handoff, and research or plan files older than the code they
+    describe'
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Multi-Agent group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: Dex Horthy (HumanLayer), "Getting AI to Work in Complex Codebases", https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/ace-fca.md
   date: '2025-08-29'
-  task: Describes a research, plan, implement workflow for coding agents that keeps context utilization low and
-    adds human review between phases
-  effect: '"We use a "research, plan, implement" workflow"; reports shipping 35k LOC to BAML in 7 hours (3 on research/plans,
-    4 on implementation). Anecdotal, no controlled comparison.'
+  task: Describes a research, plan, implement workflow for coding agents that keeps context utilization
+    low and adds human review between phases
+  effect: '"We use a "research, plan, implement" workflow"; reports shipping 35k LOC to BAML in 7 hours
+    (3 on research/plans, 4 on implementation). A 7-hour attempt to remove Hadoop dependencies from parquet-java
+    "did not go well": "the research steps didn''t go deep enough through the dependency tree". Anecdotal,
+    no controlled comparison.'
   direction: supports
   measured: false
   locator: Intro; Solving complex problems
+- source: 'Viral Patel, Boyin Tan, Jason Xue, Youcheng Sun, "PAUSE: Search-Free Steering of Coding Agents
+    Before Their First Source-Code Edit", https://arxiv.org/abs/2610.29870'
+  date: '2026-10-21'
+  task: 'At a coding agent''s first source-code edit (a median of 60% into the run, after exploration,
+    reproduction and testing), a separate Planner call reads the task and the transcript and writes one
+    repair plan; the same executor then continues its session with the plan appended (resume), or a fresh
+    executor starts from the initial repository with only the plan (restart). Controls: no plan, self-reconsideration,
+    and the executor''s own model as Planner'
+  effect: 'Online with GPT-5.6 Sol as Planner, SWE-bench Verified resolution rose from 50.2% to 65.0%
+    (SWE-agent), 37.0% to 43.0% (Pi) and 45.4% to 62.2% (OpenHands); Multilingual 28.3% to 43.0%. On 223
+    recorded Qwen3-coder failures: no plan recovered 9 (4.0%), self-reconsideration 13 (5.8%), the executor''s
+    own model as Planner 12 (5.4%), GPT-5.6 Sol 79 (35.4%); with Devstral-small 14, 17, 20 and 53 of 174.
+    Full benchmark against a 45.6% baseline: Sol plans 58.2% resume and 58.6% restart; Qwen3-30B-Thinking
+    plans 43.4% resume and 41.4% restart, with 26 regressions (14.6%) on 178 solved tasks against 10 for
+    resuming with no plan. On failures, restart needed "2.0× as many Executor calls" and 22% more executor
+    tokens; over 500 tasks 519.1M against 347.4M executor tokens.'
+  conditions: Qwen3-coder and Devstral-small executors; GPT-5.6 Sol, Gemini 3.8 Flash, Gemini 3.5 Flash
+    Lite and Qwen3-30B-Thinking planners; SWE-agent, Pi and OpenHands; SWE-bench Verified (500) and Multilingual
+    (300); offline comparisons one run per task; the Planner reads the transcript without tools and no
+    human reviews the plan; the gain mainly reflects a stronger Planner model
+  direction: mixed
+  measured: true
+  locator: §4.1 Table 3; §4.2 Tables 4-5; §4.4 Table 6; §5
+- source: 'Kaiming Liu, Yuxuan Liu, Jinrui Ju, Minyuan Ruan, Xuanyu Lei, Peng Li, Yang Liu, "Instructions
+    Are Evidence, Not Objectives: Measuring Outcome Alignment of Agents", https://arxiv.org/abs/2610.17757'
+  date: '2026-10-13'
+  task: 'A two-phase plan mode under partial instructions: a read-only plan phase (editing and submission
+    tools withheld) ends by writing PLAN.md, then the same episode executes it; compared with the same
+    model, instruction and budget without the plan phase'
+  effect: 'Score@1 (share of five requirements passed) and Success@1 (all passed), without vs with plan
+    mode: GPT-5.6-Luna 41.6 vs 45.9 and 3.1 vs 3.1; Kimi-K3 68.8 vs 55.3 and 21.9 vs 17.2; DeepSeek-V4.1-Flash
+    66.3 vs 55.0 and 25.0 vs 21.9. "the plan mode never raises Success@1"; "the plan-phase agent does
+    not infer the complete true requirements, and ... it often stops exploring too early and writes the
+    plan."'
+  conditions: TiGanEval, 64 tasks (40 software engineering from DeepSWE, 24 research), five requirements
+    each, initial instruction deliberately partial; 120 turns and 360 tool calls shared across both phases;
+    three models; seed-to-seed deviation within 4.3 Score points on replicated configurations; one context
+    across both phases, no human review
+  direction: contradicts
+  measured: true
+  locator: §5.4 Table 6; Appendix F.3; Table 7
+- source: Shyam Agarwal, Anmol Singhal, Andrew Macvean, Bogdan Vasilescu, Travis Breaux, "Spec-Driven
+    Development as Prescribed and as Practiced", https://arxiv.org/abs/2608.25202
+  date: '2026-10-15'
+  task: Studied spec-driven development (a spec, design or plan, and tasks written before the agent codes,
+    as in Spec Kit, OpenSpec and Kiro) through Reddit discussions, interviews with 21 practitioners including
+    eight tool makers, and 266 active repositories from a corpus of 470,795 spec files
+  effect: Practitioners "used SDD selectively", skipping it for small tasks, bugs and one-off scripts;
+    an estimated 82.0% of specs describe new features. "Most tool users read specs only partially or delegated
+    their review to other agents"; 98.3% of spec files with a recorded history have a single author and
+    68.5% of inline spec comments were written by bots. Most reported more reliable agent work but "could
+    not separate this benefit from improvements in models"; one team found "the spec-driven runs typically
+    consume two to three times as many tokens and take about twice as long" and “We couldn’t prove it
+    improved the code” (Reddit posts). 77.6% of specs contain implementation detail, 75% of those naming
+    classes, functions, file paths or library versions; agents departed from specs during implementation
+    and specs went stale; 81.5% of spec files have a single recorded commit. The authors recommend that
+    tools "separate specification, implementation, and review contexts".
+  conditions: Thematic analysis plus repository mining with LLM-as-judge labels; no controlled comparison;
+    token and time figures are self-reported by one team; title, five authors and all cited findings first
+    appear in v4 (2026-10-15)
+  direction: mixed
+  measured: false
+  locator: §IV Findings 2, 3, 4, 7, 9, 10; §V-A; §V implications
+- source: 'Dipesh KC, Anjila Budathoki, "Handoff Debt: The Rediscovery Cost When Coding Agents Take Over
+    Interrupted Tasks", https://arxiv.org/abs/2606.02875'
+  date: '2026-06-01'
+  task: 'A coding agent is stopped at a fixed point (after its first source edit, first validation result
+    or first post-failure edit) and a successor in a fresh context resumes from the frozen repository
+    with one of four handoffs: repository only, the raw trace, free-form summary notes, or structured
+    notes (changed files, validation evidence, uncertainty, rollback risk, what to verify)'
+  effect: 'Same-model takeover (Qwen to Qwen) solved rate: repository only 46.4%, raw trace 52.5% (+6.1,
+    p 0.035), summary notes 51.4% (+5.0, p 0.093), structured notes 50.8% (+4.4, p 0.134); median steps
+    99, 41, 53 and 55; prompt tokens 1.63M, 811k, 602k and 660k. Across three successors the raw trace
+    gained +6.1 to +14.9 points and notes +1.1 to +10.5, notes significant only for Devstral. Median first
+    prompt: 87k characters for the raw trace, 9.8k and 10.0k for the notes. For Gemma, notes slightly
+    lowered the solved rate on unfinished work (-1.8 and -0.9 points).'
+  conditions: 75 SWE-bench Verified tasks, 181 handoff points, 2,172 takeover runs; Qwen3.6-27B predecessor;
+    Qwen3.6-27B, Gemma-4-31B and Devstral-Small-2-24B successors; OpenHands-style runtime; one run per
+    view, a three-attempt rerun on 40 points agreed; mid-task handoffs, not research-to-plan boundaries
+  direction: mixed
+  measured: true
+  locator: §5.1-5.3 Table 2; Appendix Tables 7, 8, 10
 assessment:
   qa:
     unit: Handoff schema.
@@ -109,6 +279,15 @@ assessment:
     primary:
     - quality
     - governance
+related:
+- 5.c.ii
+- 4.b.iii
+- 5.a.i
+- 7.a.ii
+- 4.b.ii
+- 6.a.i
+- 6.c.ii
+- 7.b.iv
 provenance:
   layer: target
   origin: observed
@@ -116,3 +295,12 @@ provenance:
   sub_type: orchestration
   library_group: Multi-Agent
   library_source: catalog
+caveats: 'No study we found compares the full research, plan and implement split with human review against
+  one continuous session on the same tasks: the measured results cover a plan injected at the first edit,
+  where the gain comes from a stronger planner model, a same-session plan mode with no review under deliberately
+  partial instructions (64 tasks, three models), and mid-task handoffs between 24B to 31B open-weight
+  models (75 source tasks, one run per view). Plans can hurt: a weaker planner''s plans broke passing
+  runs, a plan written after too little exploration covered only part of the task, and distilled notes
+  kept less of the solve-rate gain than the raw history. The practice evidence is self-reported: practitioners
+  could not separate the benefit from model improvements, one team reported two to three times the tokens
+  and about twice the time, and the 35k-LOC report is one team''s anecdote.'

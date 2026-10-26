@@ -59,6 +59,11 @@ Run the agent in an OS-level sandbox with a workspace path guard that resolves s
 - `aot-kit:risky-action-policy` (10.b.i, Gate irreversible actions: allow, ask or deny by side effect)
 - `aot-kit:contain-untrusted-input` (10.c.i, Contain sensitive data and untrusted input)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
+- `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
+- `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
+- `aot-kit:filesystem-checkpoints` (4.b.i, Filesystem-based agent state and checkpoints)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

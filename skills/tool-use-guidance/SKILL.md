@@ -58,6 +58,8 @@ For each tool or skill that is under-used or misused, add an explicit trigger ru
 - `aot-kit:rewrite-tool-surface` (2.a.ii, Rewrite the tool surface: names, schemas, descriptions)
 - `aot-kit:reduce-tool-surface` (2.a.i, Reduce the tool surface: remove and consolidate tools, then defer the rest behind search)
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

@@ -71,6 +71,14 @@ The paper's example of a gain that does not transfer across evaluation sets.
 - `aot-kit:prompt-chaining-with-gates` (7.a.ii, Prompt chaining with gate checks)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
+- `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:reflection-loop` (7.c.i, Reflection loop)
+- `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

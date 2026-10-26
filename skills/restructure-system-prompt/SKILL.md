@@ -67,6 +67,7 @@ Intermediate 20-task subset showed 45% and misled the optimizer; full evaluation
 - `aot-kit:extractable-final-answer` (9.b.i, Make the final answer reliably extractable: state the format, extract robustly, force an answer at the limit)
 - `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
 - `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
+- `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

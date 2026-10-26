@@ -5,7 +5,7 @@ legacy_id: P58
 slug: skill-library
 name: Skill library evolution
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it adds a reusable skill memory
@@ -16,66 +16,248 @@ domains:
 - memory
 evidence_domains:
 - planning
+- code-generation
+- tool-use
 categories:
 - memory.reuse
-summary: Persist working code as reusable, lazily loaded skills.
+summary: 'Have the agent turn runs that passed a verifier into reusable skills (a code function or a SKILL.md
+  procedure), store them in a library, and on later tasks show it only the few a separate selection step
+  picks, reviewing what goes in and pruning what goes unused. It pays on recurring task families when
+  skills come from verified successes: skills distilled from an agent''s own successful runs raised success
+  on those tasks (Terminal-Bench-2 0.5935 to 0.7548 with GPT-5.3-Codex), but skills distilled from failed
+  runs fell below no experience, and skills a model wrote before attempting the task scored 8.1 to 11.5
+  points below no skills with Opus 4.7, GPT-5.5 and Gemini 3.1 Pro. Two costs grow with the library: agents
+  stop opening the right skill (loaded-skill recall 73.6% to 27.4% with 1,000 irrelevant skills listed)
+  unless a preselector chooses, and an agent that writes skills from retrieved ones copied planted malicious
+  code into its own library on 20.3% to 41.8% of tasks across six models.'
+how: '1. Start from the baseline: the same model and harness with no skill library, plus an arm with cleaned
+  traces of past runs in context (cheaper: 95.3K fewer tokens per task than distilled skills, for 4.8
+  points less success in one study), on recurring task families with a deterministic verifier, scored
+  on held-out instances. Do not ask the model to write skills from what it already knows before it attempts
+  the task: such self-generated skills scored 8.1 to 11.5 points below no skills with Opus 4.7, GPT-5.5
+  and Gemini 3.1 Pro, because solvers never opened them or followed confident errors such as a hard-coded
+  1000x unit conversion. 2. Write a skill only from a run the verifier passed: distill the trajectory
+  into a code function or a SKILL.md (when to use it, preconditions, steps, failure modes, a verify step)
+  with task-specific paths and values replaced by placeholders. If failed runs feed the writer, label
+  them: skills distilled from failed runs alone fell below no experience in all six benchmark-model cells,
+  and hiding the success and failure labels cut Gemini 3.1 Pro on Terminal-Bench-2 from 0.7462 to 0.4000.
+  Voyager added a program only after self-verification passed, and removing self-verification cut discovered
+  items by 73%. 3. Gate admission: keep agent-authored skills in a quarantine that retrieval cannot see
+  until a reviewer or a signed admission step approves them, and tell the authoring agent that retrieved
+  skills are untrusted and that banner-style "REQUIRED PATTERN" or "DO NOT MODIFY" boilerplate must not
+  be copied (10.c.i). In one study that four-line instruction cut self-poisoning from 20.3% to 41.8% of
+  tasks to at most 6.7% with no significant loss in task completion, while a name blocklist caught none
+  of the authored copies and a code scanner fell to 7% after a one-line rewrite. 4. Retrieve a few skills
+  through a separate step instead of listing them all (the same deferral idea as 2.a.i): near 100 skills,
+  an LLM preselector over names and descriptions; at thousands, retrieval followed by an LLM selector;
+  expose a handful (at most five in the study). With 1,000 irrelevant skills listed, loaded-skill recall
+  fell from 73.6% to 27.4% although a selector given the same list found 73.9%; LLM preselection cut tokens
+  per run from 1,966k to 547k and added a median 8 to 41 seconds of routing; asking the agent to plan
+  its skill use first did less than preselection. 5. Prune and revise from telemetry: log which skills
+  each run opens and its outcome; retire skills that are never opened or whose runs keep failing, and
+  merge near-duplicates, since irrelevant descriptions suppress loading (masking them restored recall
+  from 18.3% to 63.3%) and similar skills are the hardest to tell apart (top-1 precision 70.5% to 53.4%
+  on similar pools). If a poisoned skill is found, scrub the agent-authored copies too: in one model the
+  infection rose to 68% of tasks after the planted seeds were removed. 6. Measure paired against the baseline,
+  same model and harness, on held-out tasks (not only the tasks the skills came from): pass rate, tokens
+  and time per task, loaded-skill recall, zero-load rate and the misapplied-skill rate (10.0% of skill
+  runs in one study); rerun with the library padded to its expected size and with planted-skill probes,
+  since task success can stay flat while skill use collapses (precision 29.6% to 3.3% with success 36.4%
+  to 39.3%).'
 detect:
-  static: A skills directory; a load_skills tool; lazy MCP binding.
-  traces: Skill reuse rate; skills authored per session.
-  evals: Time to solve repeated task families.
-  judge: Review self-authored skills.
+  static: A skills directory or store the agent writes to after runs; skills written without a verifier
+    outcome, or from the model's own knowledge before it attempts the task; new skills retrievable with
+    no review or quarantine; authoring that reads retrieved skills as templates; every skill's name and
+    description listed to the agent on every run.
+  traces: Skill reuse rate; skills authored per session; loaded-skill recall and zero-load rate per run;
+    per-skill opens and outcomes; skills never opened; skills distilled from failed or unlabeled runs;
+    authored skills that copy retrieved code verbatim.
+  evals: Paired runs with and without the library on held-out tasks from recurring families (pass rate,
+    tokens, time); pass rate and loaded-skill recall as the library is padded with irrelevant skills.
+  judge: 'Review each new skill before it becomes retrievable: task-specific paths or values baked in,
+    confident assumptions no verifier checked, boilerplate copied from retrieved skills, overlap with
+    existing skills.'
   probes:
-    what: Repeated task families.
-    construct: Five variants of one task; later ones should reuse the skill.
+    what: Recurring task families; a growing library; planted skills.
+    construct: 'Five variants of one task family with a verifier: early runs write skills, later held-out
+      variants should open and benefit from them; the same probes with the library padded with irrelevant
+      skills; and a planted skill with copy-me boilerplate and a harmless callback, which no authored
+      skill should reproduce.'
   primary:
   - traces
   - evals
 impact:
   quality:
-    effect: improves
-    size: medium
-    basis: assessment
+    effect: mixed
+    size: large
+    when: skills distilled from an agent's own successful runs raised success on the same tasks (Terminal-Bench-2
+      0.5935 to 0.7548 with GPT-5.3-Codex, 0.5000 to 0.7923 with Gemini 3.1 Pro), but skills from failed
+      runs fell below no experience in all six cells and hiding outcome labels cut 0.7462 to 0.4000 (Jiang,
+      Aug 2026); skills written before any attempt scored 8.1 to 11.5 points below no skills while curated
+      ones added 18.2 to 24.8 (Li, Feb 2026); with 1,000 irrelevant skills listed, Pass@3 fell from 51.6%
+      to 38.6% (Liu, Oct 2026); Voyager found 3.3x more unique items than prior agents (Wang, May 2023)
+    basis: evidence
   cost:
-    effect: improves
+    effect: mixed
     size: medium
-    when: Catalog cites 91 percent token reduction with lazy MCP.
-    basis: assessment
+    when: skills used 34.2K fewer tokens per task than the Raw arm but 95.3K more than cleaned traces
+      of the same runs, on 83 matched tasks (Jiang, Aug 2026); listing every skill's description raised
+      tokens per run from 498k to 1,966k with 1,000 irrelevant skills added, and an LLM preselector brought
+      it to 547k (Liu, Oct 2026)
+    basis: evidence
   performance:
-    effect: improves
+    effect: mixed
     size: small
-    basis: assessment
+    when: Voyager reached tech-tree milestones up to 15.3x faster, counted in prompting iterations, than
+      prior agents (Wang, May 2023); a run took 15.3 minutes with only the relevant skills and 17.0 with
+      1,000 more listed, and preselection adds a median 8 to 41 seconds of routing (Liu, Oct 2026)
+    basis: evidence
   security:
     effect: degrades
-    size: small
-    when: Self-authored code.
-    basis: assessment
+    size: large
+    when: planted skills were copied into agent-authored skills on 20.3% to 41.8% of SWE-bench Verified
+      tasks across six open-weight models, leaving 4.9 to 9.0 times the planted count, and one model's
+      infection rose to 68% after the plants were removed; a name blocklist caught 0 of 275 authored copies;
+      a four-line counter-prompt cut it to at most 6.7%, and a curator-signed quarantine stops re-retrieval
+      (Wu, Aug 2026)
+    basis: evidence
   governance:
     effect: mixed
     size: medium
-    when: Needs review of skills.
-    basis: assessment
+    when: 'skills are versioned files a reviewer can read, but task success hides library failure: skill-use
+      precision fell from 29.6% to 3.3% as the pool grew from 5 to 100 while success moved from 36.4%
+      to 39.3% (Jiang, Aug 2026), and Claude Opus 4.6 kept Pass@3 at 62.2% (from 64.9%) while its loaded-skill
+      recall fell from 81.3% to 30.9% (Liu, Oct 2026); agent-authored skills bypass submission-side review
+      unless new entries wait in a curator-signed quarantine (Wu, Aug 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
-  - cost
   - quality
+  - cost
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired runs, same model and harness: no library, the agent-built library, and where available
+    a curated library or cleaned traces of past runs, on held-out instances of recurring task families
+    scored by a deterministic verifier; pass rate, tokens and time per task, loaded-skill recall, zero-load
+    rate and misapplied-skill rate; repeat with the library padded to its expected size with irrelevant
+    skills, with implicit loading against a preselector, and with planted skills carrying copy-me boilerplate
+    and a harmless callback to measure how often authored skills reproduce them'
+- method: monitor
+  how: per-skill loads and outcomes, the zero-load rate on tasks that have a matching skill, skills never
+    opened (prune), skills admitted and rejected with their source run and verifier result, authored skills
+    that copy retrieved code or add network or credential access, and pass rate on the task families the
+    library serves
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Learning group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Learning group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: 'Wang et al., "Voyager: An Open-Ended Embodied Agent with Large Language Models", https://arxiv.org/abs/2305.16291'
   date: '2023-05-25'
   task: An ever-growing library of executable code skills that the agent stores and retrieves
   effect: '"obtains 3.3x more unique items, travels 2.3x longer distances, and unlocks key tech tree milestones
-    up to 15.3x faster than prior SOTA"'
-  conditions: Minecraft; GPT-4
+    up to 15.3x faster than prior SOTA". Ablation: without the skill library, progress plateaus in later
+    stages (figure only, no number); removing self-verification, which decides when a program is done
+    and added to the library, cut discovered items by 73%.'
+  conditions: Minecraft (MineDojo); gpt-4-0314; three trials; the headline compares the whole system (automatic
+    curriculum, skill library, iterative prompting with self-verification) against ReAct, Reflexion and
+    AutoGPT, not the skill library alone; milestone speed is counted in prompting iterations
   direction: supports
-  locator: Abstract
+  locator: Abstract; §2.2; §3.3 Table 1; §3.4 Fig. 9
+- source: 'Jinlin Liu, Wei Chen, Xiaojin Zhang, "Lost in Implicit Routing: How LLM Agents Fail to Load
+    Relevant Skills at Scale", https://arxiv.org/abs/2610.18522'
+  date: '2026-10-13'
+  task: Hold SkillsBench tasks and their relevant skills fixed, add up to 10,000 irrelevant marketplace
+    skills, and compare implicit loading from skill descriptions with a separate preselection step (LLM,
+    retrieval, or retrieval then LLM) that exposes at most five skills
+  effect: 'Implicit routing, 0 to 1,000 irrelevant skills: loaded-skill recall 73.6% to 27.4%, zero-load
+    rate 9.3% to 51.6%, Pass@3 51.6% to 38.6% (no skills: 26.8% to 34.1% per model); the same models selecting
+    from the full list without executing recalled 73.9%. Masking only distractor descriptions restored
+    recall from 18.3% to 63.3% (10-task subset); a plan-first prompt recalled 39.9% against 70.6% for
+    preselection. At 1,000 skills, LLM preselection: recall 62.0%, Pass@3 51.6%, 547k tokens per run against
+    1,966k; retrieval then LLM was best at 1,000 and 10,000 (Pass@3 52.8% and 50.4%); median routing time
+    8 to 19 s (LLM) and 33 to 41 s (hybrid) from 10 to 1,000 skills; a run took 15.3 minutes with no extra
+    skills and 17.0 with 1,000. Proprietary check: Claude Opus 4.6 Pass@3 64.9% to 62.2% while loaded-skill
+    recall fell from 81.3% to 30.9%.'
+  conditions: SkillsBench, 82 tasks, three runs per cell, over 15,000 trajectories; executors GLM-5, Kimi
+    K2.5, MiniMax M2.5; 37-task check on Claude Opus 4.6, Gemini 3.1 Pro and GPT-5.4; curated golden skills
+    plus distractors sampled from more than 20,000 market skills, not agent-built skills; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1; §3.2 Tables 1-2; §3.3 Tables 3-5; §4.2 Tables 7-9; §5; App. D Tables 17-19;
+    App. E Tables 21-22
+- source: 'Xiaodong Wu, Yu Shi, Qi Li, Zhimin Zhao, Xiangman Li, Bram Adams, Ahmed E. Hassan, Jianbing
+    Ni, "EVOMAL: Self-Poisoning in Self-Evolving Coding Agents", https://arxiv.org/abs/2608.25776'
+  date: '2026-08-26'
+  task: Plant skills carrying a payload in the Voyager-style library of a coding agent that writes a reusable
+    tool for each task by imitating retrieved skills, measure how often it re-authors the payload into
+    its own stored skills, and test existing detectors and two defenses
+  effect: 'Agent self-poisoning rate 20.3% to 41.8% across six models on 153 tool-relevant SWE-bench Verified
+    tasks, 18.3 to 32.0 points above a payload-free control; 31 to 64 newly authored malicious skills,
+    4.9 to 9.0 times the 8 planted. DeepSeek-V4-Pro reached 11.1% with the payload alone, and a single
+    seed (0.4% of the library) gave it 19.6%. Targeting one task family: up to 86.7% (Qwen3, 15-task pytest
+    family), 35.3% to 63.5% over the three families combined. After the seeds were removed, Qwen3 rose
+    to 68% by round 5. A name blocklist caught 0 of 275 authored copies; a code scanner caught 85%, 7%
+    after a one-line rewrite. A four-line counter-prompt cut the rate to at most 1.8% on the headline
+    attack and at most 6.7% in every setting, with no statistically significant loss in task completion;
+    a curator-signed quarantine for agent-authored skills blocks their re-retrieval.'
+  conditions: mini-SWE-agent with a Voyager-style skill manager (top-5 embedding retrieval, 232 benign
+    skills plus 8 planted); Devstral-Small-2, Gemma-4-31B, Qwen3-Coder-Next, GPT-OSS-120B, MiniMax-M2.7,
+    DeepSeek-V4-Pro; also SWE-bench Pro (114 tasks) and reruns on OpenHands and Claude Code scaffolds;
+    the agent is asked to write a reusable tool for every task; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §6.1; §6.3 Table 2; §6.4 Table 3; §6.5; §7; §9.1 Table 5; §9.2; §9.3
+- source: 'Zhiyuan Jiang, Fangrui Huang, Hanwen Xing, Xander Wu, Yipeng Gao, Rui Cao, Mengdi Wang, Shilong
+    Liu, Yijiang Li, "Demystifying Agent Skills: Why They Work-Until They Don''t", https://arxiv.org/abs/2608.14036'
+  date: '2026-08-14'
+  task: Distill an agent's own successful and failed runs of a task into a SKILL.md or into cleaned workflow
+    memory, rerun the tasks, vary the success and failure mix and whether outcome labels are shown to
+    the skill writer, and test skill use from pools of 5 to 100 skills
+  effect: 'Success-only skills against no prior experience: Terminal-Bench-2 0.5935 to 0.7548 (Codex +
+    GPT-5.3-Codex) and 0.5000 to 0.7923 (Gemini CLI + Gemini 3.1 Pro); SkillsBench 0.5083 to 0.7250 and
+    0.4762 to 0.7429. Failure-only skills fell below no experience in all six benchmark-model cells. Withholding
+    outcome labels: Gemini on Terminal-Bench-2 at 3 successes and 2 failures 0.7462 against 0.4000. Across
+    all mixtures: skill 61.9%, no experience 59.1%, workflow memory 55.9%; skill over workflow memory
+    +6.06 points (95% CI +0.76 to +11.36). Skill guidance misapplied or ignored in 10.0% of skill runs
+    (0.8% without skills). Tokens per task on 83 matched tasks: skill 521.5K, Raw arm 555.7K, workflow
+    memory 426.2K. Pools of 5 to 100 skills: execution-time skill-use precision 29.6% to 3.3% while success
+    went from 36.4% to 39.3%; top-1 embedding precision on similar pools 70.5% to 53.4%.'
+  conditions: Subsets of Terminal-Bench 2.0, Terminal-Bench Pro and SkillsBench; 5 trials per task; Codex
+    + GPT-5.3-Codex and Gemini CLI + Gemini 3.1 Pro Preview; skills scored on the same tasks whose runs
+    they were distilled from, tasks chosen because raw runs both passed and failed; retrieval study on
+    curated SkillsBench skills with GPT-5.4 and Gemini 3.1 Pro; failure-mode shares labeled by an LLM
+    judge; two authors also wrote SkillsBench
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3; §5.1-5.5; Tables 1 and 4; App. A.4; App. A.8 Table 12; App. A.9 Table 13
+- source: 'Xiangyi Li, Yimin Liu, Wenbo Chen, et al., "SkillsBench: Benchmarking How Well Agent Skills
+    Work Across Diverse Tasks", https://arxiv.org/abs/2602.12670'
+  date: '2026-02-13'
+  task: Run 87 expertise-heavy tasks with deterministic verifiers under no skills, curated skills, and
+    skills the agent first writes for itself with Anthropic's skill-creator (told not to solve the task)
+    and then solves with
+  effect: 'Self-generated skills scored below no skills on all three configurations: Claude Code + Opus
+    4.7 34.9% against 43.0% (-8.1), Codex + GPT-5.5 35.5% against 46.8% (-11.3), Gemini CLI + Gemini 3.1
+    Pro 24.5% against 36.0% (-11.5); curated skills 61.2%, 66.5% and 60.8% (+18.2 to +24.8). Trajectory
+    audit: 10 of 12 audited trajectories never listed, read or mentioned the generated skills; authoring
+    displaced task work; one used pack hard-coded a wrong 1000x unit conversion; the strongest win was
+    an answer key written inside the graded sandbox. Across 18 configurations, curated skills raised the
+    pass rate from 33.9% to 50.5%.'
+  conditions: 87 tasks, 8 domains, three trials per cell; self-generated arm on three configurations only,
+    as a diagnostic (Claude Code ran it at max effort against high for its baselines; Codex and Gemini
+    reused one generated pack per task); numbers from v4 (Jun 2026), v1 reported no benefit on average
+    over 7 configurations; skills written before any attempt, not distilled from verified runs; independent
+    of the practice
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4; §5.1; App. D.6 Table 6; App. D.6.1
 assessment:
   qa:
     unit: Skill loading.
@@ -112,6 +294,15 @@ assessment:
     primary:
     - cost
     - quality
+related:
+- 4.c.i
+- 2.a.i
+- 2.b.ii
+- 5.c.ii
+- 2.a.iii
+- 10.c.i
+- 7.d.ii
+- 9.a.i
 provenance:
   layer: target
   origin: observed
@@ -119,3 +310,13 @@ provenance:
   sub_type: memory
   library_group: Learning
   library_source: catalog
+caveats: 'The positive evidence for agent-built skills is narrow: the strongest controlled gain scored
+  skills on the same tasks whose runs they were distilled from (tasks chosen because raw runs both passed
+  and failed), its 6.06-point lead is over cleaned traces with a lower bound of 0.76, and Voyager''s headline
+  compares its whole system, not the library alone, with GPT-4 in Minecraft. The self-generated deficit
+  comes from skills written before any attempt, so it does not test skills distilled from verified successes,
+  and one configuration ran that arm at a higher effort level. The poisoning study used six open-weight
+  models, attacker-planted seeds and an agent asked to author a tool on every task; the routing study
+  used curated SkillsBench skills with marketplace distractors, mostly on open-weight models with a 37-task
+  check on Claude Opus 4.6, Gemini 3.1 Pro and GPT-5.4. No source here measures an agent-grown library
+  over months of production use.'

@@ -63,6 +63,7 @@ The measured gain comes from a semantic-layer vendor's study (Cube) on one 25-ta
 - `aot-kit:semantic-layer-routing` (7.a.i, Route metric questions through a deterministic semantic layer; fall back to text-to-SQL)
 - `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
+- `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
 - `aot-kit:tune-search-tool` (8.b.i, Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality)
 - `aot-kit:choose-retriever` (8.a.i, Choose the retriever by corpus size and question type)
 

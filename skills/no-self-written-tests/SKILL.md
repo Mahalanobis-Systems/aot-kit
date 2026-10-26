@@ -56,6 +56,7 @@ Agent-written tests are mostly print probes and do not change resolve rate. Prom
 ## Related
 
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
+- `aot-kit:reflection-loop` (7.c.i, Reflection loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

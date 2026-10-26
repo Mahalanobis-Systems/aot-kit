@@ -34,8 +34,8 @@ A separate evaluator (an LLM judge with written criteria, a different model, or 
 
 1. Start from the single pass, tuned with the same effort, and from best-of-N at equal tokens; add the loop only where outputs often fall short and no compiler, test or execution check can judge them (if one exists, feed its verdict back instead, 9.a.i).
 2. Write the evaluator's criteria as a few gradable items, each with a hard pass threshold, and calibrate it with a few scored examples; where possible let it check by acting (drive the app with Playwright, compare the diff with the original request). The same criteria in the generator's prompt also steer the first draft.
-3. Make the evaluator separate and skeptical: its own call and context, not the generator's dialogue history; a model at least as capable as the generator; tune its prompt by reading its logs against your own verdicts until it stops approving problems it found. Check it on labeled good and bad outputs and planted-defect probes before wiring it in.
-4. Return findings the generator can act on (failing criterion, where, expected against actual) and tell it to keep what already passed; unconstrained regeneration breaks parts that were right.
+3. Make the evaluator separate and skeptical: its own call and context, not the generator's dialogue history; a model at least as capable as the generator; tune its prompt by reading its logs against your own verdicts until it stops approving problems it found. Check it on labeled good and bad outputs and planted-defect probes before wiring it in. A judge from another model family does not remove favoritism (judges favor any model whose mistakes resemble theirs), and content-free answers such as ':' or 'Thought process:' can pass it, so include them among the probes.
+4. Return findings the generator can act on (failing criterion or checklist item, where, expected against actual; told which checklist items failed, Gemini 2.5 Pro went from 29.5 to 94.7, against -2.5 to +2.6 with no feedback) and tell it to keep what already passed; unconstrained regeneration breaks parts that were right.
 5. Stop on pass or after a low cap (most gains came in the first 2 to 4 rounds); raise the cap only if the per-round curve keeps rising. Return the best version rather than the last, and stop early when the score stalls or drops.
 6. Measure against a check the loop never sees (a human-labeled sample or a deterministic metric), per round: quality, share of items that end worse than their first output, evaluator agreement with the audit, tokens and latency.
 
@@ -60,7 +60,7 @@ A separate evaluator (an LLM judge with written criteria, a different model, or 
 - Prithvi Rajasekaran (Anthropic), "Harness design for long-running application development"… (2026-03-24): "tuning a standalone evaluator to be skeptical turns out to be far more tractable than making a generator critical of its own work". Out of the box the evaluator would "identify legitimate issues, then talk itself into deciding they…
 - Max Charas, Marc Bruggmann (Spotify), "Background Coding Agents: Predictable Results Through Strong Feedback Loops (Honk, Part 3)"… (2025-12-09): "out of thousands of agent sessions, the judge vetoes about a quarter of them. When that happens, the agent is able to course correct half the time." The most common trigger is "the agent going outside the instructions outlined in the…
 - Zhihui Xie, Jie Chen, Liyu Chen, Weichao Mao, Jingjing Xu, Lingpeng Kong, "Teaching Language Models to Critique via Reinforcement… (2025-02-05): Qwen2.5-Coder generator, Pass@1 averaged over CodeContests, LiveCodeBench and MBPP+: zero-shot 38.75; after five critique rounds 38.30 with its own critique, 39.98 with GPT-4o, 42.77 with the trained critic. CodeContests 7.88 to 12.48…
-- …and 6 more sources in `library/entries/evaluator-optimizer-loop.yaml`.
+- …and 10 more sources in `library/entries/evaluator-optimizer-loop.yaml`.
 
 ## Caveats
 
@@ -76,6 +76,10 @@ Most studies are small or single-run (one app per harness, 150 Bash questions, 2
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:audit-verifier-cascade` (9.c.iii, Audit a verifier-gated cascade against a gold sample the verifier never sees)
 - `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
+- `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
+- `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
+- `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

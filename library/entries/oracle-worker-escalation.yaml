@@ -5,7 +5,7 @@ legacy_id: P42
 slug: oracle-worker-escalation
 name: Oracle-worker multi-model
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it adds a multi-model topology
@@ -14,19 +14,72 @@ levers:
 - model
 domains:
 - general
-evidence_domains: []
+evidence_domains:
+- code-generation
+- tool-use
+- conversation
+- reasoning
 categories:
 - topologies.escalate
 - models.cheap-verifiable
-summary: Cheap worker, expensive oracle on request.
+summary: 'Let a cheap model do the work and call an expensive one only when a trigger fires: a cascade
+  escalates when the cheap answer looks unreliable or fails a check, a router picks the model before the
+  call, and an advisor tool lets a cheap agent consult a stronger model mid-task. It pays when the trigger
+  really separates the cheap model''s failures: a two-model cascade beat the best single model at the same budget by 2.1 to 8.2 points on average across
+  budgets, a learned consult policy recovered 44% to 81% of the gap to the strong
+  model on three agent benchmarks at 34.5% to 48.1% of its cost, and re-running only the failures of a low-effort run at high effort matched an all-high run for about
+  40% less (computed task by task from existing runs, not run end to end). The trigger is the weak link:
+  none of six commercial routers beat a random mix of two well-chosen models at matched cost (the worst
+  trailed by 10.5 points), a third to fifth model in a cascade added at most 0.43 points, and agents left
+  to decide for themselves consulted rarely and late. In Anthropic''s tests on current models the advisor
+  bought about what more effort does (1.7 points for 2.1 times the cost on coding) and scored 7 points
+  lower on chart reading, where it was configured but consulted on 1 of 300 tasks.'
+how: '1. Start from single-model baselines on your own tasks: the cheap and the strong model alone, each
+  across effort settings (the strong one at low effort too), priced per completed task, plus a random
+  mix of the two at the same spend. A pairing must beat that whole curve: Anthropic''s coding advisor
+  pairing (90.1% at $2.92 per attempt) landed on its executor''s own effort curve (88.4% at $1.38 on high,
+  91.1% at $4.11 on xhigh), and no commercial router beat the random mix. Picking one model per call site
+  statically is 1.b.i. 2. If the outcome is checkable (tests, a schema, a sound verifier), try the simplest
+  cascade first: run cheap and escalate only the failures. Opus 5.5 at low effort with its failures re-run
+  at high solved about 97% for about $0.17 a task, against 95.3% for $0.29 with everything at high, a figure
+  computed task by task from existing runs rather than run end to end. A
+  checker that passes bad work lets those failures through, so audit it on a gold sample (9.c.iii). 3.
+  Use two models, not a ladder: allowing three to five models did not raise mean test accuracy in 118
+  of 135 comparisons (at most +0.43 points), and even with true query difficulty known a two-model roster
+  was within 1 point of the best roster of any size. Take the cheap model from the cost-accuracy frontier;
+  in one 26-model set it trailed the strongest by 1.6 points at a 96% discount. 4. Measure the trigger
+  before trusting it. For a confidence-score cascade, check how well the score separates the cheap model''s
+  errors from the strong model''s: log-probability scores reached AUROC 0.63 to 0.80 for the cheap model''s
+  correctness yet beat random escalation at the same escalation rate (not the same cost) by only about 0.3 points
+  on MATH. For a pre-call router, check
+  it against the random two-model mix at the same spend (commercial routers trailed it by 1.0 to 10.5
+  points). 5. In agents, trigger consults on execution evidence and workflow phase rather than on the
+  agent''s own sense of being stuck, and cap them. On SWE-bench Verified, a learned policy at 2.78 consults
+  per episode solved 48.0%, fixed triggers (before committing to an approach, before finishing, on stalls)
+  41.3%, random placement at similar volume 28.0%, and the orchestrating model left to choose (not volume-matched) made 0.41 consults per episode, 77% of
+  them in the last third; on Terminal-Bench the learned policy only tied the fixed triggers (34.7% each). Do not re-run whole agent tasks on the strong model
+  after a failed self-check: that cascade cost $59.68 against $45.90 for the strong model alone. 6. Watch
+  the consult rate and whether the advice is used. Sonnet 5.5 at its default effort never consulted on
+  20 SWE-bench Pro problems; a pairing that consulted on most tasks at default effort consulted on few
+  once its effort was lowered, and then scored below the executor alone; with the advisor tool attached
+  but never called, GPQA cost 12% to 25% more (its definition is about 1,000 prompt tokens per request);
+  ignored advice made up 58% of the learned policy''s remaining SWE-bench failures. A consult that fires
+  on most tasks can cost more than the strong model alone (1.8 times on chart reading). 7. Measure on
+  held-out tasks with gold outcomes over several seeds: success and cost per completed task (counting
+  failed cheap attempts and strong-model tokens) against every step-1 baseline, escalation or consult
+  rate, and latency on escalated tasks; re-run at every model or price change.'
 detect:
   static: Two models with an escalation call from worker to oracle.
-  traces: Escalation rate; oracle tokens share.
-  evals: Quality vs cost against single-model baselines.
+  traces: Escalation or consult rate and when it fires (turn of the first consult, share in the last third
+    of the run); strong-model share of tokens and cost; escalated tasks whose outcome changed; advice
+    the worker then ignored.
+  evals: Success and cost per completed task against each model alone across effort settings and against
+    a random mix of the two at the same spend.
   judge: Whether escalations were warranted.
   probes:
-    what: Tasks where the worker fails.
-    construct: Build from the worker's failure set.
+    what: Tasks the worker solves, tasks only the oracle solves, and tasks neither solves.
+    construct: Run both models alone on a sample and label each task worker-solves, oracle-only or neither;
+      the trigger should escalate the oracle-only tasks and leave the rest with the worker.
   primary:
   - traces
   - evals
@@ -34,15 +87,32 @@ impact:
   quality:
     effect: mixed
     size: medium
-    when: Depends on the escalation trigger.
-    basis: assessment
+    when: 'gains where the trigger separates failures: two-model cascades +2.1 to 8.2 points over the best single model at the same budget, on average across
+      budgets (Bouchard, May 2026); a learned consult policy recovered 44%
+      to 81% of the cheap-to-strong gap on SWE-bench Verified, Terminal-Bench 2.1 and tau2-bench (Sowietzki,
+      Oct 2026); FrugalGPT matched GPT-4 on three 2023 tasks (Chen, May 2023). Losses where it does not:
+      six commercial routers 1.0 to 10.5 points below a random two-model mix at matched cost (Wang, Oct
+      2026); Anthropic''s advisor +1.7 points on coding at the edge of noise, within noise on GPQA with
+      no consults, 7 points lower on chart reading (Anthropic, Oct 2026)'
+    basis: evidence
   cost:
-    effect: improves
+    effect: mixed
     size: large
-    basis: assessment
+    when: 'cheaper than the strong model alone when escalation is selective: 34.5% to 48.1% of its cost
+      with a learned consult policy (Sowietzki, Oct 2026); 59.2% to 98.3% less at matched accuracy on
+      2023 classification tasks (Chen, May 2023); re-running only failures at high effort about 40% below an all-high run, computed from existing runs
+      (Anthropic, Oct 2026). Dearer when escalation is frequent or task-level: the coding
+      advisor pairing cost 2.1 times its executor alone, GPQA 12% to 25% more with no consults, and a
+      pairing that consulted on 88% of chart tasks 1.8 times the strong model alone (Anthropic, Oct 2026);
+      verify-then-escalate cost $59.68 against $45.90 for the strong model alone on SWE-bench Verified
+      (Sowietzki, Oct 2026)'
+    basis: evidence
   performance:
     effect: mixed
     size: small
+    when: each escalation or consult is a serial strong-model call on the critical path (about 1.4 per
+      coding attempt), and a re-run failure takes two runs of wall-clock time (Anthropic, Oct 2026); work
+      the cheap model finishes may be faster, which no source here times
     basis: assessment
   security:
     effect: none
@@ -50,6 +120,9 @@ impact:
   governance:
     effect: improves
     size: small
+    when: an explicit escalation policy can be read and audited (the learned policies consult in 4 to
+      9 of 24 states; Sowietzki, Oct 2026); count the strong model's tokens separately, since Anthropic
+      reports advisor tokens per iteration rather than in the top-level usage totals
     basis: assessment
   brand:
     effect: none
@@ -57,23 +130,134 @@ impact:
   primary:
   - cost
   - quality
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval on held-out tasks with gold outcomes, 3 or more seeds: the escalation setup against
+    the cheap and the strong model alone across effort settings and against a random mix of the two at
+    the same spend; success, cost per completed task counting failed cheap attempts and strong-model tokens,
+    escalation or consult rate, latency of escalated tasks'
+- method: monitor
+  how: escalation or consult rate by task type and when it fires, strong-model share of tokens and cost,
+    success of escalated against kept tasks, advice the worker ignored, and true error on a gold-labeled
+    audit sample the trigger never sees (9.c.iii); repeat the experiment at each model or price change
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Multi-Agent group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Multi-Agent group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
-- source: 'Lingjiao Chen, Matei Zaharia, James Zou, "FrugalGPT: How to Use Large Language Models While Reducing
-    Cost and Improving Performance", https://arxiv.org/abs/2305.05176'
+  locator: pattern library file agentic-patterns-catalog.md
+- source: 'Lingjiao Chen, Matei Zaharia, James Zou, "FrugalGPT: How to Use Large Language Models While
+    Reducing Cost and Improving Performance", https://arxiv.org/abs/2305.05176'
   date: '2023-05-09'
   task: 'LLM cascade: learn which cheaper models to try first and when to escalate to a stronger one'
-  effect: '"FrugalGPT can match the performance of the best individual LLM (e.g. GPT-4) with up to 98% cost reduction
-    or improve the accuracy over GPT-4 by 4% with the same cost"'
-  conditions: Commercial LLM APIs incl. GPT-4
+  effect: '"FrugalGPT can match the performance of the best individual LLM (e.g. GPT-4) with up to 98%
+    cost reduction or improve the accuracy over GPT-4 by 4% with the same cost". The 98% is the best of
+    three datasets: the cost of matching the best single model fell 98.3% on HEADLINES (GPT-4), 73.3%
+    on OVERRULING (GPT-4) and 59.2% on COQA (GPT-3).'
+  conditions: 12 commercial LLM APIs from 5 providers at March 2023 prices; three classification and reading-comprehension
+    datasets (HEADLINES, OVERRULING, COQA); cascades of up to three models with a DistilBERT scorer trained
+    on labeled examples from the same distribution
   direction: supports
-  locator: Abstract
+  locator: Abstract; §3 Table 3; Figure 3
+  measured: true
+- source: Anthropic, "Optimizing for cost and intelligence" (Claude Platform docs), https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence
+  date: '2026-10-17'
+  task: 'Measured the advisor strategy (a cheaper executor consults a stronger advisor through the advisor
+    tool) against the executor alone at the same effort and against single-model effort curves; also computed
+    a verifier-triggered escalation: run every task at low effort and re-run only the failed ones at high
+    effort'
+  effect: 'Internal agentic-coding benchmark, Opus 5.5 at high with a Fable 5.1 advisor: 90.1%, "1.7 points
+    over the executor alone, at the edge of run-to-run noise", for $2.92 per attempt, about 2.1 times
+    the executor alone, about 1.4 consults per attempt; it "lands about on Claude Opus 5.5''s own effort
+    curve, so the advisor bought about what more effort does" (Opus 5.5 alone 88.4% at $1.38 on high,
+    91.1% at $4.11 on xhigh). GPQA Diamond, Haiku 5.5 or Sonnet 5.5 with an Opus 5.5 advisor: consulted
+    on none of 198 questions, score within noise, 12% and 25% more cost per question. Chartography, Opus
+    5.5 at low with a Fable 5.1 advisor: consulted on 1 of 300 tasks, 61.7 against 68.7 alone, "beyond
+    run-to-run noise"; an August pairing that consulted on 88% of tasks matched Fable 5.1 alone at medium
+    (65.0 vs 67.5) at about 1.8 times its cost. Sonnet 5.5 at high consulted on 0 of 20 SWE-bench Pro
+    problems; on DeepSWE a low-effort Sonnet 5 executor with an advisor scored 23 points above itself
+    alone. Escalation on failure, SWE-bench Pro subset, Opus 5.5: low then high on failures 96.4% to 97.5%
+    for about $0.17 a task; everything at high 94.8% to 95.8% for $0.29; high re-run on its own failures
+    96.9% for $0.31 ("Use this policy for the saving, not the lift"); the escalation figures were computed
+    task by task from existing runs, not run separately.'
+  conditions: Anthropic-internal runs, August to October 2026, list prices, Claude models only; internal
+    coding benchmark of 370 repository tasks (pairing five attempts per task, some single-model points
+    one run); GPQA Diamond 198 questions, two runs; Chartography 100 charts, three runs, spreads up to
+    10 points; SWE-bench Pro 478-problem subset, two runs per effort; undated living page, figures from
+    the revision archived 2026-10-17 (page first archived 2026-08-15)
+  direction: mixed
+  measured: true
+  locator: Combine models; Advisor strategy table; Re-run failures at higher effort; Benchmarks referenced
+    3, 9, 10, 11, 13
+- source: 'Pascal Sowietzki, Steffen Holter, Yannick Metz, Emil Kasper, Raphael Baur, Mennatallah El-Assady
+    (ETH Zurich), "Ask Your Advisor: Learning When to Consult Stronger Models in Agentic Systems", https://arxiv.org/abs/2610.13870'
+  date: '2026-10-09'
+  task: A cheap executor in a Magentic-One agent may consult a stronger advisor, at most 4 times per episode,
+    at workflow contact points; a tabular policy learned by Monte Carlo control on development tasks chooses
+    Silent or Consult from execution evidence. Compared with FrugalGPT, RouteLLM and AutoMix (task-level
+    cascade, router, verify-then-escalate), consulting once at the start, Anthropic-style fixed triggers,
+    consulting at every point, the orchestrating LLM deciding, and random placement at matched volume
+  effect: 'Success and run cost (mean of 3 seeds), executor alone / advisor alone / learned policy: SWE-bench
+    Verified 18.0% $11.48 / 62.0% $45.90 / 48.0% $22.09; Terminal-Bench 2.1 21.3% $9.76 / 51.3% $60.99
+    / 34.7% $24.93; tau2-bench telecom 72.5% $5.07 / 98.3% $22.50 / 93.3% $7.77, i.e. 68.2%, 44.4% and
+    80.6% of the gap recovered at 48.1%, 40.9% and 34.5% of the advisor-alone cost. SWE-bench at similar
+    consult volume: learned 48.0% (2.78 consults per episode), fixed start, end and stall triggers 41.3%
+    (2.75), random 28.0% (2.53); consulting at every point 34.0%; orchestrating LLM deciding (not volume-matched) 29.3% with 0.41 consults per episode, 77% of them in the final third. Task-level baselines on SWE-bench: FrugalGPT
+    31.3% at $22.61, RouteLLM 30.0% at $25.03, AutoMix 52.0% at $59.68. On Terminal-Bench the learned
+    policy and the fixed triggers tied at 34.7%. Ignored advice was the primary mode in 58% of the learned
+    policy''s remaining SWE-bench failures.'
+  conditions: gemini-3-flash-preview at low effort as executor, gemini-3.1-pro-preview at high as advisor;
+    held-out tests of 50 (Verified-Mini), 50 and 40 tasks; 3 seeds, success standard deviations 1.2 to
+    7.2 points across conditions; development tasks screened by outcome; one model pair, one agent framework
+  direction: supports
+  measured: true
+  locator: §4; §5 Tables 2-3; §5.1 Table 4; §5.4; Appendix B.1-B.2; Appendix C.1 Table 12
+- source: Sam Wang, Julia White, Sahibzada Allahyar, Dhruv Atreja, Urchade Zaratiana, Kelton Zhang, "Dynamic
+    LLM Routers are Often Misguided", https://arxiv.org/abs/2610.02762
+  date: '2026-10-02'
+  task: Ran six commercial routers (OpenRouter auto and auto-beta, Azure, Not Diamond, vLLM Semantic Router,
+    Nadir, Orca) in 14 settings, generating and grading every routed answer the same way, against a router
+    that randomly picks between Gemini 3.7 Flash and Opus 5 (high) at matched cost; then built a two-model
+    router that escalates on predicted difficulty
+  effect: 'Every setting trailed the random two-model mix: from -1.0 ± 1.8 points (vLLM SR) to -10.5 ±
+    2.8 (Orca adaptive); OpenRouter auto -3.3 to -5.5, Not Diamond -4.1 to -8.8, Azure -2.2 to -8.4. Only
+    the smallest gap (vLLM SR) is within error; the other 13 settings trail significantly. No
+    router''s choices correlated with query difficulty above gamma +0.20. Gemini 3.7 Flash alone trailed
+    Opus 5 (high) by 1.6 points at a 96% discount, and even with true difficulty known a two-model roster
+    was never more than 1 point below the best roster of any size. The authors'' difficulty router stayed
+    within noise of random routing at every budget ("a well-chosen roster leaves little to route"); with
+    gpt-oss-20b (low) as the cheap model, it and a difficulty oracle underperformed random routing at
+    every budget.'
+  conditions: Single-turn queries; 17 benchmarks in 8 categories (coding, instruction following, knowledge,
+    math, QA, office, tool use, HLE), 800 evaluation and 2,508 training queries; 26 models from June and
+    August 2026, one generation per query, OpenRouter costs; patterns replicated on RouterBench, SPROUT
+    and LLMRouterBench
+  direction: contradicts
+  measured: true
+  locator: Abstract; §3; §4 Table 1; §6.1 Figure 4; §7; Limitations
+- source: Dylan Bouchard, "Is Escalation Worth It? On the Depth of LLM Cascades", https://arxiv.org/abs/2605.06350
+  date: '2026-05-07'
+  task: Optimized cascade model sequences and deferral thresholds from a pool of eight models at 500 budgets
+    with nine deferral scores (five log-probability scores, two trained on the cheap model's correctness,
+    two trained on the gain from escalating), comparing caps of one to five models on held-out queries
+  effect: Two-model cascades beat the best single model affordable at each budget by 2.1 to 8.2 points of mean
+    test accuracy, averaged across the budget range (MMLU +2.30 to +3.93, TriviaQA +5.27 to +7.20, MATH +2.13 to +3.46, SimpleQA
+    +6.18 to +8.22, LiveCodeBench +4.65 to +7.32). Allowing more than two models did not raise mean test
+    accuracy in 118 of 135 comparisons and added at most 0.43 points. The seven confidence-based scores
+    had AUROC 0.63 to 0.80 for the cheap model's correctness, and their accuracy gain over escalating at random at equal escalation rates (not equal cost) was 0.03
+    to 3.20 points (MATH 0.26 to 0.36). With simulated scores at AUROC 0.9 that track
+    only the current model's errors, a third model helped on four of five benchmarks; the gain disappeared
+    once the score also tracked difficulty shared across models.
+  conditions: Single-turn; Llama 3.1-8B, Qwen2.5-7B, GPT-4o mini, GPT-oss-20B, DeepSeek-V3, Llama 3.3-70B,
+    GPT-4o and MiniMax-M2.7 at May 2026 list prices; MATH levels 3-5, MMLU, TriviaQA, SimpleQA, LiveCodeBench,
+    about 1,000 to 2,000 queries each, 50 calibration/test splits; no self-consistency, verbalized-confidence
+    or judge triggers; one author
+  direction: supports
+  measured: true
+  locator: Abstract; §4.1; §4.3 Table 1; §4.4 Table 2; Appendix C, Table 25
 assessment:
   qa:
     unit: Escalation trigger.
@@ -111,6 +295,14 @@ assessment:
     primary:
     - cost
     - quality
+related:
+- 1.b.i
+- 9.c.iii
+- 9.c.ii
+- 6.c.ii
+- 6.b.iii
+- 9.a.i
+- 3.b.i
 provenance:
   layer: target
   origin: observed
@@ -118,3 +310,14 @@ provenance:
   sub_type: orchestration
   library_group: Multi-Agent
   library_source: catalog
+caveats: 'The agent results are small or vendor-run: the learned consult policy was tested on one Gemini
+  model pair in one framework, on 40 to 50 held-out tasks per benchmark with 3 seeds (success standard
+  deviations up to 7.2 points) and outcome-screened development tasks, and Anthropic''s advisor figures
+  are internal, sometimes single runs on Claude models, from a living page whose August 2026 revision
+  rated the advisor more favorably (closing 60% to 90% of the gap). The router and cascade studies are
+  single-turn QA, math and code with list-price costs; the router study''s random baseline uses a pair
+  picked from the frontier with hindsight, and the cascade study tested only log-probability and trained
+  scores on older open and GPT-4o-class models, not verbalized confidence, self-consistency or judges.
+  FrugalGPT''s 98% is its best of three 2023 classification datasets (59.2% and 73.3% on the other two).
+  A cheap verifier used as the trigger can hide most of the cascade''s errors, so measure true error outside
+  it (9.c.iii).'

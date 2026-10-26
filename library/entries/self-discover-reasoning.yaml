@@ -5,7 +5,7 @@ legacy_id: P35
 slug: self-discover-reasoning
 name: Self-Discover reasoning structures
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 3
   why: it changes the reasoning prompt
@@ -17,34 +17,93 @@ domains:
 - reasoning
 evidence_domains:
 - reasoning
+- planning
 categories:
 - prompts.reasoning-effort
-summary: Self-Discover reasoning structures
+summary: 'Self-Discover has the model compose a reasoning structure once per task type (select useful
+  modules from 39 seed heuristics, adapt them to the task, write them as a step-by-step plan), then follow
+  that cached structure on every instance, so each instance costs one call. On non-reasoning models it
+  beat CoT (GPT-4 on BBH 75% to 81%, on T4D 52% to 85%) and, in a third-party run, 5-sample self-consistency
+  at under half the cost; but it trailed CoT on Claude 3 Sonnet and on multistep arithmetic, and trailed
+  zero-shot prompting on long-form essays. On reasoning models with thinking on, the evidence is thin
+  and leans negative: no study runs the original method, a plan-first prompt changed mean accuracy over
+  10 benchmarks by at most 0.51 points, and Anthropic advises general instructions over hand-written step-by-step
+  plans.'
+how: '1. Start from the cheap baselines on your own labeled items: plain CoT for a non-reasoning model,
+  the model''s own thinking at a chosen effort setting for a reasoning model (1.b.i), and self-consistency
+  at the same token budget (9.c.ii). Expect little on reasoning models with thinking on (a plan-first
+  prompt moved mean accuracy by 0.51 points or less; an induced task strategy moved o3-mini by -1.42 to
+  +3.20); the clearest gains were on non-reasoning and smaller models, on task types the baselines get
+  wrong. 2. Group traffic into task types that are solved the same way, and pick a handful of unlabeled
+  examples for each (the follow-up studies used 3 to 10). 3. Run discovery offline, once per task type,
+  with the strongest model you have: SELECT the useful modules from the paper''s 39 seed modules, ADAPT
+  each to the task, and IMPLEMENT them as a step-by-step plan, showing one human-written plan for another
+  task as the format example; that is 3 calls per task type. Small models wrote poor structures, while
+  structures from a stronger model transferred (GPT-4''s raised Llama2-70B on disambiguation QA from 42%
+  with CoT to 52%). Also try letting the model write its own task-specific modules instead of picking
+  from the 39 seeds: in a rival team''s rerun (Auto-Evolve), that reached 65.4% on BBH for Claude 2.0
+  against 58.7% for Self-Discover and 53.7% for direct prompting. 4. Check each structure before caching it: would following it solve a few labeled
+  examples? In the original study 12.5% of MATH structures were wrong, and an instance that follows a
+  wrong structure fails. 5. Cache the structure as a versioned block in that task type''s prompt, in the
+  stable prefix (3.b.i; the rest of the system prompt is 3.a.iv), followed by the instance and the paper''s
+  instruction to fill in each step by reasoning about the task, not to rephrase the keys, so each instance
+  costs one call; keep the final answer extractable (9.b.i). On Claude with thinking on, give the structure
+  as worked examples (problem, method, answer) rather than asking for it as visible output, and test it
+  against thinking alone. Prefer a natural-language plan to JSON (it won
+  on every benchmark, e.g. 75.50% vs 63.50% on MATH, in a per-question study with no CoT baseline), and leave out task types where the structure lost
+  to the baseline, such as multistep arithmetic (70 vs 92 for CoT on GPT-4) and long-form rubric-graded
+  answers (46.32 vs 57.35 zero-shot). 6. Measure on held-out labeled items per task type: accuracy against
+  CoT, the model''s own thinking at matched tokens and self-consistency at matched cost, plus tokens,
+  cost and p50 and p95 latency per item. Rediscover and re-test the structures when the model changes:
+  the gain over CoT disappeared on a stronger model (Claude 3 Sonnet 67.7 vs 68.3).'
 detect:
-  static: A module-selection step before solving; a composed reasoning plan.
-  traces: Plan structure per task; modules chosen.
-  evals: Accuracy on hard, heterogeneous reasoning.
-  judge: Rate whether the chosen structure fits the task.
+  static: A module-selection or planning step before solving, or a reasoning structure (key-value or numbered
+    steps) per task type in the prompt. Flag a structure regenerated for every instance where one cached
+    per task type would do, JSON structures where a natural-language plan would do, a structure stacked on a reasoning
+    model with thinking on that was never compared against thinking alone, and no CoT or self-consistency
+    baseline.
+  traces: Structure id and version per call and the task type it was discovered for; modules selected;
+    whether the output fills every key or rephrases or skips them; tokens and latency per call against
+    plain CoT.
+  evals: Accuracy per task type against CoT, the model's own thinking at matched tokens and self-consistency
+    at matched cost; computation-heavy split from knowledge-heavy, short answers from long-form.
+  judge: 'Before caching, check each discovered structure: would following it solve labeled examples of
+    the task? (12.5% of MATH structures were wrong in the original study.)'
   probes:
     what: A mix of task types needing different reasoning.
-    construct: Interleave arithmetic, deduction and planning items.
+    construct: Interleave arithmetic, deduction, world-knowledge and planning items with known answers,
+      plus some long-form rubric-graded answers, so each task type's structure can be scored against CoT
+      and the model's own thinking.
   primary:
   - evals
 impact:
   quality:
-    effect: improves
+    effect: mixed
     size: medium
-    when: Catalog cites up to 32 percent over fixed CoT.
-    basis: assessment
+    when: 'non-reasoning models: BBH 75% to 81% and T4D 52% to 85% over CoT on GPT-4 (Zhou, Feb 2024);
+      BBH 91.0 vs 86.0 for CoT and 89.6 for self-consistency on DeepSeek-V3 (Fan, Apr 2026); below CoT
+      on Claude 3 Sonnet, 67.7 vs 68.3 (Aswani, Oct 2024), and on GPT-4 multistep arithmetic, 70 vs 92
+      (Zhou, Feb 2024); below zero-shot on long-form CFA essays, 46.32 vs 57.35 (Shetty, Jun 2025); JSON
+      plans 63.50 vs 75.50 for natural-language plans on MATH, per question (Gunasekara, Jul 2025); reasoning models:
+      a plan-first prompt within 0.51 pp of direct prompting (Preet, May 2026), an induced task strategy
+      -1.42 to +3.20 on o3-mini (Chen, May 2026), a hand-written structure 74.3 to 83.3 for o1 on obfuscated
+      Mystery Blocksworld, while o1-mini fell 19.1 to 16.83 (Goh, Feb 2026)'
+    basis: evidence
   cost:
     effect: degrades
-    size: small
-    when: One extra planning call.
-    basis: assessment
+    size: medium
+    when: 3 task-level calls per task type, then one call per instance with longer input and output (Zhou,
+      Feb 2024); 2.7x zero-shot cost per multiple-choice task ($0.686 vs $0.255) against 6.7x for 3-sample
+      self-consistency ($1.701) (Shetty, Jun 2025); normalized cost 5.0 vs 2.5 for CoT and 12.0 for 5-sample
+      self-consistency on DeepSeek-V3 (Fan, Apr 2026)
+    basis: evidence
   performance:
     effect: degrades
-    size: small
-    basis: assessment
+    size: medium
+    when: 'one call per instance after offline discovery, but longer outputs: 14.9 s vs 6.0 s zero-shot
+      per multiple-choice task and 25.27 s vs 15.18 s per essay, against 37.9 s for 3-sample self-consistency
+      (Shetty, Jun 2025); a step-by-step prompt made reasoning models 20-80% slower (Meincke, Jun 2025)'
+    basis: evidence
   security:
     effect: none
     basis: assessment
@@ -56,22 +115,216 @@ impact:
     basis: assessment
   primary:
   - quality
+measure:
+- method: experiment
+  tier: 3
+  how: 'paired eval per task type on held-out labeled items: the cached structure against CoT, against
+    the model''s own thinking or a higher effort setting at matched tokens (1.b.i), and against self-consistency
+    at matched cost (9.c.ii); accuracy split by task type (computation-heavy vs knowledge-heavy, short
+    answer vs long-form), tokens, cost and p50 and p95 latency per item; repeat on every model change'
+- method: monitor
+  how: 'per call: which structure was used (task type, version, discovering model), whether the output
+    fills every key or rephrases or skips them, answer-extraction failures, tokens and latency; accuracy
+    by task type on a regularly labeled sample, and the share of traffic that matches no task type with
+    a structure'
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Reasoning & Search group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Reasoning & Search group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
+  locator: pattern library file agentic-patterns-catalog.md
 - source: 'Zhou et al., "Self-Discover: Large Language Models Self-Compose Reasoning Structures", https://arxiv.org/abs/2402.03620'
   date: '2024-02-06'
-  task: The model selects atomic reasoning modules and composes them into a task-specific structure before solving
-  effect: Improves GPT-4 and PaLM 2 "by as much as 32% compared to Chain of Thought"; beats CoT-Self-Consistency
-    "by more than 20%, while requiring 10-40x fewer inference compute"
-  conditions: BigBench-Hard, grounded agent reasoning, MATH; GPT-4, PaLM 2
+  task: 'Stage 1, once per task: from 39 seed reasoning modules and a few unlabeled task examples, three
+    meta-prompts SELECT the useful modules, ADAPT them to the task and IMPLEMENT them as a key-value (JSON)
+    reasoning structure, with a human-written structure for another task as the example. Stage 2: the
+    structure is appended to every instance and the model fills in each value to reach the answer'
+  effect: 'Table 1, CoT -> Self-Discover (plan-and-solve in brackets): BBH PaLM 2-L 60% -> 67% (61%),
+    GPT-4 75% -> 81% (73%); T4D 40% -> 69% (42%), 52% -> 85% (53%); MATH 42% -> 50.5% (49%), 71% -> 73%
+    (70%). The abstract''s "by as much as 32% compared to Chain of Thought" is T4D; it beats CoT-Self-Consistency
+    "by more than 20%, while requiring 10-40x fewer inference compute", a comparison (Figure 5) of GPT-4
+    on 2 BBH tasks that counts inference calls per instance: 1 plus 3 task-level calls for Self-Discover,
+    10 for CoT-Self-Consistency, 40 for majority voting over every module. "We acknowledge that Self-Discover
+    input and output are longer than CoT and Direct prompting, increasing cost." Gains were largest on
+    world-knowledge tasks and moderate on algorithmic ones; per task, GPT-4 with Self-Discover trailed
+    CoT on multistep arithmetic (70 vs 92), shuffled-object tracking (68 vs 80), web of lies (71 vs 80)
+    and word sorting (85 vs 90). Each of the three actions added accuracy in the ablation. Transfer: PaLM
+    2-L structures used by GPT-4 beat OPRO prompts on 3 of 4 tasks (OPRO used 20% of the data); GPT-4
+    structures gave Llama2-70B 52% vs 42% for CoT on disambiguation QA and GPT-3.5-turbo 56% vs 51% on
+    geometry (3-shot); "We tried zero-shot meta prompting Llama2 but observed low-quality structure outputs."
+    On MATH, 87.5% of structures were correct and 74.7% of errors were computation errors.'
+  conditions: GPT-4 (gpt-4-turbo-preview), PaLM 2-L, GPT-3.5-turbo, Llama2-70B; BBH (23 tasks), T4D, 200-item
+    MATH subsample with instance-level structures from a one-shot demonstration; zero-shot baselines direct,
+    CoT and plan-and-solve; CoT-Self-Consistency (10 samples) and per-module voting on 2 BBH tasks only
   direction: supports
-  locator: Abstract
+  locator: Abstract; §2, Figures 2-3; §3.3; Table 1; §4.1-4.3, Figures 4-5; §5.1-5.2, Figures 8-9 and
+    footnote 3; Appendix A (Table 2, Stage 2 prompt); Appendix C, Table 3; Appendix D
+  measured: true
+- source: 'Krishna Aswani, Huilin Lu, Pranav Patankar, Priya Dhalwani, Iris Tan, Jayant Ganeshmohan, Simon
+    Lacasse, "Auto-Evolve: Enhancing Large Language Model''s Performance via Self-Reasoning Framework",
+    https://arxiv.org/abs/2410.06328'
+  date: '2024-10-08'
+  task: Re-runs Self-Discover (39 seed modules) as a baseline next to direct prompting and zero-shot CoT
+    on BBH, and proposes Auto-Evolve, in which the model writes its own task-specific modules and refines
+    the plan iteratively
+  effect: 'BBH average over 23 tasks (Table 1), direct / CoT / Self-Discover / Auto-Evolve: Claude 2.0
+    53.7% / 55.0% / 58.7% / 65.4%; Claude 3 Sonnet 68.6% / 68.3% / 67.7% / 71.6%; Mistral Large 61.9%
+    / 67.3% / 72.7% / 75.4%. GPT-4, gain over direct (Table 2): CoT +16.6%, Self-Discover +20.3%, Auto-Evolve
+    +22.9%. Llama 3.1 70B: disambiguation QA direct 22.4%, CoT 60.4%, Self-Discover 56.8%, Auto-Evolve
+    72.0%; causal judgement 27.3%, 62.6%, 64.7%, 65.3%. "Self-Discover only uses a few reasoning seed
+    modules in solving the BBH tasks (out of 39)". Calls for a 250-question task: CoT 250, Self-Discover
+    253, CoT with self-consistency 2,500.'
+  conditions: Claude 2.0, Claude 3 Sonnet, Mistral Large, GPT-4, Llama 3.1 70B; BBH, 23 tasks; each experiment
+    run three times and averaged; written by the authors of a competing method
+  direction: mixed
+  measured: true
+  locator: §4.3-4.4; §5.1, Tables 1-2; §5.6; Appendix D, Figure 9; Appendix H
+- source: 'Pranam Shetty, Abhisek Upadhayaya, Parth Mitesh Shah, Srikanth Jagabathula, Shilpi Nayak, Anna
+    Joo Fee, "Advanced Financial Reasoning at Scale: A Comprehensive Evaluation of Large Language Models
+    on CFA Level III", https://arxiv.org/abs/2507.02954'
+  date: '2025-06-29'
+  task: Compares zero-shot, CoT with self-consistency (N = 3 and 5) and a one-prompt, per-question Self-Discover
+    variant (select modules, adapt them, execute, evaluate) across 23 reasoning and non-reasoning models
+    on mock CFA Level III questions, with cost and latency
+  effect: 'Means across models (Tables 3-4), multiple choice: accuracy zero-shot 61.8%, Self-Discover
+    68.6%, CoT-SC N=3 69.1%, N=5 69.6%; cost per task $0.255, $0.686, $1.701, $2.840; latency 6.0, 14.9,
+    37.9, 63.1 s. Essays (LLM-graded): 57.35, 46.32, 60.40, 61.03; latency 15.18, 25.27, 69.83, 130.48
+    s. "Self-Discover prompting presents a compelling middle ground for MCQ questions, delivering a substantial
+    6.8 percentage point accuracy improvement over Zero Shot while increasing costs by only 2.7x. However,
+    for essay evaluation, Self-Discover significantly underperforms across all metrics". Table 1 lists
+    Self-Discover as the best multiple-choice strategy for o4-mini (75.00%), Claude 3.7 Sonnet (73.33%)
+    and DeepSeek-R1 (71.67%), tied with zero-shot for Gemini 2.5 Pro (76.67%), whose Self-Discover essay
+    score was 61.74 against 75.17 with CoT-SC.'
+  conditions: 60 multiple-choice and 43 essay questions from AnalystPrep mock exams; 23 models incl. o3-mini,
+    o4-mini, DeepSeek-R1, Gemini 2.5 Pro and Flash, Claude 3.7 Sonnet, Sonnet 4 and Opus 4 with thinking;
+    essays graded by GPT-4.1; no single-sample CoT arm; the prompt names example modules instead of the
+    39 seeds and runs per question in one call
+  direction: mixed
+  measured: true
+  locator: §2.3; §3.2, Tables 1, 3, 4; Appendix B.3 (v2)
+- source: Sachith Gunasekara, Yasiru Ratnayake (Surge Global), "Effects of structure on reasoning in instance-level
+    Self-Discover", https://arxiv.org/abs/2507.03347
+  date: '2025-07-04'
+  task: Reimplements task-level Self-Discover (10 unlabeled examples per task) and compares it with an
+    instance-level variant that discovers a plan per question, written either as a JSON structure or as
+    a natural-language plan
+  effect: 'Table 1, LLaMA-3.1-405B / Mistral-Large: task-level Self-Discover BBH 86.59 / 82.04, T4D 100.00
+    / 96.63; instance-level JSON (0-shot) BBH 85.05 / 83.14, T4D 73.23 / 76.06, MATH 63.50 / 67.50; instance-level
+    natural language (0-shot) BBH 87.27 / 85.57, T4D 78.90 / 82.09, MATH 75.50 / 76.50; natural language
+    with 5 unlabeled examples T4D 86.35 / 88.29. Natural-language plans beat JSON plans by up to 18.90%
+    relative on MATH; task-level discovery won on the homogeneous T4D, instance-level on the diverse BBH
+    with Mistral (+4.30% relative; +0.79% with LLaMA).'
+  conditions: LLaMA-3.1-405B-Instruct and Mistral-Large; BBH (27 tasks), T4D rebuilt from ToMi, 200-item
+    MATH subsample with a one-shot plan demonstration (per instance, as in the original); no CoT or self-consistency
+    baseline
+  direction: mixed
+  measured: true
+  locator: §4.3; §5.1-5.3; Table 1
+- source: 'Fulong Fan, Peilin Liu, Fengzhe Liu, Shuyan Yang, Gang Yan, "Self-Awareness before Action:
+    Mitigating Logical Inertia via Proactive Cognitive Awareness", https://arxiv.org/abs/2604.20413'
+  date: '2026-04-22'
+  task: Runs Self-Discover as a baseline next to direct prompting, CoT, self-consistency (k = 5), Self-Refine,
+    CRITIC, GoT and the authors' SABA, reporting accuracy and an inference cost normalized to direct prompting
+    (T)
+  effect: 'DeepSeek-V3 (Table 2), direct / CoT / SC(k=5) / Self-Discover / GoT / SABA: BBH 78.7 / 86.0
+    / 89.6 / 91.0 / 90.7 / 93.2; StrategyQA 82.0 / 87.6 / 90.1 / 92.5 / 91.7 / 94.4; HotpotQA answer EM
+    62.4 / 68.4 / 72.0 / 75.6 / 78.0 / 78.6; T 1.0 / 2.5 / 12.0 / 5.0 / 35.7 / 9.2. Gemini-1.5-Flash (Table
+    5): BBH 68.7 / 75.0 / 79.5 / 83.4 / 82.7 / 86.1; T 1.0 / 2.4 / 12.1 / 4.8 / 35.5 / 9.8.'
+  conditions: DeepSeek-V3 and Gemini-1.5-Flash, temperature 0, three runs; BBH, StrategyQA, HotpotQA,
+    Detective Puzzle; the Self-Discover setup is not described and T is not defined beyond "average relative
+    cost"; written by the authors of a competing method
+  direction: supports
+  measured: true
+  locator: §4.1 Baselines, Implementation Details; §4.2, Table 2; Appendix A.1, Table 5
+- source: 'Lennart Meincke, Ethan Mollick, Lilach Mollick, Dan Shapiro (Wharton Generative AI Labs), "Prompting
+    Science Report 2: The Decreasing Value of Chain of Thought in Prompting", https://arxiv.org/abs/2506.07142'
+  date: '2025-06-08'
+  task: Adds a "Think step by step" prompt, against an answer-directly prompt and a no-instruction default,
+    on reasoning and non-reasoning models, 25 trials per question
+  effect: 'Reasoning models, average rating against direct: o3-mini RD = 0.029 (p = .024), o4-mini RD
+    = 0.031 (p = .003), Gemini 2.5 Flash RD = -0.033 (p = .005), and Flash 2.5 lost 0.131 on the 25-of-25-correct
+    metric; "CoT requests took between 20-80% (10-20 seconds) longer than direct requests." Non-reasoning
+    models gained against direct (Gemini 2.0 Flash RD = 0.135, Sonnet 3.5 RD = 0.117); against the no-instruction
+    default, Gemini 2.0 Flash still gained significantly (RD = 0.062, p < .001) while Sonnet 3.5 did not
+    (RD = -0.019, p = 0.189). "For dedicated reasoning models,
+    the added benefits of explicit CoT prompting appear negligible and may not justify the substantial
+    increase in processing time."'
+  conditions: 'GPQA Diamond, 198 questions x 25 trials per condition; reasoning: o3-mini, o4-mini, Gemini
+    2.5 Flash; non-reasoning: Claude 3.5 Sonnet, Gemini 2.0 Flash, GPT-4o-mini, GPT-4o, Gemini 1.5 Pro;
+    a plain step-by-step prompt, not a composed structure'
+  direction: contradicts
+  measured: true
+  locator: Summary; Results, Figures 1-3; Figure S2; Discussion and Conclusion
+- source: 'Inder Preet, Shuxin Lin, Dhaval Patel, "ReasonLab: A Controlled and Auditable Evaluation of
+    Prompting Techniques for Multiple-Choice QA", https://arxiv.org/abs/2607.14109'
+  date: '2026-05-07'
+  task: Holds model, dataset and answer extraction fixed and varies 8 prompting techniques, including
+    Plan-and-Solve ("Gather information, devise a plan, answer step by step") and CoT, on models with
+    reasoning off and on
+  effect: 'Matched comparison (Table 3). Reasoning off (8 configurations, 80 cells): direct 48.27, Plan-and-Solve
+    52.88 (+4.61 pp), CoT 52.68 (+4.41 pp), Self-Analogical 52.96 (+4.69 pp); "the differences among these
+    five are not significant". Reasoning on (GPT-OSS-20B and 120B, Qwen3-8B, Qwen3-30B-A3B-Thinking; 40
+    cells): direct 70.84, CoT 70.69, Plan-and-Solve 70.32 (p = 0.266); "no technique differs from direct
+    prompting by more than 0.51 pp". Enabling reasoning added 12.74 pp for GPT-5.4 and 2.10 pp for Claude
+    Sonnet 4; an eightfold budget increase from low to medium added 0.48 to 2.10 pp.'
+  conditions: 10 MCQA datasets (about 4,300 questions, incl. AIME 2025 QA, MedQA, MMLU-Pro, SuperGPQA),
+    27 model configurations, temperature 0, one generation per cell; techniques from published templates
+    without per-model tuning; Self-Discover itself not tested; vendor-hosted reasoning models ran with
+    the direct prompt only
+  direction: contradicts
+  measured: true
+  locator: §1.1; §3.2-3.3, Table 2; §4.1, Table 3 (v2)
+- source: 'Po-Chun Chen, Hen-Hsen Huang, Hsin-Hsi Chen, "Strategy-Induct: Task-Level Strategy Induction
+    for Instruction Generation", https://arxiv.org/abs/2605.20924'
+  date: '2026-05-20'
+  task: Induces one reusable task-level instruction from strategies the model writes for 3 unlabeled questions,
+    then applies it to every question of the task; compared with zero-shot CoT, per-instance Strategic
+    CoT (SCoT) and INDUCT on 18 models, including o3-mini at three effort levels
+  effect: 'Table 1, zero-shot CoT -> Strategy-Induct, BBH-Induct / Evals-Induct / Shift Cipher: o3-mini
+    low 85.91 -> 88.81 / 78.29 -> 77.26 / 93.60 -> 96.80; medium 88.70 -> 89.74 / 83.60 -> 82.18 / 97.44
+    -> 97.44; high 88.87 -> 91.30 / 85.02 -> 85.08 / 98.40 -> 98.40; Gemini 2.0 Flash Thinking 87.25 ->
+    88.99 / 74.46 -> 74.16 / 80.00 -> 86.88; Gemini 2.0 Flash 78.33 -> 85.45 on BBH-Induct. Win-tie-lose
+    against zero-shot CoT 50-3-7 over 60 settings. Per-instance SCoT broke o3-mini''s output format on
+    Shift Cipher (24.64 at high effort against 98.40 for CoT). Instructions induced by Llama 3.1 405B
+    helped o3-mini (low, medium) more than its own; GPT-4o''s instructions raised Llama 3.1 8B, 70B and
+    405B by 7.88%, 5.33% and 3.95% on BBH-Induct.'
+  conditions: 25 sampled questions per task, temperature 0; BBH-Induct (23 tasks), Evals-Induct (24 tasks),
+    Shift Cipher (25 shifts); 16 LLMs plus Gemini 2.0 Flash Thinking and o3-mini (low, medium, high)
+  direction: mixed
+  measured: true
+  locator: §2; §3.3-3.4; §4.1, Table 1; §5.2.3-5.2.4
+- source: Erik Goh, John Kos, Ashok Goel, "Knowledge Model Prompting Increases LLM Performance on Planning
+    Tasks", https://arxiv.org/abs/2602.03900
+  date: '2026-02-03'
+  task: Prompts models with a hand-written Task-Method-Knowledge (TMK) structure for Blocksworld planning
+    (what to do, how, and why each step is taken), against plain-text prompts, on non-reasoning and reasoning
+    models
+  effect: 'Table 2, plain text -> TMK, Classic / Mystery / Random: o1 95.7 -> 98.5 / 74.3 -> 83.3 / 31.5
+    -> 97.33; GPT-5 99.3 -> 99.7 / 98.1 -> 98.3 / 92.5 -> 99.0; o1-mini 56.7 -> 57 / 19.1 -> 16.83 / 9.33
+    -> 27.0; GPT-4o 35.5 -> 45.3 / 0 -> 5.5 / 0.83 -> 4.83.'
+  conditions: PlanBench Blocksworld (Classic, and the obfuscated Mystery and Random variants); TMK one-shot
+    against the best of zero- and one-shot plain text; the authors updated answer extraction for Random
+    Blocksworld, so its larger jump may be an extraction artifact; one domain; a fixed expert structure,
+    not a self-discovered one
+  direction: mixed
+  measured: true
+  locator: §3.2; §4, Table 2; §4.1
+- source: Anthropic, "Prompting best practices" (Claude API docs), https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
+  date: '2026-10-21'
+  task: Vendor guidance on prompting Claude models that think before answering
+  effect: '"Prefer general instructions over prescriptive steps. A prompt like "think thoroughly" often
+    produces better reasoning than a hand-written step-by-step plan. Claude''s reasoning frequently exceeds
+    what a human would prescribe." Also: "Multishot examples work with thinking ... Present each example
+    as a problem, the method to apply, and the expected answer"; on the newest models, rely on thinking
+    rather than manual chain-of-thought prompts, "at a lower effort level if cost or latency matters".
+    On Opus 5.5, Fable 5.x and other recent models, prompts asking for written-out reasoning "may be declined".
+    No numbers.'
+  conditions: Claude models with adaptive or extended thinking; living documentation, read 2026-10-21
+  direction: contradicts
+  measured: false
+  locator: 'Thinking and reasoning: Leverage thinking & interleaved thinking capabilities'
 assessment:
   qa:
     unit: null
@@ -107,6 +360,14 @@ assessment:
       note: ''
     primary:
     - quality
+related:
+- 1.b.i
+- 3.a.iv
+- 9.c.ii
+- 6.c.ii
+- 3.b.i
+- 9.b.i
+- 7.c.vii
 provenance:
   layer: target
   origin: observed
@@ -114,3 +375,14 @@ provenance:
   sub_type: instructions
   library_group: Reasoning & Search
   library_source: catalog
+caveats: 'The original''s compute advantage counts inference calls on two BBH tasks, not tokens, and its
+  authors note longer inputs and outputs; the headline 32% is one task (T4D), and on MATH it built a structure
+  per instance. Most follow-ups are small or come from papers proposing a rival method (Auto-Evolve, SABA):
+  the CFA study''s Self-Discover is a one-prompt, per-question imitation scored on 60 multiple-choice
+  questions with no single-sample CoT arm, the instance-level replication had no CoT baseline, and Strategy-Induct
+  sampled 25 questions per task. The reasoning-model evidence comes mostly from neighboring prompts (CoT,
+  plan-and-solve, induced instructions, a hand-written TMK structure) rather than Self-Discover itself,
+  and it disagrees: no gain on multiple-choice benchmarks, a gain on one obfuscated planning task,
+  where o1-mini nonetheless fell from 19.1% to 16.83% on the Mystery variant. Per-question strategy prompts
+  broke a reasoning model''s answer format (o3-mini on Shift Cipher, 24.64 vs 98.40 for CoT), which favors
+  one cached strategy per task type.'

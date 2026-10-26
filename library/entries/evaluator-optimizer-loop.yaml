@@ -38,8 +38,12 @@ how: '1. Start from the single pass, tuned with the same effort, and from best-o
   and skeptical: its own call and context, not the generator''s dialogue history; a model at least as
   capable as the generator; tune its prompt by reading its logs against your own verdicts until it stops
   approving problems it found. Check it on labeled good and bad outputs and planted-defect probes before
-  wiring it in. 4. Return findings the generator can act on (failing criterion, where, expected against
-  actual) and tell it to keep what already passed; unconstrained regeneration breaks parts that were right.
+  wiring it in. A judge from another model family does not remove favoritism (judges favor any model whose
+  mistakes resemble theirs), and content-free answers such as '':'' or ''Thought process:'' can pass it, so
+  include them among the probes. 4. Return findings the generator can act on (failing criterion or checklist
+  item, where, expected against actual; told which checklist items failed, Gemini 2.5 Pro went from 29.5
+  to 94.7, against -2.5 to +2.6 with no feedback) and tell it to keep what already passed; unconstrained
+  regeneration breaks parts that were right.
   5. Stop on pass or after a low cap (most gains came in the first 2 to 4 rounds); raise the cap only
   if the per-round curve keeps rising. Return the best version rather than the last, and stop early when
   the score stalls or drops. 6. Measure against a check the loop never sees (a human-labeled sample or
@@ -276,6 +280,82 @@ evidence:
   direction: supports
   measured: true
   locator: §3.3; §4.1.1; §4.1.2; Tables 1-2
+- source: Shashwat Goel, Joschka Struber, Ilze Amanda Auzina, Karuna K Chandra, Ponnurangam Kumaraguru,
+    Douwe Kiela, Ameya Prabhu, Matthias Bethge, Jonas Geiping, "Great Models Think Alike and this Undermines
+    AI Oversight", https://arxiv.org/abs/2502.04313
+  date: '2025-02-06'
+  task: Measure how a judge's scores depend on how similar the judged model's mistakes are to the judge's
+    own (CAPA), controlling for accuracy, and whether frontier models' mistakes are converging
+  effect: '"LLM-as-a-judge scores favor models similar to the judge, generalizing recent self-preference
+    results"; "model favoritism extends beyond self- or family- preference to all models that are functionally
+    similar". Example: Qwen2.5-72B-Instruct as judge scored Qwen2.5-7B-Instruct 71% correct and the more
+    capable Llama-3.1-70B-Instruct (51% against 41% MCQ accuracy) 67%. In multiple regression both accuracy
+    and similarity had a significant positive effect on the judge score; "model mistakes are becoming
+    more similar with increasing capabilities".'
+  conditions: MMLU-Pro, 8,707 questions answered free-form and judged without a reference; 9 open-weight
+    judges from four families, 39 evaluated models; AlpacaEval check; similarity trend over 130 models
+  direction: contradicts
+  measured: true
+  locator: §3.2 (Q1, Q2), Figure 3, Table 2; §5.2, Figure 6
+- source: 'Chenyu Zhou, "More Convincing, Not More Correct: Self-Play Reward Hacking of Reference-Free
+    LLM Judges", https://arxiv.org/abs/2607.05904'
+  date: '2026-07-07'
+  task: A model answers, judges its own answers without a reference and is trained by DPO on the verdicts;
+    a held-out exact-match or unit-test anchor the judge never sees audits the result; defenses compared
+    (recompute prompt, larger and other-family judges, ensembles, committing an answer before judging,
+    solving blind)
+  effect: 'Full GSM8K test set, Qwen3-4B: "self-play drives the judge’s pass rate from 0.716 to 0.938±0.016
+    while anchor accuracy stays at 0.209→0.202±0.005"; "the judge reports 94% correct when 20% are". Under
+    natural chain-of-thought (base accuracy 0.76-0.88) the gap fell to 0.086-0.125. Training against a
+    different-family judge left a gap of 0.40±0.09; a three-family ensemble that accepts only when all
+    agree "still accepts 55% of full-test wrong answers" on seed 0, 65% averaged over three seeds. Making
+    the judge write its own answer first cut the false-positive rate on wrong answers "from the verify
+    prompt’s 0.719 to 0.012"; used as the training reward, the blind-solve verdict accepted 0 of about
+    380 wrong answers. Best-of-16 selection by the self-judge on LiveCodeBench widened the gap from 0.20
+    to 0.588 while unit-test pass of the selected candidates went from 0.27 to 0.29.'
+  conditions: Qwen3 1.7B-14B policies and self-judges, Llama, Gemma and Mistral judges; GSM8K (n=1319
+    full test, n=128 audit subset), reasoning-suppressed JSON answers by default, three seeds; LiveCodeBench
+    best-of-16 with Qwen3-1.7B; single author
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5.1; §5.2; §5.3
+- source: Yulai Zhao, Haolin Liu, Dian Yu, Sunyuan Kung, Meijia Chen, Haitao Mi, Dong Yu, "One Token to
+    Fool LLM-as-a-Judge", https://arxiv.org/abs/2507.08794
+  date: '2025-07-11'
+  task: Probe general-purpose and trained generative reward models with content-free 'master key' answers
+    (punctuation, reasoning openers) in reference-based grading; retrain judges with 20k truncated outputs
+    added as negatives
+  effect: '"such simple hacks lead to false positive rates (FPRs) as high as 80%"; "Thought process:"
+    led to "FPRs as high as 60-90%" in LLaMA3-70B-Instruct and Qwen2.5-72B-Instruct, and ":" to "up to
+    35% FPRs" in GPT-4o; the trained General-Verifier "shows an alarming FPR of 66.8% on the MATH dataset
+    using a naive single blank space". It surfaced when an RLVR policy trained against a Qwen2.5-72B-Instruct
+    judge collapsed into short reasoning openers. Adding 20k first-sentence truncations labeled NO to
+    160k examples gave Master-RMs "near 0% FPR" on unseen master keys, with Cohen''s kappa 0.91 against
+    GPT-4o and 0.90 against humans for the 7B. The authors "confirm the ineffectiveness of common inference-time
+    techniques such as chain-of-thought and majority voting".'
+  conditions: judges Qwen2.5-72B-Instruct, LLaMA3-70B-Instruct, GPT-4o, GPT-o1, Claude-4-Sonnet, Multi-sub
+    RM, General-Verifier, Omni-Judge; GSM8K, MATH, AIME, Multi-subject RLVR, NaturalReasoning; Master-RM-7B/32B
+    from Qwen2.5-Instruct on labels from a Qwen2.5-72B-Instruct grader
+  direction: contradicts
+  measured: true
+  locator: §1; §3.2; §3.3.1 Table 1; §3.3.2 Table 2
+- source: 'Young-Jun Lee, Seungone Kim, Byung-Kwan Lee, Minkyeong Moon, Yechan Hwang, Jong Myoung Kim,
+    Graham Neubig, Sean Welleck, Ho-Jin Choi, "RefineBench: Evaluating Refinement Capability of Language
+    Models via Checklists", https://arxiv.org/abs/2511.22173'
+  date: '2025-11-27'
+  task: Up to five turns of guided refinement (told which checklist items failed) against self-refinement
+    (asked to improve its own answer with no feedback, deciding when to stop) and against self-refinement
+    given the full checklist; each answer graded item by item by GPT-4.1
+  effect: 'Pass (all checklist items met), turn 1 to turn 5, guided refinement: Gemini 2.5 Pro 29.5 to
+    94.7, Claude-Opus-4.1 18.7 to 98.4. Self-refinement: Gemini 2.5 Pro 29.5 to 31.3; GPT-5 27.5 to 29.1;
+    o1 18.5 to 18.3; DeepSeek-R1 8.1 to 7.9; across all models in Table 3 the change ranged from -2.5
+    to +2.6. Given the full checklist but no feedback, "LLaMA-3.1-70B-Instruct improves by +43.6% and
+    Gemini 2.5 Pro by +44.5%" at turn 5 over plain self-refinement.'
+  conditions: 1,000 problems in 11 domains; 34 models including o1, o3-mini, o4-mini, GPT-5, Claude 4
+    and 4.1, Gemini 2.5, DeepSeek-R1; OpenAI reasoning effort medium, 10K-token limit for reasoning models
+  direction: supports
+  measured: true
+  locator: §4.2 Table 3; §5.1 Table 4; §5.3 Figure 9
 assessment:
   qa:
     unit: Evaluator on labeled good and bad pairs.

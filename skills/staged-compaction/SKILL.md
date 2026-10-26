@@ -64,6 +64,7 @@ Manage the history before it overflows. Past a soft threshold (about 60% of the 
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:multi-window-task-state` (4.b.iii, Keep plan, progress and results in files when work outlives one context window)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

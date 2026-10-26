@@ -530,7 +530,7 @@ optimizations:
   skill: llm-map-reduce
   name: LLM map-reduce
   kind: pattern
-  tier: 4
+  tier: 2
   tier_proposed: true
   categories:
   - topologies.parallel

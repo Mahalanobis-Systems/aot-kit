@@ -5,7 +5,7 @@ legacy_id: P34
 slug: language-agent-tree-search
 name: Language Agent Tree Search (LATS)
 kind: pattern
-status: outline
+status: card
 tiers:
 - tier: 4
   why: it replaces a single chain with a search
@@ -18,35 +18,104 @@ domains:
 evidence_domains:
 - code-generation
 - computer-use
+- web-research
+- reasoning
+- incident-response
 categories:
 - orchestration.extra-compute
-summary: MCTS with LLM reflection.
+summary: 'Language Agent Tree Search runs the agent as a Monte Carlo tree search over its own actions:
+  sample several next actions, execute each in the environment, score the resulting states with the model,
+  reflect on failed endings, and back the scores up the tree until a branch succeeds or the budget runs
+  out. Against a single ReAct run it raised success on web, coding and incident-diagnosis tasks (VisualWebArena
+  18.9% to 26.4%, SWE-bench Lite +23% relative across five models, root-cause accuracy 39.8% to 91.3%, though
+  those baselines got about a quarter of the tokens). At equal spend the results split: on HumanEval plain
+  retries scored 92.0% at $2.51 against LATS''s 88.0% at $134.50, while on VisualWebArena tree search
+  (32.0%) beat re-ranking whole runs (30%) at about equal compute. It needs an environment
+  whose states can be restored and kept free of irreversible side effects. It cost 3.8 to 14.1 times the
+  tokens or dollars of a single run in most studies (over 50 times simple retries on HumanEval) and 7.6
+  to about 10 times the wall time.'
+how: '1. Start from the cheap baselines on the same model and tasks: the ReAct loop (7.d.iii) with retries
+  on failed checks, and best-of-N whole runs picked by a vote, a judge or a test (9.c.ii), each given
+  the tokens and wall time the search would get; add search only where a gap remains. Read-only
+  diagnosis (searching over hypotheses with tools that only list, search and compare logs and metrics)
+  suits it best, since every branch is safe to explore. 2. Make every node
+  restorable before searching: reset the environment and replay the action prefix, commit the workspace
+  per node (git), or snapshot the sandbox, and check that a restored state matches the original. Docker
+  containers with background processes do not checkpoint reliably and replays can diverge; where states
+  cannot be restored, use one-step lookahead (sample K actions, a critic picks one) plus selection among
+  whole runs, or simulate candidate actions with an LLM world model instead of executing them. 3. Validate
+  each proposed action before running it, before adding any search: that alone raised WebArena-lite success
+  from 47.74% to 53.55%, most of the gain, while adding naive tree search lowered it to 51.61% until destructive
+  actions were handled. Keep exploration off irreversible actions: flag likely destructive actions before execution (form submits,
+  Enter, buttons that are not navigation) and confirm after (POST, PUT, DELETE or PATCH requests), defer
+  them until the search commits, drop the states they make unreachable, and on live systems restrict expansion
+  to non-destructive actions or gate them (10.b.i). 4. Build the search: select by UCT, expand 3 to 5
+  sampled actions and execute each, score the new state with the model after it sees the observation plus
+  self-consistency over several samples (with state-specific value prompts; where a sound signal such
+  as tests or the environment''s reward exists, use it, 9.a.i), write a reflection on each failed ending
+  and feed it to later expansions, and backpropagate. 5. Bound and parallelize: cap iterations or nodes
+  per task and search time per state, expand siblings concurrently with prefix caching on, and on reasoning
+  models choose the effort setting that leaves room for enough nodes in the time budget (maximum effort completed
+  18.5 search nodes per run against 62.8 at medium, 1.b.i). 6. Choose
+  the final answer with a checked selector: the value function picked the resolving patch 73% of the time
+  and a separate discriminator 84%, so compare the selector''s choice with outcomes. 7. Measure against
+  step 1 at matched tokens and wall time, per model and task difficulty: success, tokens, LLM calls, wall
+  time, restore time and destructive actions executed during exploration; re-check after a model upgrade,
+  since the gain flipped with backbone capability.'
 detect:
-  static: MCTS loop with selection, expansion, simulation and backpropagation; reflection used as value.
-  traces: Tree size; rollouts per item.
-  evals: Accuracy vs ReAct at equal budget.
+  static: 'A search loop over agent actions: UCT or best-first selection, expansion of several sampled
+    actions executed in the environment, a model-scored value (often with self-consistency), reflections
+    on failed endings, backpropagation, and a way to restore earlier states (reset and replay, a commit
+    per node, snapshots). Flag search over actions with side effects and no restore path or destructive-action
+    gate, and search with no simpler baseline at a matched budget.'
+  traces: Nodes expanded and LLM calls per item; tokens and wall time per item; restore or replay time;
+    value of the chosen trajectory against its actual outcome; destructive actions executed during exploration.
+  evals: Success against ReAct with retries and best-of-N with a vote or judge at equal tokens and wall
+    time, per model and task difficulty.
   judge: Rate reflections used as value estimates.
   probes:
     what: Multi-step tasks with recoverable mistakes.
-    construct: Tasks where the first plan is usually wrong but feedback identifies why.
+    construct: Tasks where the first plan is usually wrong, feedback identifies why, and the environment
+      can be reset between branches; add a few whose only path passes an irreversible action.
   primary:
   - evals
 impact:
   quality:
-    effect: improves
+    effect: mixed
     size: medium
-    basis: assessment
+    when: 'gains over a single ReAct run: VisualWebArena 18.9% to 26.4% (Koh, Jul 2024), SWE-bench Lite
+      +23% relative across five models (Antoniades, Oct 2024), root-cause accuracy 39.8% to 91.3% (Naakka,
+      May 2026); at equal spend simpler methods matched or won: HumanEval 88.0% against 92.0% for retries
+      (Kapoor, Jul 2024), GAIA best-of-N 63.03 against beam search 56.97 and tree search 55.76 at equal sampling
+      width (Zhu, Jun 2025); search won: VisualWebArena 32.0% against 30% for re-ranking at about equal
+      compute (Koh, Jul 2024), MCTS beat best-of-N at equal trajectory count on 3 of 4 backbones (Chen,
+      Feb 2025); no search policy significantly better than best-of-N within one harness (Brilliantov,
+      Sep 2026)'
+    basis: evidence
   cost:
     effect: degrades
     size: large
-    basis: assessment
+    when: LATS cost $134.50 against $2.51 for retries on HumanEval (Kapoor, Jul 2024); SWE-Search $576.00
+      against $40.86 with GPT-4o and about 5x on four other models (Antoniades, Oct 2024); MCTS agents
+      used 7.2x to 10.1x ReAct's tokens (Yu, Oct 2024); LATS averaged 71.0 LLM calls per request (Kim,
+      Jun 2025); 156K against 41K tokens per investigation (Naakka, May 2026)
+    basis: evidence
   performance:
     effect: degrades
     size: large
-    basis: assessment
+    when: tree search took 749.2 to 972.1 s per VisualWebArena task against 68.3 to 87.7 s for a reactive
+      agent (Gu, Nov 2024); 9.1 against 1.2 minutes per root-cause investigation (Naakka, May 2026); some
+      LATS tasks ran over 2 hours (Kapoor, Jul 2024); expanding 16 children in parallel instead of 1 cut
+      LATS latency by 196.3 s on average (Kim, Jun 2025)
+    basis: evidence
   security:
-    effect: none
-    basis: assessment
+    effect: degrades
+    size: medium
+    when: exploratory branches execute real actions; irreversible ones (placing an order, submitting a
+      form) cannot be backtracked, so search outside a sandbox needs a non-destructive action space or
+      gating (Koh, Jul 2024; Gu, Nov 2024); a conservative pre-execution check flagged actions of which
+      about 37% were truly destructive (Dihan, Dec 2025)
+    basis: evidence
   governance:
     effect: none
     basis: assessment
@@ -56,22 +125,246 @@ impact:
   primary:
   - quality
   - cost
+measure:
+- method: experiment
+  tier: 4
+  how: 'paired eval of the tree search against ReAct with retries and against best-of-N with a vote or
+    judge, at matched tokens and wall time, same model and value signal, split by task difficulty and
+    per model and reasoning-effort setting: success, tokens, LLM calls, wall time, destructive actions
+    executed during exploration'
+- method: monitor
+  how: nodes expanded and budget-hit rate per task; tokens, LLM calls and p50/p95 wall time; state restore
+    or replay time and replay divergence; agreement between the chosen trajectory's value and its actual
+    outcome; destructive actions flagged, blocked and executed
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Reasoning & Search group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Reasoning & Search group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file agentic-patterns-catalog.md"
-- source: Zhou et al., "Language Agent Tree Search Unifies Reasoning Acting and Planning in Language Models", https://arxiv.org/abs/2310.04406
+  locator: pattern library file agentic-patterns-catalog.md
+- source: Zhou et al., "Language Agent Tree Search Unifies Reasoning Acting and Planning in Language Models",
+    https://arxiv.org/abs/2310.04406
   date: '2023-10-06'
   task: Monte Carlo tree search over agent actions with LM value functions and self-reflection
-  effect: '"state-of-the-art pass@1 accuracy (92.7%) for programming on HumanEval with GPT-4"; "average score of
-    75.9" on WebShop with GPT-3.5, "comparable to gradient-based fine-tuning"'
-  conditions: HumanEval (GPT-4); WebShop (GPT-3.5)
+  effect: '"state-of-the-art pass@1 accuracy (92.7%) for programming on HumanEval with GPT-4"; "average
+    score of 75.9" on WebShop with GPT-3.5, "comparable to gradient-based fine-tuning"'
+  conditions: 'HumanEval, 164 problems, GPT-4: model-generated tests as feedback, 8 iterations, 5 solutions
+    per expansion; WebShop (GPT-3.5)'
   direction: supports
   locator: Abstract
+  measured: true
+- source: Sayash Kapoor, Benedikt Stroebl, Zachary S. Siegel, Nitya Nadgir, Arvind Narayanan, "AI Agents
+    That Matter", https://arxiv.org/abs/2407.01502
+  date: '2024-07-01'
+  task: Reran LATS, Reflexion and LDB on HumanEval next to simple baselines (retry up to five times when
+    the example tests fail, warming, model escalation), five runs each, reporting accuracy and dollar
+    cost
+  effect: 'Mean of five runs: LATS (GPT-4) 88.0% at $134.50 total; Retry (GPT-4) 92.0% at $2.51; Warming
+    (GPT-4) 93.2% at $2.45; GPT-4 alone 89.6% at $1.93; LATS (GPT-3.5) 80.4% at $9.49. "Reflexion and
+    LDB cost over 50% more than the warming strategy, and LATS over 50 times more." LATS had been scored
+    on "only a subset of the test cases" per problem, "responsible for a 3% difference in accuracy". With
+    June 2023 models some LATS tasks took "more than 2 hours to complete for GPT-3.5".'
+  conditions: gpt-4-turbo-2024-04-09 and gpt-3.5-turbo-0125; LDB's 164-problem HumanEval; LATS at 8 iterations
+    and expansion factor 3; April 2024 prices
+  direction: contradicts
+  measured: true
+  locator: §2.3; Appendix A Table A1 and A.2; Appendix E.1
+- source: Jing Yu Koh, Stephen McAleer, Daniel Fried, Ruslan Salakhutdinov, "Tree Search for Language
+    Model Agents", https://arxiv.org/abs/2407.01476
+  date: '2024-07-01'
+  task: Best-first tree search over web actions, scored by a GPT-4o value function with self-consistency;
+    backtracking resets the environment and replays the action sequence; compared with no search and with
+    re-ranking whole trajectories at about equal compute
+  effect: 'GPT-4o agent: VisualWebArena 18.9% to 26.4% ("39.7% relative"), WebArena 15.0% to 19.2%; Llama-3-70B:
+    VWA 7.6% to 16.7%, WA 7.6% to 10.1%. On 200 VWA tasks: no search 24.5%, budget c=5 32.0%, c=20 37.0%;
+    re-ranking "starts to plateau around 7 runs" at 30%, below search at c=5, where the two "spend approximately
+    equal inference compute". Value function: GPT-4o without self-consistency 28.5%, with 5 samples 32.5%,
+    with 20 samples 37.0%, ground-truth reward 43.5%. By difficulty: easy 34.2% to 42.3%, medium 12.7%
+    to 22.2%, hard 10.2% to 14.9%. Limits: c=20 can mean "20× more LM calls"; "we will need to restrict
+    the search space to actions that are not destructive".'
+  conditions: GPT-4o with set-of-marks and Llama-3-70B-Instruct agents; depth 5, branching 5; VisualWebArena
+    and WebArena; read at v4
+  direction: supports
+  measured: true
+  locator: Abstract; §4.2 Table 2; §5.1 Figures 2-3, Table 4; §5.2 Table 5; §5.4
+- source: 'Antonis Antoniades, Albert Örwall, Kexun Zhang, Yuxi Xie, Anirudh Goyal, William Wang, "SWE-Search:
+    Enhancing Software Agents with Monte Carlo Tree Search and Iterative Refinement", https://arxiv.org/abs/2410.20285'
+  date: '2024-10-26'
+  task: MCTS over a coding agent's states with an LLM value agent that returns a score and written feedback,
+    and a discriminator that debates up to five final candidates; each state is a git commit so the search
+    can revert the repository; against the same agent without search
+  effect: 'SWE-bench Lite resolve rate, without and with search: GPT-4o 25.7% to 31.0%, GPT-4o-mini 13.0%
+    to 17.0%, Qwen-2.5-72B 18.0% to 24.7%, DeepSeek-V2.5 16.3% to 21.0%, Llama-3.1-70B 13.6% to 17.7%;
+    "a 23% relative improvement". API cost: GPT-4o $576.00 against $40.86, GPT-4o-mini $52.34 against
+    $9.90, the three open models about 5x (estimated). Compute-matched: the baseline''s Pass@5 over five
+    runs against SWE-Search Pass@1 was 17.0 vs 17.0, 22.3 vs 24.7, 22.0 vs 21.0 and 21.7 vs 17.7, but that pits the baseline''s any-of-5 against
+    search''s single pick: SWE-Search''s own Pass@5 (22.3, 25.7, 23.3, 22.3) beat the baseline''s on all
+    four models. The
+    value function picked the resolving solution "73% of the time on average", the discriminator 84%.'
+  conditions: moatless-tools adapted for tree states; SWE-bench Lite, 300 issues; up to 100 iterations,
+    3 expansions per node; open-model costs estimated; the paper gives Llama's Pass@1 as 17.7 in Table
+    1 and 21.0 in Figure 3
+  direction: mixed
+  measured: true
+  locator: Table 1; §4.2; Appendix B; Appendix I Table 3; Appendix J Table 4
+- source: 'Xiao Yu, Baolin Peng, Vineeth Vajipey, Hao Cheng, Michel Galley, Jianfeng Gao, Zhou Yu, "ExACT:
+    Teaching AI Agents to Explore with Reflective-MCTS and Exploratory Learning", https://arxiv.org/abs/2410.02052'
+  date: '2024-10-02'
+  task: Reflective MCTS (MCTS plus contrastive reflections stored and retrieved across tasks, and a multi-agent-debate
+    value function) against ReAct and other search methods on web and computer tasks, with tokens per
+    task
+  effect: 'Success (tokens relative to ReAct): Classifieds ReAct 28.6% (1x), ToT-BFS 30.7% (3.2x), best-first
+    Search Agent 33.8% (4.2x), MCTS 37.6% (7.2x), R-MCTS 40.2% (7.3x), R-MCTS with debate 41.0% (7.4x);
+    with debate, Reddit 13.8% to 28.7% (9.7x), Shopping 23.2% to 32.3% (10.1x), GitLab 11.3% to 23.5%
+    (8.8x). OSWorld: ReAct 11.21%, R-MCTS 19.39%. "MCTS-based agents ... consume nearly 10x more tokens
+    compared to ReAct." On 234 text-only Classifieds tasks, ReAct with o1-mini scored 23.9% against 32.1%
+    for GPT-4o R-MCTS at 9.6x tokens.'
+  conditions: GPT-4o; VisualWebArena Classifieds, Reddit, Shopping and WebArena GitLab; breadth and depth
+    5, at most 5 actions, 5 minutes of search per state; OSWorld at 15 steps
+  direction: supports
+  measured: true
+  locator: §4 Search Parameters; §4.1 Tables 2-3; §5 Table 5; §8 Limitations
+- source: Yu Gu, Kai Zhang, Yuting Ning, Boyuan Zheng, Boyu Gou, Tianci Xue, Cheng Chang, Sanjari Srivastava,
+    Yanan Xie, Peng Qi, Huan Sun, Yu Su, "Is Your LLM Secretly a World Model of the Internet? Model-Based
+    Planning for Web Agents", https://arxiv.org/abs/2411.06559
+  date: '2024-11-10'
+  task: A reactive agent, tree search with real interactions (backtracking by reset and replay) and WebDreamer,
+    which simulates each candidate action's outcome with an LLM world model before executing one, all
+    on GPT-4o
+  effect: 'Success: VisualWebArena reactive 17.6%, tree search 26.2%, WebDreamer 23.6%; on live sites
+    WebDreamer raised Online-Mind2Web 26.0% to 37.0% and Mind2Web-Live 20.2% to 25.0%, where tree search
+    could not run: "resetting the environment to undo effects is not feasible on real-world websites".
+    Wall time per task, reactive / tree search / WebDreamer: Classifieds 68.3 / 749.2 / 183.6 s, Reddit
+    83.5 / 972.1 / 233.7 s, Shopping 87.7 / 785.7 / 179.4 s; action steps on Classifieds 3.4 / 9.9 / 4.1.
+    Tree search "introduces about 10 times greater latency".'
+  conditions: GPT-4o for all methods; VisualWebArena (sandbox), Online-Mind2Web and Mind2Web-Live (live
+    websites)
+  direction: mixed
+  measured: true
+  locator: §1; §4.1; §4.2 Tables 1-2
+- source: Zhenfang Chen, Delin Chen, Rui Sun, Wenjun Liu, Chuang Gan, "Scaling Autonomous Agents via Automatic
+    Reward Modeling And Planning", https://arxiv.org/abs/2502.12130
+  date: '2025-02-17'
+  task: One automatically trained reward model guides Reflexion, best-of-N or MCTS, each capped at the
+    same number of explored trajectories (10 on WebShop and ScienceWorld, 100 on Game of 24); against
+    sampling and greedy decoding
+  effect: 'Average over WebShop, ScienceWorld (seen, unseen) and Game of 24, best-of-N vs MCTS: Llama-3.1-70B
+    46.1 vs 49.3; Llama-3.1-8B 34.1 vs 32.6; Mistral-7B 26.4 vs 29.6; Phi-3.8B 26.5 vs 30.0 (greedy 37.5,
+    28.9, 19.5, 17.5). "MCTS performs the best on average"; Reflexion did worst on the weaker models.'
+  conditions: Llama-3.1-70B and 8B, Mistral-7B, Phi-3.8B policies; a 3B reward model trained on synthetic
+    trajectories; at most 10 actions per trajectory
+  direction: mixed
+  measured: true
+  locator: §4.2 Table 1; Appendix A (Planning Algorithm Details)
+- source: Karina Zainullina, Alexander Golubev, Maria Trofimova, Sergei Polezhaev, Ibragim Badertdinov,
+    Daria Litvintseva, Simon Karasik, Filipp Fisin, Sergei Skvortsov, Maksim Nekrashevich, Anton Shevtsov,
+    Boris Yangel, "Guided Search Strategies in Non-Serializable Environments with Applications to Software
+    Engineering Agents", https://arxiv.org/abs/2505.13652
+  date: '2025-05-19'
+  task: 'Search for a coding agent in Docker containers whose state cannot be saved and restored: one-step
+    lookahead (sample K candidate actions, a learned critic picks one) and trajectory selection (N full
+    runs, the critic picks one), in place of MCTS'
+  effect: 'MCTS "becomes impossible in these settings"; Docker checkpointing with CRIU "cannot guarantee
+    consistent preservation" of process state, and replaying actions in a fresh container is expensive
+    and nondeterministic, "making it impossible to reliably reproduce a specific state". Verified-50 success:
+    Qwen-based policy 16.2%, with lookahead 26.8%, with selection (N=5) 27.2%, with both (N=10) 41.7%;
+    GPT-4o 22.0%, 27.2%, 34.0% (N=5) and 40.0% (both, N=5). Full SWE-bench Verified 40.8% (K=8, N=15).
+    Lookahead "only increases the number of generated output tokens"; selection runs in parallel with
+    "minimal impact on inference latency".'
+  conditions: SWE-agent; fine-tuned Qwen-72B-based policy and GPT-4o; critic trained on 80,000 trajectories;
+    Verified-50 (50 random SWE-bench Verified tasks) and the full set
+  direction: mixed
+  measured: true
+  locator: §1; §2.3; §3.1-3.2; §4.2 Tables 1-2
+- source: King Zhu, Hanhao Li, Siwei Wu, Tianshun Xing, Dehua Ma, Xiangru Tang, Minghao Liu, Jian Yang,
+    et al., "Scaling Test-time Compute for LLM Agents", https://arxiv.org/abs/2506.12928
+  date: '2025-06-15'
+  task: 'Parallel test-time scaling methods for one agent under the same settings (sampling width 4, beam
+    size 2): best-of-N over whole runs, step-wise best-of-N, beam search, DVTS and tree search, each picked
+    by an LLM verifier'
+  effect: 'GAIA validation average: baseline 55.76, best-of-N 63.03, step-wise best-of-N 58.79, beam search
+    56.97, DVTS 55.76; tree search 55.76 with list-wise verification and 50.91 with scoring. "despite
+    simplicity, BoN achieves the optimal performance"; beam search and DVTS "show no significant improvement
+    over baseline" because their exploration "depends on the accuracy of signals provided by the verify
+    model".'
+  conditions: GPT-4.1 in a smolagents CodeAgent; GAIA validation, 165 tasks; equal sampling width, not
+    equal tokens
+  direction: contradicts
+  measured: true
+  locator: §1; §3.1; §4.1 Table 1; §4.3 Table 4
+- source: 'Jiin Kim, Byeongjun Shin, Jinha Chung, Minsoo Rhu, "The Cost of Dynamic Reasoning: Demystifying
+    AI Agents and Test-Time Scaling from an AI Infrastructure Perspective", https://arxiv.org/abs/2506.04301'
+  date: '2025-06-04'
+  task: 'System-level measurement of CoT, ReAct, Reflexion, LATS and LLMCompiler served on vLLM: LLM calls,
+    latency, KV-cache memory and GPU energy, and LATS with more child nodes expanded in parallel'
+  effect: 'LATS "exhibits the highest LLM invocation count, with an average of 71.0 LLM calls per request".
+    HotpotQA with the 8B model: LATS 80% accuracy, 380.90 s and 22.76 Wh per query against Reflexion 38%,
+    649.34 s and 41.53 Wh; with 70B, LATS 82%, 305.67 s and 158.48 Wh; a single-turn chat query 0.32 Wh
+    (8B). Raising LATS child nodes from 1 to 16 "improves accuracy by 14.4 percentage points while simultaneously
+    reducing latency by 196.3s on average". Prefix caching cut LATS KV-cache memory "by an average of
+    64.8%".'
+  conditions: Llama-3.1-8B and 70B-Instruct on A100s; HotpotQA, WebShop, MATH, HumanEval; LATS reimplemented
+    with concurrent LLM calls and parallel tool calls
+  direction: mixed
+  measured: true
+  locator: §III; §IV-A Figure 4; §IV-B (prefix caching); §V Figure 16; Table III
+- source: 'Mahir Labib Dihan, Tanzima Hashem, Mohammed Eunus Ali, Md Rizwan Parvez, "WebOperator: Action-Aware
+    Tree Search for Autonomous Agents in Web Environment", https://arxiv.org/abs/2512.12692'
+  date: '2025-12-14'
+  task: Best-first tree search for a web agent that classifies actions as safe or destructive (a pre-execution
+    heuristic on element and key, a post-execution check of POST, PUT, DELETE and PATCH requests), defers
+    destructive actions, invalidates states they make unreachable and jumps to refresh-stable checkpoints
+    instead of replaying from the root; ablated step by step
+  effect: 'WebArena-lite ablation: ReAct 47.74%; with action validation 53.55%; with multiple, merged
+    and varied action proposals 54.84%; adding naive tree search lowered it to 51.61%; with destructive-action
+    handling and context-aware selection 58.71%; full system 60.00%, at 31.34 generated actions per task
+    against 9.30 for ReAct. Full WebArena: 24.4%, 42.7%, 48.4% and 54.6% at search budgets 5, 10, 15 and
+    20. "only about 37% of pre-flagged actions are confirmed as truly destructive".'
+  conditions: gpt-4o in BrowserGym; WebArena-lite 155 tasks for the ablation; comparisons with other tree-search
+    agents use their reported numbers
+  direction: mixed
+  measured: true
+  locator: §3.2; §4.2 Table 3; §4.4; §4.5 Table 4
+- source: 'Alexander Naakka, Yuqing Wang, Mika V Mäntylä, "LATS-RCA: Language Agent Tree Search for Root
+    Cause Analysis in Microservices", https://arxiv.org/abs/2605.03505'
+  date: '2026-05-05'
+  task: 'LATS over root-cause hypotheses: log and metric agents expand five candidate investigative actions
+    per node, score them by LLM reflection (evidence quality, completeness, consistency) plus self-consistency,
+    select by UCT and backpropagate; against single- and multi-agent ReAct baselines built by the authors'
+  effect: 'LO2 accuracy: LATS-RCA 91.3% (SD 1.2% over five runs), multi-agent ReAct 57.4%, single-agent
+    ReAct 39.8%. Per investigation: 53.1 calls, 156K tokens, 9.1 minutes against 13.5 calls, 41K tokens,
+    1.2 minutes for single ReAct; "approximately 3.8× and 2.1× the tokens, and 7.6× and 5.4× the runtime,
+    of single- and multi-agent ReAct". Ablation: without candidate batching 84.3%, without backpropagation
+    84.8%, without reflection 87.6%. Claude Sonnet 4.5, GPT-5 and Gemini 3 Pro scored 89.7% to 91.3%.
+    On 37 production incidents: 65.1% on average (62% to 70%), about 75 API calls, 220K tokens and 13
+    minutes each.'
+  conditions: Claude Sonnet 4.5 unless noted; LO2 sample, 100 anomaly cases over 53 failure types; tools
+    only list, retrieve, search and compare recorded logs and metrics; ReAct baselines not given an equal
+    budget; production system of a web host
+  direction: supports
+  measured: true
+  locator: §4.2 RQ1-RQ2, Table 1; §4.3 Table 2; Table 3; §5
+- source: Kirill Brilliantov, Alejandro Hernández-Cano, Emmanuel Abbé, "How Much of a Harness Does a Strong
+    Agent Need for Autonomous ML Engineering?", https://arxiv.org/abs/2609.40303
+  date: '2026-09-30'
+  task: Holds backbone, hardware (one A100) and a 24-hour budget fixed and compares one long coding-agent
+    session (Malena) with harnesses including MLEvolve, a UCT tree search over complete training scripts;
+    also compares search policies (chain, greedy, UCB1, best-of-N) over coding-agent iterations
+  effect: 'MLE-bench mean percentile, single session vs MLEvolve: Kimi K3 72.75 vs 63.89, GLM 5.2 69.74
+    vs 54.32, DeepSeek V4 Flash 58.53 vs 42.53, Gemma 4 31B 32.35 vs 42.88 (paired difference -10.53 [-14.72,
+    -6.36], the only loss; medal rate 17.8% vs 22.2%, not significant). Across search policies at GLM
+    5.2 "no strategy provides a statistically significant advantage"; UCB1 led best-of-N by 2.71 percentile
+    points, 95% CI (-1.44, +6.60). On DeepSeek V4 Flash, MLEvolve at maximum reasoning effort completed
+    18.5 search nodes per run against 62.8 at medium, and its medal rate was 0% against 25.0% (10-task
+    subset). "weaker backbones still benefit from hand-crafted workflow priors".'
+  conditions: open-weight backbones on vLLM; MLE-bench fixed30 split, 24 hours per run, 95% bootstrap
+    CIs over seeds; search over whole solutions, not single actions; MLEvolve at medium effort on DeepSeek
+    V4 Flash
+  direction: mixed
+  measured: true
+  locator: §1; §4.2; Appendix D.2 Tables 15-16; Appendix D.3 Table 17
 assessment:
   qa:
     unit: UCB selection and backprop.
@@ -108,6 +401,17 @@ assessment:
     primary:
     - quality
     - cost
+related:
+- 9.c.ii
+- 7.c.vii
+- 7.d.iii
+- 7.c.i
+- 7.c.ii
+- 9.a.i
+- 10.b.i
+- 4.b.i
+- 1.b.i
+- 3.b.i
 provenance:
   layer: target
   origin: observed
@@ -115,3 +419,15 @@ provenance:
   sub_type: planning
   library_group: Reasoning & Search
   library_source: catalog
+caveats: 'Most gains are measured against a single ReAct run, not against retries or best-of-N at the
+  same spend; where that comparison was made, results split: retries beat LATS on HumanEval, best-of-N led
+  on GAIA (matched on samples, not tokens, one run) and no search policy beat best-of-N significantly
+  on MLE-bench, while tree search beat re-ranking at about equal compute on VisualWebArena and MCTS beat
+  best-of-N on three of four backbones in one study that used a trained reward model. The value signal is the bottleneck: a ground-truth reward
+  reached 43.5% against 37.0% with GPT-4o''s estimate, naive tree search lowered WebArena-lite success
+  from 54.84% to 51.61% until destructive-action handling was added, and SWE-Search''s value function
+  picked the resolving patch 73% of the time. Search needs states that can be restored, which Docker containers
+  and live websites do not reliably provide; the positive results come from sandboxes, and the one production
+  study fell from 91.3% on its benchmark to 65.1% on 37 incidents. Most action-level results use GPT-4o-era
+  models; on stronger open-weight reasoning backbones one study found no search policy significantly
+  better than another and that maximum reasoning effort starved the search of nodes.'

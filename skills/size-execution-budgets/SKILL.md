@@ -64,6 +64,9 @@ The evidence is frequency only: VeRO's optimizers raised turn caps far more ofte
 - `aot-kit:link-large-schemas` (8.b.ii, Link large schemas by exploration: start broad, grow the linked set with probing queries, favor recall)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
+- `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

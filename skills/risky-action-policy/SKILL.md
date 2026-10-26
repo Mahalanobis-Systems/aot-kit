@@ -64,7 +64,14 @@ Every source comes from coding-agent harnesses (a source-code study of 11 of the
 ## Related
 
 - `aot-kit:constrain-agent-reach` (10.a.i, Constrain what the agent can touch)
+- `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
+- `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
+- `aot-kit:filesystem-checkpoints` (4.b.i, Filesystem-based agent state and checkpoints)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

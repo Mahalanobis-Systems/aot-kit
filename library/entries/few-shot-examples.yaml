@@ -5,7 +5,7 @@ legacy_id: T11
 slug: few-shot-examples
 name: Add worked examples to the prompt (few-shot), or curated example queries for data agents
 kind: technique
-status: outline
+status: card
 tiers:
 - tier: 3
   why: it changes what the model sees
@@ -13,33 +13,92 @@ levers:
 - prompt
 domains:
 - general
-evidence_domains: []
+evidence_domains:
+- data-analysis
+- reasoning
+- tool-use
 categories:
 - prompts.structure
-summary: Add solved examples of the task to the prompt. For data agents the examples are curated example
-  queries (commented SQL for custom metrics, an example-query index). Vary their form so the model reasons
-  about the case instead of copying the examples' pattern, and don't add examples where the problem calls
-  for validation.
+summary: 'Put a few solved examples of the task in the prompt (the input and the exact output wanted),
+  or give a data agent commented example queries for its custom metrics and an index of past queries it
+  retrieves per question. The clear gains are on knowledge the model cannot infer, mostly in data agents:
+  one Genie space went from 54% to 77% on 13 questions, removing LinkedIn''s example-query index cut correct
+  answers from 49% to 24%, and retrieving past queries raised one text-to-SQL pipeline from 54.27% to
+  60.95%. On strong and reasoning models examples mostly fix the output format rather than the reasoning:
+  Qwen2.5-72B scored 95.83% zero-shot against 95.75% with eight examples on GSM8K once the answer extractor
+  was fixed, and five examples moved o1-preview by -2.2 to +1.2 points across six medical benchmarks.
+  Start from a zero-shot baseline, add a few examples only where a paired eval shows a gain, and keep
+  fixed examples in the cached prefix with retrieved ones after it.'
+how: '1. Start from the baseline: the same model zero-shot, with a plain instruction, an explicit output
+  format and a robust answer extractor (9.b.i), on held-out cases. Examples often look like a gain only
+  because they fix the format: Qwen2.5-72B went from 91.58% zero-shot to 95.75% with eight examples on
+  GSM8K, but scored 95.83% zero-shot once the extractor read the boxed answer. On a reasoning model begin
+  with no examples: five examples moved o1-preview by -2.2 to +1.2 points across six medical benchmarks,
+  while a tailored prompt and ensembling helped. 2. Add examples only where failures cluster on what the
+  instruction and schema cannot carry: a custom metric, business logic, a join path, a value convention,
+  an exact output shape. For a data agent, write one example query per custom metric with comments that
+  explain the logic (54% to 77% on 13 questions in one Genie space), and build an example-query index
+  from queries in code, wikis and the query log, each with a description embedded for retrieval and refreshed
+  as needed (removing such an index cut correct answers from 49% to 24%). With dozens of metrics, define
+  them once in a view or semantic layer instead (7.a.i): in the same Genie space a view holding the definitions
+  also scored 100%. 3. Make each example the full input and the full desired output, in exactly the target
+  format: in the math study the format benefit fell as more of each example was masked, while the reasoning
+  content was largely ignored (in most settings, replacing half of the example tokens with noise barely
+  changed accuracy). Include worked reasoning only for small or older models, which did gain from it (LLaMA3.2-1B,
+  LLaMA2-7B, Qwen-7B); for strong models even reasoning written by DeepSeek-R1 rarely beat zero-shot.
+  Vary the examples'' form so the model does not copy one pattern (3.a.ii). 4. Use a few examples, retrieved
+  per question when the pool is large: on underspecified text-to-SQL, retrieving past queries from the
+  same database raised execution accuracy from 54.27% to 60.95% (67.34% with the right ones), peaking
+  at four examples (61.31%, against 58.36% with one), which the authors attribute to noise from over-retrieval.
+  Retrieve broadly, then filter and rerank for precision: whole-question similarity alone reached 59.15%,
+  retrieval precision was 35.53%, and in one failure the model copied a retrieved pattern that did not
+  fit. 5. Keep the prefix cacheable (3.b.i): put fixed examples in the static part of the prompt and append
+  retrieved ones after it, next to the question. In many-shot prompts the edge of similarity selection
+  fades as examples are added, and caching a large fixed set while adding 20 retrieved examples per query
+  matched similarity-only selection at an estimated half the cost at 50 examples and a tenth at 200. Retrieval
+  is not always better: on a tool-selection benchmark, similarity-retrieved examples did not beat zero-shot
+  while random ones did. 6. Keep the pool curated, as the tested setups did: final, successful queries
+  only, filtered by execution count and certification. If the examples come from the agent''s own past
+  runs, that is episodic memory (4.c.i): verify them before reuse. Do not add examples where the problem
+  calls for validation (one of VeRO''s anti-patterns). 7. Measure with paired runs on held-out cases (never
+  the example pool): zero-shot, fixed examples and retrieved examples, per model and again after each
+  model change; report accuracy, output-format errors, input tokens, cache hit rate and latency (retrieval
+  with LLM reranking took about 6 s per question in one test).'
 detect:
-  static: a prompt with no worked examples on a task with a fixed output shape; a data agent with no example
-    queries for its metrics
-  traces: outputs that miss the expected shape or metric definition; repeated queries for the same custom
-    metric
-  evals: failures that cluster on custom metrics or an output format the examples would show
+  static: A prompt with no worked examples on a task with a fixed output shape; a data agent with no example
+    queries for its custom metrics; examples kept on a reasoning or strong model with no zero-shot comparison;
+    examples retrieved per request placed before static prompt content, so the cached prefix changes on
+    every call.
+  traces: Outputs that miss the expected shape or metric definition; repeated queries for the same custom
+    metric; retrieved examples with low similarity to the question, or answers that copy a retrieved pattern
+    that does not fit.
+  evals: Failures that cluster on custom metrics, business logic or an output format the examples would
+    show; no paired zero-shot baseline for the examples in use.
 impact:
   quality:
     effect: mixed
     size: medium
-    when: weak in VeRO (MATH train 0.81 to 0.83, validation flat); strong for data agents (Genie 54% to
-      77%)
+    when: 'data agents asked about custom metrics or underspecified business logic: 54% to 77% on 13 questions
+      (Databricks, Feb 2026), 49% to 24% without the example-query index (Chen, Jul 2025), 54.27% to 60.95%
+      with retrieved past queries and 61.31% at four examples (Zhou, Aug 2026); strong models on math:
+      95.75% with eight examples against 95.83% zero-shot once the extractor was fixed (Cheng, Jun 2025),
+      MATH train 0.81 to 0.83 with validation flat (VeRO, Feb 2026); o1-preview -2.2 to +1.2 points across
+      six medical benchmarks (Nori, Nov 2024)'
     basis: evidence
   cost:
     effect: degrades
     size: small
-    when: more prompt tokens
+    when: more input tokens per call; examples retrieved per query change the prompt and defeat prefix
+      caching, while caching a large fixed set and adding 20 retrieved examples cut estimated attention
+      cost about 2x at 50 examples and 10x at 200 against similarity-only selection (Golchin, Jul 2025);
+      few-shot o1-preview used more tokens than a tailored prompt for lower accuracy (Nori, Nov 2024);
+      indexing a query log took about 5.2 s of LLM time per query (Zhou, Aug 2026)
     basis: evidence
   performance:
-    effect: none
+    effect: degrades
+    size: small
+    when: fixed examples add only input tokens; retrieving and reranking examples per question with an
+      LLM added about 6 s per question with serial API calls (Zhou, Aug 2026)
     basis: evidence
   security:
     effect: unknown
@@ -47,31 +106,155 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
 - method: experiment
   tier: 3
-  how: paired eval with and without the examples, on held-out cases
+  how: 'paired runs on held-out cases, never the example pool: zero-shot with an explicit output format
+    and a robust extractor, against fixed examples and against examples retrieved per query (1 to 5),
+    per model and again after each model change; report accuracy (for data agents, sliced by questions
+    on custom metrics or business logic), output-format errors, input tokens, cache hit rate and latency,
+    over several runs'
+- method: monitor
+  how: 'per request: which examples were retrieved and their similarity, whether the answer followed a
+    retrieved pattern, output-format errors, input tokens and cache hit rate; weekly: failed questions
+    with no relevant example (gaps in the index) and examples that no longer run after schema or metric
+    changes'
 evidence:
 - source: paper Figure 12
   task: MATH, phase 4
   effect: 'Adding few-shot maths examples: train 0.81 to 0.83, validation flat at 0.87.'
-- source: 'Databricks, "How to Build Production-Ready Genie Spaces and Build Trust Along the Way", https://www.databricks.com/blog/how-build-production-ready-genie-spaces-and-build-trust-along-way'
-  date: 2026-02
+- source: Databricks, "How to Build Production-Ready Genie Spaces and Build Trust Along the Way", https://www.databricks.com/blog/how-build-production-ready-genie-spaces-and-build-trust-along-way
+  date: '2026-02-06'
   task: Commented example SQL for custom metrics
-  effect: 54% to 77% on 13 questions.
+  effect: Adding example SQL queries for custom metrics such as CTR (comments in the SQL recommended)
+    raised benchmark accuracy from 54% to 77% on 13 questions, "the largest single accuracy improvement
+    thus far". Text instructions then reached 100%, and replacing base tables with a view that pre-defines
+    the metrics also scored 100%.
   measured: true
-- source: 'Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data Analytics", https://arxiv.org/abs/2507.14372'
-  date: 2025-07
+  conditions: One Genie space on the authors' marketing data; 13 benchmark questions with validated SQL;
+    the 54% came after table and column descriptions, join keys and value sampling; vendor evaluating
+    its own product
+  direction: supports
+  locator: 'Iteration 4: Defining Custom Metrics; Iteration 5; (Optional) Iteration 6'
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
+    Analytics", https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
   task: Remove the example-query index
-  effect: 49% to 24%.
+  effect: Removing the example-query index (human-authored queries from code repos and wikis, filtered
+    by execution count and certification) cut answers rated correct or close to correct from 49% to 24%,
+    and table recall from 76% to 60%.
   direction: supports
   measured: true
-caveats: Vary the examples (3.a.ii, avoid few-shot ruts). Don't add examples where the problem calls for
-  validation, one of VeRO's anti-patterns.
+  conditions: 133 expert-written questions over 10 product areas; gpt-4o-2024-05-13 agents at temperature
+    0, scored by a gpt-4o judge (share of answers rated 4 or 5), one run per configuration; measured after
+    domain knowledge had already been removed
+  locator: Section 2.1 (Example query index); Section 3.3.1, Table 2 (A.4 to A.3)
+- source: 'Yunfan Zhou, Qiming Shi, Yizhou Yang, Di Weng, Yingcai Wu, "BIRD-History: A Benchmark for History-Driven
+    Text-to-SQL with Fine-Grained Knowledge Annotations", https://arxiv.org/abs/2608.29345'
+  date: '2026-08-29'
+  task: 'Retrieve past SQL queries from the same database''s query log as examples for underspecified
+    questions whose business logic, join paths or value conventions are not in the schema: no retrieval,
+    each pipeline''s own whole-question similarity retrieval, and the authors'' retriever (query-level
+    plus clause-level matching, then LLM filtering and reranking); vary the maximum number of examples'
+  effect: 'OpenSearch-SQL execution accuracy: 54.27% with no retrieval, 59.15% with its own similarity
+    retrieval, 60.95% with the authors'' retriever, 67.34% with the gold examples. DAIL-SQL rose from
+    40.78% to 51.33%, N-rep from 54.49% to 57.79%, CodeS-7B from 12.92% to 18.95%. Capping retrieval at
+    1, 2, 3, 4 and 5 examples gave 58.36%, 59.30%, 59.58%, 61.31% and 60.01% (uncapped 60.95% at 4.57
+    examples on average), "suggesting overly permissive retrieval introduces noise". Retrieval precision
+    was 35.53%; in one failure the model chose an oversimplified retrieved pattern. Online retrieval took
+    about 6 s per question (1,918 ms keyword extraction, 54 ms embedding search, 4,062 ms LLM filter and
+    rerank, serial API calls); indexing took 5,181 ms of LLM time per query.'
+  conditions: 1,393 tasks over 11 BIRD databases, built so each question needs knowledge from the query
+    log; the log is BIRD's development-set gold SQL (final, successful queries only); qwen-plus-2025-07-28
+    at temperature 0 for generation and reranking, all-mpnet-base-v2 embeddings; one run per setting;
+    the authors' own benchmark and retriever
+  direction: supports
+  measured: true
+  locator: Section 5.2 Tables 2, 3 and 5; Section 5.3; App. B.2 Table 13; App. B.3 Table 14
+- source: Shahriar Golchin, Yanfei Chen, Rujun Han, Manan Gandhi, Tianli Yu, Swaroop Mishra, Mihai Surdeanu,
+    Rishabh Agarwal, Chen-Yu Lee, Tomas Pfister, "Towards Compute-Optimal Many-Shot In-Context Learning",
+    https://arxiv.org/abs/2507.16217
+  date: '2025-07-22'
+  task: 'Many-shot prompts (50 to 200 examples): a fixed random set, a fixed k-means-selected set, examples
+    retrieved by similarity for each test case, and two hybrids that add 20 retrieved examples per case
+    after a larger fixed set that is cached'
+  effect: '"the influence of selection criteria (e.g., similarity) on performance diminishes as the number
+    of demonstrations increases substantially"; on TREC similarity selection barely changed past 50 examples.
+    "Both of our selection strategies match the similarity-based approach in cases where it delivers the
+    highest performance" and beat it on ANLI and MetaTool, at an estimated inference cost "nearly two
+    times lower in 50-shot settings and ten times lower in 200-shot settings". On MetaTool, similarity-retrieved
+    examples did not improve on zero-shot while random examples did. With a 100-example pool, adjusting
+    the share of similar examples gained about 3% to 6% over using the whole pool.'
+  conditions: gemini-1.5-pro-002 and gemini-2.0-flash-001 at temperature 0; ANLI, TREC, GSM Plus and MetaTool
+    (up to 1,000 test cases each) and three BBH tasks (150 each); Gecko embeddings; cost is a proportional
+    attention cost computed from complexity, not measured spend or latency; results shown in figures only;
+    the authors' own method
+  direction: supports
+  measured: true
+  locator: Section 1; Sections 4.1 to 4.4; Figures 2, 4 and 5
+- source: 'Xiang Cheng, Chengyan Pan, Minjun Zhao, Deyang Li, Fangchao Liu, Xinyu Zhang, Xiao Zhang, Yong
+    Liu, "Revisiting Chain-of-Thought Prompting: Zero-shot Can Be Stronger than Few-shot", https://arxiv.org/abs/2506.14641'
+  date: '2025-06-17'
+  task: Compare zero-shot chain of thought with few-shot chain-of-thought examples (fixed, or chosen by
+    seven selection methods, 1 to 8 examples, and examples written by Qwen2.5-Max or DeepSeek-R1) on math,
+    after fixing the answer extractor to read the boxed answer
+  effect: '"for recent strong models such as the Qwen2.5 series, adding traditional CoT exemplars does
+    not improve reasoning performance compared to Zero-Shot CoT. Instead, their primary function is to
+    align the output format with human expectations." Qwen2.5-72B-Instruct on GSM8K: 91.58% zero-shot
+    with the default extractor, 95.75% with 8 examples, 95.83% zero-shot with the fixed extractor; on
+    MATH 81.30% with 8 examples against 81.64% zero-shot. Retrieved examples were "comparable to or worse
+    than the Zero-shot baseline", the best gains about 0.2 points; examples written by stronger models
+    beat standard 8-shot but rarely zero-shot; in most settings, replacing 50% of example tokens with
+    noise caused no significant drop. Weak or older models (LLaMA3.2-1B, LLaMA2-7B, Qwen-7B) did gain
+    from examples. In an appendix, few-shot prompts fell far below zero-shot on LSAT and CommonsenseQA
+    (LSAT-LR 41.55% against 84.65% for Qwen2.5-72B), with "repetitive or illogical outputs".'
+  conditions: 'Instruction-tuned open models: Qwen2.5 0.5B to 72B, LLaMA3 1B to 70B, Gemma2, Ministral-8B,
+    plus older LLaMA2-7B and Qwen-7B; full GSM8K and MATH test sets; greedy decoding, one run, no variance
+    reported; no API or thinking models; main results in figures, numbers from the appendix tables'
+  direction: contradicts
+  measured: true
+  locator: Abstract; Section 4; Sections 5.1 to 5.3; Section 6.1; App. B.1 Table 1; App. B.2 Tables 2
+    and 3
+- source: 'Harsha Nori, Naoto Usuyama, Nicholas King, Scott Mayer McKinney, Xavier Fernandes, Sheng Zhang,
+    Eric Horvitz (Microsoft), "From Medprompt to o1: Exploration of Run-Time Strategies for Medical Challenge
+    Problems and Beyond", https://arxiv.org/abs/2411.03590'
+  date: '2024-11-06'
+  task: 'Test Medprompt''s components on a reasoning model: 5 random or 5 nearest-neighbor question-answer
+    examples, a tailored prompt and answer-shuffled ensembles, against a minimal zero-shot prompt, with
+    o1-preview on six medical benchmarks'
+  effect: '"Few-shot prompting was inconsistent and, on average, hurt performance." Change against the
+    zero-shot baseline, JMLE-2024 / MMLU / MedMCQA / MedQA / USMLE Sample Exam / USMLE Self Assessment:
+    5 random examples +1.2 / -1.1 / -0.0 / -1.4 / -0.4 / -1.0 points; 5 nearest-neighbor examples +0.6
+    / -0.1 / +1.2 / -2.2 / -0.3 / -0.6. A 15-run ensemble gained +0.6 to +2.0 on every benchmark and a
+    tailored prompt -0.0 to +1.6. "o1-preview with minimal or few-shot prompting employs more tokens but
+    performs worse than with tailored prompts."'
+  conditions: o1-preview only (temperature fixed at 1.0), three runs per evaluation; zero-shot baselines
+    81.4% to 95.6%, near ceiling on most sets; numbers from the Figure 8 heatmap; the examples follow
+    the authors' own Medprompt method
+  direction: contradicts
+  measured: true
+  locator: Abstract; Section 4.3 (Figures 5 and 6); Section 4.5; App. 8.1 Figure 8
+caveats: 'The large gains are from data agents asked about custom metrics or underspecified logic, on
+  small or purpose-built sets: 13 questions in one Genie space, 133 questions scored by an LLM judge in
+  one run at LinkedIn, and a benchmark built so that past queries are needed, run with one model. On strong
+  instruction-tuned and reasoning models examples mostly align the format and can hurt: eight examples
+  tied zero-shot on math for Qwen2.5-72B, few-shot prompts collapsed on LSAT and CommonsenseQA in the
+  same study''s appendix, and five examples lowered o1-preview on four of six medical benchmarks, though
+  neither study tests a 2026 model. Retrieved examples are not reliably better than fixed ones (they did
+  not beat zero-shot on a tool-selection benchmark, and low-precision retrieval misled the model), and
+  the caching savings are estimated from attention complexity, not measured bills. No source here measures
+  examples for multi-step agent tool calling, and VeRO lists adding examples where the problem calls for
+  validation as an anti-pattern.'
 related:
-- 3.a.iv
 - 3.a.ii
+- 3.a.iv
 - 7.a.i
+- 5.b.i
+- 4.c.i
+- 3.b.i
+- 9.b.i
 provenance:
   layer: target
   origin: observed

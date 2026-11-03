@@ -7,6 +7,8 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+## 0.3.0 — 2026-11-03
+
 - 11 cards are rewritten, with a sharper summary and how-to and 53 new sources (each dated, quoted
   and located in its entry): size run budgets (7.b.iii, 5 new sources; set caps from successful
   runs and show the agent the budget left), make the final answer extractable (9.b.i, 4), restructure

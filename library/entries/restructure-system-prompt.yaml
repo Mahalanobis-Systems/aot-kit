@@ -17,45 +17,110 @@ domains:
 evidence_domains:
 - code-generation
 - reasoning
+- web-research
 categories:
 - prompts.structure
-summary: 'Rewrite the system prompt so that each requirement the task has (constraints, the answer format,
-  the completion check, how to work efficiently, the domain procedure) is stated once, up front, in a
-  named section, and remove instructions the model does not need. Adding structure and removing bulk are
-  the same edit seen from two sides: what stays is what the eval shows the model needs. A domain procedure
-  section is worth adding only when failures cluster on a step an expert would take; write it from those
-  failures, from a domain expert, or by searching prompt variants against the eval (GEPA).'
-how: 1. List the requirements the task actually has, from the task spec and from failures.
-  2. Put each in one named section; put the answer format and completion check in their own sections.
-  3. Cut everything else, and shorten tool descriptions and checklists with it (the TerminalBench run
-  cut the prompt from 7 lines to 3). 4. Add a domain procedure only if failures cluster on a step; derive
-  it from those failures or an expert, or generate and test variants with GEPA. 5. Run the paired eval
-  on development and held-out cases; keep only sections that earn their place.
+summary: 'State each requirement once, in its own named section near the top of the system prompt, and
+  cut what the model does not need. It pays most where rules have piled up or crowd out the task: with
+  80 rules in one prompt at most 1.9% of responses met them all across five current models, a one-call
+  rewrite that merged and ranked stacked rules recovered 11.0 points of follow rate for GPT-5-mini, and
+  generated repository context files raised coding agents'' cost 20% and 23% with no significant gain
+  in success. The limits: the same rewrite did nothing for Claude Sonnet 4.6 (-1.2 points), markdown against
+  plain text made no reliable difference in one study, and in VeRO''s TerminalBench runs a three-section
+  rewrite broke as many passing tasks as it fixed while the hardest cut gave the best pass rate (37.1%).
+  Add a domain procedure section only when failures cluster on a step an expert would take, and judge
+  any section an optimizer writes on held-out cases (on one deep-research agent the gain was 0.079 held
+  out against 0.202 on the validation set).'
+how: '1. Start from the current prompt as the baseline: run it on development and held-out cases and record
+  pass rate, which cases pass and fail, compliance with each rule, steps, input tokens and cost per task.
+  List every instruction the model receives (system prompt, context files such as AGENTS.md, checklists)
+  and the requirements the task actually has, from the task spec and from failures. 2. Cut what the model
+  does not need: content it can find or would do anyway (repository overviews, restated documentation),
+  duplicated rules, and leftovers such as answers to specific eval cases. Across four coding agents, LLM-generated
+  context files changed success by -0.5% and -2% while adding 20% and 23% to cost, their overviews did
+  not shorten the search for the relevant file, and dropping only the testing section cut cost per task
+  from $0.4715 to $0.3730 with no significant change in accuracy; the same files helped (+2.7%) only once
+  the repository''s other documentation was removed. Keep what the model cannot infer, such as non-standard
+  conventions and requirements (developer-written files did better than generated ones). In VeRO''s TerminalBench
+  run, cutting the prompt from 7 lines to 3 and its checklist from 10 lines to 4, with shorter tool descriptions
+  (2.a.ii) and a tighter output cap in the same commit, gave the best pass rate, 37.1%, and context-overflow
+  failures fell from 13 to 2. 3. State each remaining requirement once, in a named section, and give the
+  answer format and the completion check their own sections (what the format says and how the answer is
+  read is 9.b.i). Merge duplicates and settle conflicts: where two rules cannot both hold (JSON output
+  with markdown headers), drop one or say which wins. Keep the count down, since compliance falls as rules
+  stack: three models followed about 96% of instructions given one at a time but 20% to 60% with twenty,
+  and in another study the share of responses meeting every rule fell from 0.59-0.94 with 10 rules to
+  at most 0.019 with 80; that author recommends treating about 40 rules as the point to split them across
+  turns, tools or a validation check (not tested). A one-call rewrite that grouped rules by kind, merged
+  duplicates, added a precedence note for conflicts and listed reasoning rules first and format rules
+  last recovered 11.0 points of follow rate for GPT-5-mini and 3.3 for Gemini 2.5 Flash but -1.2 for Claude
+  Sonnet 4.6, so expect the most from smaller models. 4. Pick one consistent way to mark sections (headings
+  or tags) and do not expect the format itself to buy accuracy: across five current models none showed
+  a reliable markdown advantage over plain text for a block of rules, and the one consistent difference
+  favored plain text (4.8 points for one Qwen model at 160 rules). Test your own model anyway: Gemini
+  Flash fell 18.1 points with 40 rules written as prose, and moving the same rules from the system prompt
+  to the user turn changed adherence by -8.7 to +6.6 points depending on the model. 5. Add a domain procedure
+  section only if failures cluster on a step; write it from those failures or from an expert, or generate
+  variants with an optimizer such as GEPA. If an optimizer writes it, judge it on held-out cases that
+  share no topic with those it saw, over several seeds, and strip case-specific content: on a deep-research
+  agent GEPA''s held-out gain was 0.079 against 0.202 on its 24-task validation set, memorized answers
+  made up 52% and 39% of the two winning prompts without adding reward, the two longer candidates regressed,
+  and a hand-written prompt keeping only the rules it found recovered about 57% of the gain. 6. Run the
+  paired eval, old against restructured prompt, on the full development and held-out sets, not a subset
+  (a VeRO rewrite scored 45% on a 20-task subset, then broke as many passing tasks as it fixed); report
+  new passes and regressions per case as well as the net, compliance per rule, context-overflow failures,
+  steps, tokens and cost; keep only sections that earn their place, and re-run after any model change.'
 detect:
   static: system prompt with no named sections; requirements repeated, contradictory, or absent (no answer
-    format, no completion criteria); prompt plus tool descriptions over about a quarter of the context
-    window
+    format, no completion criteria); pairs of rules that cannot both hold (JSON output and markdown headers);
+    several dozen or more simultaneous rules in one prompt; context files that restate what the agent
+    can find in the repository (overviews, directory listings); case-specific facts or answers left in
+    the prompt by an optimizer; prompt plus tool descriptions over about a quarter of the context window
   traces: failure rows labeled instruction-following-failure or instruction-grader-mismatch where the
     requirement was never in the prompt; prompt tokens the largest share of input per step; context-overflow
     outcomes
-  evals: an ablation that removes a section and shows no loss (cut it), or failures that cluster on one
-    step of the task procedure (add it)
+  evals: an ablation that removes a section and shows no loss (cut it), especially one that also lowers
+    cost; failures that cluster on one step of the task procedure (add it); compliance per rule that falls
+    as rules are added, or pairs of rules that fail together more often than each fails alone; an optimized
+    prompt whose validation gain far exceeds its held-out gain
+  probes:
+    what: One deterministic check per rule in the prompt, run with all rules, with each rule alone and
+      with each section removed.
+    construct: Enumerate every instruction in the system prompt and context files, write a verifier for
+      each, and score responses on the same inputs with all rules, with each rule alone and with each
+      section removed; flag sections whose removal changes nothing but cost (cut candidates) and pairs
+      of rules that fail together more often than their single rates predict (conflicts to settle).
 impact:
   quality:
     effect: mixed
     size: small
-    when: 'adds: MAST +4.7 to +5.0 points on GSM-Plus (2025), VeRO MATH validation +0.10 with train -0.07;
-      cuts: TerminalBench +6.8 points where the prompt crowded out context, GPQA train -0.04 where the
-      prompt carried procedure'
+    when: 'restructuring: a one-call rewrite of stacked instructions +11.0 points of follow rate for GPT-5-mini,
+      +3.3 for Gemini 2.5 Flash, -1.2 (not significant) for Claude Sonnet 4.6 (Anand, Jul 2026); a dedicated
+      verification section +4.75 to +5.0 points on GSM-Plus (Cemri, Mar 2025); a three-section rewrite
+      gave 6 new passes and 6 regressions on TerminalBench, and MATH validation +0.10 with train -0.07
+      (VeRO, Feb 2026); an optimizer-written procedure on a deep-research agent +0.079 held-out reward
+      (Lumer, Oct 2026); cutting: TerminalBench +6.8 points where the prompt crowded out context, GPQA
+      train -0.04 where the optimizer could change only prompts, tool descriptions and parameters (VeRO,
+      Feb 2026); repository context files changed coding-agent success by -2% to +2.4%, none significant
+      (Gloaguen, Feb 2026); format: no reliable markdown advantage over plain text across five models
+      (Eliav, Jul 2026)'
     basis: evidence
   cost:
-    effect: improves
-    size: small
-    when: fewer prompt tokens
+    effect: mixed
+    size: medium
+    when: 'cutting saves: LLM-generated context files raised cost 20% and 23% and developer-written ones
+      up to 19% with no significant gain in success, and dropping one testing section cut cost per task
+      from $0.4715 to $0.3730 (Gloaguen, Feb 2026); adding can cost more: followed instructions brought
+      extra testing and exploration (2.45 to 3.92 more steps per task) (Gloaguen, Feb 2026), and an optimized
+      deep-research prompt raised policy tokens per query about 32%, 146.0k to 193.1k, on 6 queries (Lumer,
+      Oct 2026); context rendered as markdown costs 1.258x the tokens of plain text (Eliav, Jul 2026)'
     basis: evidence
   performance:
     effect: improves
     size: small
+    when: 'cutting saves steps: context files added 2.45 to 3.92 steps per task and raised GPT-5.2''s
+      reasoning tokens 22% on SWE-bench (Gloaguen, Feb 2026); an optimizer-written prompt added no latency
+      (138.8 s against 159.9 s per query, 6 queries) (Lumer, Oct 2026)'
     basis: evidence
   security:
     effect: unknown
@@ -63,16 +128,28 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: experiment
   tier: 3
-  how: paired eval, old against restructured prompt, checked on held-out cases; count context-overflow
-    failures too
+  how: 'paired eval, old against restructured prompt, on the full development and held-out sets (topics
+    disjoint from any an optimizer saw), over several runs or seeds and for each model in use: pass rate
+    with new passes and regressions per case, compliance per rule from one deterministic check per rule,
+    context-overflow failures, steps, input tokens and cost per task; remove one section at a time to
+    find sections that cost tokens without changing outcomes'
+- method: monitor
+  how: 'in production: violation rate per rule and format-compliance rate on sampled traffic, prompt tokens
+    as a share of input per step, steps and cost per task, and prompt growth (rules and lines added since
+    the last restructure); re-run the paired eval when the model changes, since the value of a rewrite
+    depended on the model'
 evidence:
 - source: paper §A.4
   task: TerminalBench-2
   effect: 8 lines to 23 lines in Filesystem-B=178. Net-zero pass rate (6 new passes, 6 regressions) although
     the run had the largest crash reduction (46.1% to 30.3%).
+  date: 2026-02
 - source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
   date: '2023-10-03'
   task: Move self-correction criteria into the initial prompt
@@ -95,8 +172,10 @@ evidence:
 - source: Cemri et al., "Why Do Multi-Agent LLM Systems Fail?", https://arxiv.org/abs/2503.13657
   date: '2025-03-17'
   task: Restructure prompt with a dedicated verification section
-  effect: 'Table 5, GSM-Plus (200 sampled problems, 6 repetitions): GPT-4 84.75±1.94 -> 89.75±1.44; GPT-4o
-    84.25±1.86 -> 89.00±1.38 (Wilcoxon p=0.03 vs baseline for both).'
+  effect: 'Table 5, GSM-Plus (200 sampled problems, 6 repetitions): GPT-4 84.75±1.94 -> 89.75±1.44, which
+    the authors call significant without giving a p-value; GPT-4o 84.25±1.86 -> 89.00±1.38 (Wilcoxon p=0.03
+    against baseline, as for the new topology). The authors add that these strategies "are not universal,
+    and their effectiveness varies based on factors such as the underlying LLM."'
   direction: supports
   measured: true
   locator: App. H.1, App. L.1-L.2, Table 5
@@ -111,32 +190,154 @@ evidence:
 - source: paper §A.4
   task: TerminalBench-2
   effect: Five-line block in Tools-B=89 alongside T01 and T02; that commit went 30.3% to 33.7% pass rate.
+  date: 2026-02
 - source: paper §A.4, Table 16
   task: TerminalBench-2
   effect: '"Tools-B=178: prompt 7 to 3 lines, tool descriptions to one phrase each, checklist 10 to 4
     lines, cap 17KB. Best pass rate of the study, 37.1% (+6.8pp), with ContextLengthExceeded 13 to 2,
     without fixing the parser crash."'
+  date: 2026-02
 - source: paper Figure 12 (Orchestrator, Sonnet 4.5)
   task: MATH
   effect: Validation 0.78 to 0.88 in phase 1; train dropped 0.85 to 0.78 in the same phase.
+  date: 2026-02
 - source: paper Figure 12
   task: MATH
   effect: Flat on validation (0.87).
+  date: 2026-02
 - source: paper Figure 13 (Resources Only, Sonnet 4.5)
   task: GPQA
   effect: Train 0.58 to 0.54 (regressed).
+  date: 2026-02
 - source: paper §A.4
   task: TerminalBench-2
   effect: As part of T06, the best result in that study.
-caveats: Intermediate 20-task subset showed 45% and misled the optimizer; full evaluation regressed previously-passing
-  tasks. 12 new passes against 6 regressions; the same run left 11 AttributeError crashes in
-  place. Helps when the prompt was crowding out task context; hurts on reasoning tasks where
-  the prompt carried procedure.
+  date: 2026-02
+- source: 'Elias Lumer, Sahil Sen, Vamse Kumar Subbiah, Kevin Paul, "Reflective Prompt Optimization of
+    a Deep-Research Agent: A Topic-Disjoint, Multi-Seed Protocol for Measuring Transferable Gains and
+    Prompt-Level Overfitting", https://arxiv.org/abs/2610.12601'
+  date: '2026-10-08'
+  task: Optimize the two system prompts (orchestrator and researcher) of a multi-agent deep-research agent
+    with GEPA, evaluate on topic-disjoint held-out tasks over three seeds, ablate the memorized content
+    the optimizer wrote into the prompts, and compare against a hand-written prompt that keeps only the
+    optimizer's describable rules
+  effect: Held-out citation reward 0.702 to 0.781 (+0.079, bootstrap 95% CI [0.051, 0.107], n=500 tasks
+    over 254 topics; 287 wins, 66 ties, 147 losses); three seeds gave +0.079, +0.130 and +0.112 (mean
+    0.107) against validation gains of +0.202, +0.290 and +0.147, so selecting on the 24-task validation
+    set overstated the transferable gain "about 2.6 times" in the main run. Memorized answer-key sections
+    made up 52% of the winning orchestrator prompt and 39% of the researcher prompt by word count and
+    added no reward even on the training questions they encode (+0.090 there against +0.079 held out).
+    The two candidates that grew longer (orchestrator up to 3,261 words) regressed on validation. A recipe
+    prompt with the memorized content removed (answer first, one claim per citation, verified page content,
+    corpus-only URLs, sequential numbering) recovered +0.047 of the +0.083 total on 100 held-out tasks
+    (about 57%; CI [-0.011, +0.106]); the further +0.036 from the full prompt was not significant. Collapsing
+    per-dimension feedback to one scalar made held-out transfer negative (-0.021 against +0.075). Policy
+    tokens per query rose about 32% (146.0k to 193.1k); latency was 138.8 s against 159.9 s for the seed
+    on 6 queries.
+  conditions: GPT-5.4 agent, GPT-5.5 reflector at high effort, GPT-5-mini and GPT-5.4-mini judges; frozen
+    news corpus; train and validation 24 tasks each, test 500; 240 rollouts; LLM-judged composite citation
+    reward (judge-human agreement 77.8% and 80.0% on 45 pairs, one annotator); the recipe is the optimized
+    prompt minus memorized content, not an independent rewrite; cost and latency from 6 queries per prompt;
+    one agent, task and domain
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1-3.6; §4.2 Tables 3-5; §4.3 Table 6; §4.4 Table 7; §4.5 Table 8; §4.6 Table 9;
+    §4.7; §5 Table 11; §6
+- source: 'Atul Anand, Sourav Chattaraj, "Instruction Stacking Collapse: A Benchmark and the Capability-Dependent
+    Value of Prompt Compilation", https://arxiv.org/abs/2608.02639'
+  date: '2026-07-31'
+  task: Stack 1 to 20 verifier-checked instructions from six categories in one system message, map pairwise
+    conflicts, and rewrite the stack once with an "instruction compiler" (cluster and merge by category,
+    add a precedence note where two rules conflict, reformat as a numbered checklist with reasoning first
+    and format last) reused across queries, against token-padded and reordered controls
+  effect: 'Follow rate fell from about 0.96 with one instruction to 0.604 (Claude Sonnet 4.6), 0.433 (Gemini
+    2.5 Flash) and 0.201 (GPT-5-mini) with twenty (advice task). 15 of 231 pairs are logically impossible
+    ("output JSON" is jointly unsatisfiable with nine others), and about 12% of the satisfiable pairs
+    failed together more often than their single rates predict. Pooled over stacks of 8 to 20, the compiled
+    prompt recovered +11.0 points for GPT-5-mini (cluster CI [+7.9, +14.5]), +3.3 for Gemini 2.5 Flash
+    ([+1.2, +5.5]) and -1.2 for Sonnet 4.6 ([-4.7, +2.2], p=0.49); at twenty instructions Sonnet went
+    from 0.627 to 0.560 (p=0.037 at that size only). Padding and reordering controls did not reproduce
+    the gain. Within families the gain at twenty instructions shrank as models got stronger: Haiku +9.0,
+    Sonnet -6.7, Opus -2.0; GPT-5-nano +6.0, GPT-5-mini +11.8, GPT-5.5 +4.0; Flash-Lite +7.0, Flash +5.0,
+    Pro -1.0 points (Spearman -0.85, single seed).'
+  conditions: Claude Sonnet 4.6, GPT-5-mini and Gemini 2.5 Flash at temperature 0, plus a single-seed
+    ladder of nine models at stack 20; 30 random stacks per size x 10 items; open-ended advice task, with
+    GSM8K and HumanEval as checks; Sonnet 4.6 does all compiling; stacks sampled without screening for
+    feasibility; the compiler is compared only with the raw stacked prompt, not with a competently hand-written
+    one; the pre-registered effect size (d>=0.5) was missed (best d=+0.43)
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §3; §4.1 Table 4; §4.2; §5.1-5.5 Tables 5-7; §6 Limitations; App. E-H
+- source: 'Netanel Eliav, "Prompt Design at Scale: How Format, Instruction Count, and Context Length Shape
+    Instruction Adherence and Hallucination in Large Language Models", https://arxiv.org/abs/2607.19257'
+  date: '2026-07-21'
+  task: Put 10 to 160 programmatically checked rules in the system prompt or the user turn, rendered as
+    markdown, plain text, prose or a table, and measure all-rules compliance and per-rule adherence for
+    each model; separately measure recall over a 2k to 512k-token context in the same four formats
+  effect: 'Share of responses meeting every rule at N=10, 40 and 80: Claude Sonnet 5 0.938, 0.238, 0.000;
+    Gemini Flash 0.919, 0.312, 0.019; Claude Haiku 0.850, 0.119, 0.000; Qwen 35B 0.725, 0.100, 0.000;
+    Qwen 27B 0.588, 0.094, 0.006; zero for all at N=120 and 160. "No model shows a consistent, meaningful
+    markdown advantage": markdown minus plain adherence was small and changed sign across N; Qwen 35B
+    favored plain text at five of six N, by 4.8 points at N=160. Gemini Flash alone fell 18.1 (prose)
+    and 13.7 (table) points below plain at N=40. Moving the rules from the system prompt to the user turn
+    changed adherence at N=160 by +6.6 (Haiku), +5.1 (Qwen 35B), -8.7 (Gemini Flash), -1.8 (Qwen 27B)
+    and not significantly for Sonnet 5. Rendering the context corpus as markdown cost 1.258x plain-text
+    tokens (prose 1.221x, table 1.367x).'
+  conditions: claude-sonnet-5, claude-haiku-4-5, gemini-3.5-flash and two self-hosted Qwen models with
+    reasoning off, provider default temperatures; 20 trials per (model, N, format, placement) cell, 4,800
+    trials; rules are word-count, exact-text and include or forbid-word constraints on a short essay,
+    five of them fixed at every N; single author, not peer reviewed; the advice to treat about 40 rules
+    as a redesign point is the author's recommendation, not tested
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3 Table 3; §4.1-4.5 Tables 4-6; §8; §9
+- source: 'Thibaud Gloaguen, Niels Mündler-Sasahara, Mark Niklas Müller, Veselin Raychev, Martin Vechev,
+    "Evaluating AGENTS.md: Are Repository-Level Context Files Helpful for Coding Agents?", https://arxiv.org/abs/2602.11988'
+  date: '2026-02-12'
+  task: Run four coding agents with no context file, an LLM-generated one (made with each agent's recommended
+    initialization command) and the developer-committed one, on SWE-bench Lite and on 138 issues from
+    12 repositories that ship context files; remove one section at a time; analyze what the agents did
+    in their traces
+  effect: LLM-generated files reduced the average resolution rate by 0.5% (SWE-bench Lite) and 2% (CTXbench)
+    (p=0.87 and 0.37), added 2.45 and 3.92 steps per task and raised cost 20% and 23% (p<0.001%). Developer-written
+    files raised resolution 2.4% (p=0.21), did significantly better than LLM-generated ones (p=0.038),
+    and added 3.34 steps and up to 19% cost. Instructions were followed (uv used 1.6 times per task when
+    mentioned, under 0.01 when not), but overviews did not shorten the steps before the agent touched
+    a relevant file. Removing the testing, overview or tooling section from GPT-5.2's generated files
+    changed no accuracy significantly; dropping the testing section cut cost from $0.4715 to $0.3730 (CTXbench,
+    p=0.023) and from $0.3272 to $0.2756 (SWE-bench, p=0.0035). With all other repository documentation
+    removed, LLM-generated files raised resolution 2.7% on average. LLM-generated files raised GPT-5.2's
+    reasoning tokens 22% on SWE-bench.
+  conditions: Claude Code with Sonnet 4.5, Codex with GPT-5.2 and GPT-5.1 mini, Qwen Code with Qwen3-30b-coder;
+    SWE-bench Lite (300) and CTXbench (138 Python instances with LLM-written task descriptions and tests,
+    manually reviewed); one sample per instance and setting; developer files average 641 words in 9.7
+    sections; context files rather than the system prompt, though loaded into the agent's context on every
+    run; numbers from v3 (Sep 2026)
+  direction: supports
+  measured: true
+  locator: Abstract; §3 Table 1; §4.1-4.4 Tables 2-3, Figs. 4-6; App. B Table 7, Figs. 12-13
+caveats: 'Restructuring is not a reliable gain on its own: in VeRO''s TerminalBench study a rewrite into
+  three named sections scored 45% on a 20-task subset but broke as many passing tasks as it fixed on the
+  full set (6 new passes, 6 regressions), the run that cut the prompt hardest had the best pass rate (12
+  new passes, 6 regressions) but also shortened tool descriptions, set the output cap to 17 KB and left
+  11 parser crashes in place, and on reasoning tasks (GPQA, MATH) VeRO''s optimizers, including its prompt-only
+  variant, gained little or nothing. The value depends on the model: a merge-and-rank rewrite of stacked
+  rules helped smaller models and was neutral to negative for the strongest (Claude Sonnet 4.6 went from
+  0.627 to 0.560 at twenty instructions, significant only at that size), format effects were small and
+  changed sign between models, and a hand-written version of the deep-research optimizer''s rules recovered
+  about 57% of its gain with a confidence interval that included zero. The newer studies are narrow: synthetic,
+  verifier-checked rules on three to five models (20 trials per cell in the format study), one agent with
+  a judge-scored reward in the optimizer study, and Python repositories with one sample per setting in
+  the context-file study, so measure the change on your own agent.'
 related:
+- 3.a.i
 - 3.a.ii
+- 3.a.iii
 - 2.b.ii
+- 2.a.ii
 - 9.b.i
 - 3.b.i
+- 1.b.i
 absorbs:
 - legacy_id: P01
   name: System prompt altitude and sectioned structure

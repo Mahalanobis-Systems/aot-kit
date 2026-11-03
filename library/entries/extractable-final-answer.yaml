@@ -16,68 +16,261 @@ levers:
 domains:
 - structured-output
 evidence_domains:
-- code-generation
 - reasoning
+- structured-output
+- code-generation
 - web-research
+- data-analysis
 categories:
 - verification.completion
 - prompts.structure
-summary: 'State the required answer format in the prompt, and make the harness extract it robustly: strip
-  markers, normalize numbers, detect refusals, and force a best-effort answer when the loop ends on a
-  budget rather than returning nothing. The format reminder alone was mixed on GPQA (train up, test down);
-  the harness side is what stops right work being lost.'
-how: 1. From traces, list runs whose working was right but whose returned answer was missing, malformed
-  or a refusal. 2. Add the format section to the prompt (3.a.iv). 3. Harden extraction and add the forced-answer
-  path at the turn cap. 4. Measure no-answer and malformed-answer rates.
+summary: 'Ask for the final answer in one marked place after the reasoning, extract it with a parser you
+  have checked, and force an answer when a run hits its limit instead of returning nothing. It pays wherever
+  a parser or grader reads the answer: on the same questions and model, an instructed \boxed{} answer
+  scored 93.9% where pattern-matching free text scored 20.8%, and a JSON schema with the answer before
+  the reasoning took GPT-4o from 95.60% to 55.34% on GSM8K. Asking for a format cost open-weight models
+  accuracy, which a second formatting call or a thinking phase mostly recovered, while three recent closed
+  models paid little. The limits: the forced-answer evidence is one exploratory study on small models
+  whose output hit a token limit (no outside study here tests a final-answer turn at an agent''s turn
+  cap), the format reminder alone was mixed on GPQA in VeRO, and a lenient fallback parser flatters models
+  that ignore the format.'
+how: '1. Start from a baseline that separates wrong answers from unreadable ones: score a run as is and
+  report the parse rate beside accuracy, then list runs with no extractable answer (none at all, a refusal,
+  an echoed placeholder, output cut off before the answer marker, a loop that ended at its turn cap) and
+  runs whose working holds the right value while the returned answer does not. Re-score a sample with
+  a symbolic or model-based equivalence check: a deterministic MATH-500 scorer rejected 3.3% (free text)
+  to 10.5% (Markdown) of responses an LLM judge accepted, with 0.1% the other way, and in another study
+  a computer-algebra grader turned roughly 28% of string-graded MATH rows from wrong to right. 2. State
+  the format once, in the prompt''s format section (3.a.iv): one marker the harness reads (\boxed{}, ''Final
+  answer:'' or a named field), placed at the end of the response, and the allowed values by name (''one
+  of A, B, C, D'') rather than a bracketed placeholder or an example value. On identical questions and
+  model, an instructed \boxed{} answer scored 93.9% where pattern-matching the bare question''s free text
+  scored 20.8%; an example letter from another alphabet made one model answer in that alphabet (58.2%,
+  last place) until the prompt named the letters (83.9%, 100% parse rate), and in another study a ''####
+  <answer>'' placeholder was echoed verbatim and scored as wrong. 3. Keep the reasoning ahead of the format:
+  let the model work in free text or a thinking phase and commit to the answer at the end, and in a JSON
+  or XML answer put the reasoning fields before the answer field (answer-first JSON took GPT-4o from 95.60%
+  to 55.34% on GSM8K; answer-first XML left two small models at 10.98%). If a format request still costs
+  accuracy, as it did for every open-weight model in one study, answer freely first and convert the answer
+  to the format in a second call: that significantly improved 42 of 72 comparisons (6.8 points on average)
+  and significantly worsened 2, while a thinking phase significantly improved 43 and worsened 11 (thinking
+  settings are 1.b.i). Constrained decoding guarantees the shape (format compliance 55.7% to 92.2%) but
+  not the answer (accuracy 57.3% without it, 55.7% with it, 61.5% free-form), so apply it to the final
+  answer after the reasoning, not to the whole response. 4. Harden extraction: strip markup, normalize
+  numbers and units, compare by value, take the last marked answer, and record refusals, empty answers
+  and echoed placeholders as their own outcomes rather than as wrong answers. Do not let a lenient fallback
+  fill the gaps unseen: a leaderboard that read the marker where present and any option letter otherwise
+  scored models that ignored the format leniently and compliant ones strictly, and fixing it moved 185
+  of 215 published cells; keep strict and lenient scores side by side. 5. Force an answer when the loop
+  or the generation ends on a budget: make one more call that gives the model its work so far and asks
+  only for the answer in the stated format (for example by appending ''Therefore, my final answer is''),
+  constrained to the valid answers where they can be listed. In one small-model study this recovered correct
+  answers on 63.5% of no-answer rows in one cell, against 19.2% for a full revision turn, and passed its
+  decision rule in 6 of 8 cells; constrained re-extraction made every answer parseable. Raising the limit
+  is not the fix (sizing it is 7.b.iii): doubling a generation cap from 8,192 to 16,384 tokens cut unparsed
+  responses only from 15.9% to 14.0%. 6. Measure on the same cases, per model, before and after: accuracy
+  under one stated protocol, parse rate, no-answer, refusal and malformed-answer rates, strict against
+  lenient score, and answers that flip from right to wrong when the format changes. Format defects are
+  model-specific: the same placeholder left 828 of one model''s answers on one subject unparsed (827 of
+  them real answers in the wrong alphabet) and cost another model 17 of 60,389 responses.'
 detect:
-  static: no answer-format statement; extraction that assumes a marker; no forced answer when the loop
+  static: no answer-format statement, or one shown only as a bracketed placeholder or an example value
+    the model may copy; a structured answer schema with the answer field before the reasoning; extraction
+    that assumes a marker, or falls back to any matching letter or number anywhere in the text; string
+    matching with no number, unit or markup normalization; no forced answer when the loop or the generation
     ends on a budget
-  traces: runs ending with no extractable answer; refusals returned as answers; numbers in the wrong format;
-    runs ending at the turn cap with a correct value in context (in one image-labeling agent, 71 items
-    returned all-unknown)
-  evals: failures where the working was right but the submitted answer was not (instruction-grader-mismatch)
+  traces: runs ending with no extractable answer (none, an echoed placeholder, output cut off before the
+    answer marker, a turn cap reached); refusals or explanations returned as answers; numbers in the wrong
+    format or wrapped in markup; runs ending at the limit with a correct value in context; parse rates
+    that differ sharply between models on the same prompt
+  evals: failures where the working was right but the submitted answer was not (instruction-grader-mismatch);
+    a gap between strict and lenient scores, or between the deterministic scorer and a symbolic or model-based
+    equivalence check
+  probes:
+    what: 'Solved cases whose answer the harness may fail to read: output cut off at the limit, answers
+      in equivalent forms, and each candidate answer format.'
+    construct: Take cases the agent solves, re-run them with the run or generation cut off just before
+      the answer, with the answer requested in each candidate format (free text with a marker, JSON or
+      XML with the answer field first and last), and with gold answers written in equivalent forms (a
+      fraction or a decimal, units, LaTeX, the option text instead of its letter); pass when the harness
+      returns a parseable answer and the extractor scores it as a careful manual read would.
 impact:
   quality:
     effect: improves
     size: medium
-    when: estimate; in an image-labeling agent we measured, a salvage turn at the limit cut all-unknown
-      items from 71 to 1
+    when: 'an instructed \boxed{} answer against pattern-matched free text: 20.8% to 93.9% on one subject
+      and model, and fixing a lenient fallback parser moved 185 of 215 leaderboard cells (Huang, Oct 2026);
+      reasoning-first against answer-first JSON on GSM8K: 95.60% against 55.34% for GPT-4o, 80.21% against
+      31.01% for Llama-3.1-8B (Kumar, Oct 2026); a second formatting call significantly improved 42 of
+      72 open-weight comparisons, by 6.8 points on average, and a deterministic scorer rejected 3.3% to
+      10.5% of responses an LLM judge accepted (Lee, Apr 2026); a forced short continuation recovered
+      correct answers on 63.5% of no-answer rows against 19.2% for a full revision, in one cell (Chen,
+      Aug 2026); limits: the format reminder alone was mixed on GPQA, train 0.54 to 0.60 and test 0.54
+      against a 0.61 baseline (VeRO, Feb 2026), Claude Sonnet 4.5 scored higher with answer-first JSON
+      on GSM8K (96.13% against 87.79%) (Kumar, Oct 2026), and three recent closed models paid little or
+      no format tax (Lee, Apr 2026)'
     basis: evidence
   cost:
-    effect: none
+    effect: degrades
+    size: small
+    when: stating the format and hardening extraction add nothing per run; converting the answer to the
+      format in a second call means two inference calls instead of one (Lee, Apr 2026); the forced answer
+      at the limit is one short call on the runs that need it (a 32-token continuation in Chen, Aug 2026)
     basis: evidence
   performance:
     effect: none
-    basis: evidence
+    when: no added latency on runs that answer in the stated format; the optional second formatting call
+      and the forced answer each add one sequential call on the runs that use them
+    basis: assessment
   security:
     effect: unknown
   governance:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
 - method: before-after
   tier: 2
-  how: no-answer, malformed-answer and refusal rates on the same cases
+  how: 'same cases and model, before and after: accuracy under one stated extraction protocol, parse rate,
+    and the rates of no answer, refusal, echoed placeholder, malformed answer and answer cut off by a
+    limit; score strictly (the stated format) and leniently (any recognizable answer) side by side, and
+    re-score a sample with a symbolic or model-based equivalence check; when the answer format changes,
+    run old and new formats on the same questions for each model and count answers that flip from right
+    to wrong'
+- method: monitor
+  how: 'in production traces: parse rate and no-answer rate per model and prompt version (an outlier parse
+    rate for one model on one prompt is a format defect, not a model result); refusals and explanations
+    returned as answers; how often the forced-answer path runs at the limit and how often its answers
+    are right; the share of answers read only by a fallback parser'
 evidence:
 - source: repo taxonomy.py role hints
   task: five follow-up benchmarks
   effect: Symbols such as _submit, _answer_payload, _scale_variants, _format_number, _extract_answer are
     common enough to get deterministic role hints.
+  date: 2026-02
 - source: repo figure_01
   task: SWE-Atlas-QnA
   effect: 15/20 runs touched submission.
+  date: 2026-02
 - source: paper Figure 13
   task: GPQA
   effect: Train recovered 0.54 to 0.60 in phase 2; test 0.54 (below the 0.61 baseline).
+  date: 2026-02
 - source: repo figure_01
   task: SWE-Atlas-QnA, GAIA-Shell
   effect: Submission-path edits in 15/20 and 18/20 runs; 2/20 on Terminal-Bench, where the verifier does
     not read an answer string.
+  date: 2026-02
+- source: 'Liang-Hsun Huang, Min-Yi Chen, Chao-Chun Chuang, Yu-Wei Liu, Che-Yu Wu, Po-Feng Lee, "OpenTWBench
+    (Open Taiwan Benchmark): Taiwan-Domain Knowledge Evaluation for Large Language Models, and How the
+    Measurement Apparatus Shapes the Score", https://arxiv.org/abs/2610.19848'
+  date: '2026-10-14'
+  task: 'Hold questions and model fixed and vary only the measurement apparatus: the answer instruction
+    and extraction rule, the format example in the system prompt, a leaderboard''s fallback parser, and
+    the generation cap'
+  effect: 'Pattern-matching an option letter from the free-form output of the bare question (no system
+    prompt), against instructing the model to end with \boxed{X} and counting unparseable responses as
+    wrong: "On the same civics subject and the same model, pattern reports 20.8% and box reports 93.9%";
+    the matcher once extracted "W", not an option. A system-prompt format example that used a traditional
+    Chinese ordinal as its placeholder made Mistral-Large-675B answer in that alphabet: "827 of 828 ''unparsed''
+    responses on one subject were in fact real answers in the wrong alphabet", scoring 58.2% (last place);
+    naming the alphabet ("one of A, B, C, D") without an example letter gave 83.9% with a 100% parse rate
+    (first place), while the same defective prompt cost Qwen3.8-27B 17 of 60,389 responses. A leaderboard
+    that read the \boxed{} answer where present and any option letter otherwise scored low-compliance
+    models leniently: a model writing \boxed{} on 6% of items sat two places above one writing it on 95%;
+    correcting it moved 185 of 215 published cells, 122 by more than a point and 49 by more than ten.
+    Doubling the generation cap from 8,192 to 16,384 tokens changed accuracy by +0.21% at 1.72x the wall-clock
+    cost and cut unparsed responses only from 15.9% to 14.0%.'
+  conditions: Taiwan-domain multiple-choice benchmarks (tw-exam-bench, 253,674 four-option exam items;
+    tw-formosa-bench, 1,696 items); Twinkle Eval harness at temperature 0; 108 models on the public board;
+    the 20.8% against 93.9% result is one subject and one unnamed model and changes the prompt as well
+    as the parser; the placeholder result is one model; parse rates are published per cell
+  direction: supports
+  measured: true
+  locator: Abstract; §5.1-5.3; §6.1 Table 3; §7
+- source: 'Vineet Kumar, Kanishka, Bhuvanesh Mandora, "Structure Tax: How Structured Output affects LLMs
+    Performance", https://arxiv.org/abs/2610.12056'
+  date: '2026-10-08'
+  task: Compare free-form answers with JSON and XML answers whose schema puts the answer field before
+    the reasoning field (answer-first) or after it (reasoning-first), all other prompt content fixed
+  effect: 'Table 1, GSM8K, free-form / JSON answer-first / JSON reasoning-first: GPT-4o 88.78 / 55.34
+    / 95.60; Gemini-Flash-2.0 79.38 / 63.08 / 95.53; Claude-Sonnet-4.5 86.50 / 96.13 / 87.79 (XML: 62.35
+    answer-first, 97.65 reasoning-first); Llama-3.1-8B 79.98 / 31.01 / 80.21; Gemma3-4B 78.82 / 27.45
+    / 83.53. "XML (A,R) falls to 10.98% for both Llama-3.1-8B and Gemma3-4B, against 83-87% under (R,A)".
+    Reasoning-first won the best-format cell in 13 of 20 model-dataset pairs; on Spider (text-to-SQL)
+    the ordering mattered little. Under three prompt perturbations on GSM8K, the smallest reasoning-first
+    advantage across 24 combinations was +37 points (GPT-4o JSON). Structured-output schema violations
+    were zero.'
+  conditions: GPT-4o, Gemini-Flash-2.0, Claude-Sonnet-4.5, Llama-3.1-8B and Gemma3-4B; GSM8K, MMLU, LogicBench
+    and Spider; temperature 0, 5 runs; the free-form baseline was partly scored by a faulty parser (empty
+    extraction 29.8% on MMLU and 45.2% on LogicBench for Gemma3-4B), so comparisons with free-form are
+    not like for like, while answer-first against reasoning-first is
+  direction: supports
+  measured: true
+  locator: §3.2; §4, Table 1; App. A.3 Table 3; App. F
+- source: 'Mingguang Chen, Bo Qu, Licheng Wang, "The Calibration Floor: Format Repair Can Masquerade as
+    Self-Correction at Small-to-Mid Scale", https://arxiv.org/abs/2608.04355'
+  date: '2026-08-05'
+  task: 'Audit answer extraction in a self-revision study: count answers that are missing (output cut
+    off by the token budget before the answer marker) or echo the prompt''s placeholder, force a short
+    answer-only continuation on those rows, and re-extract every answer by grammar-constrained decoding
+    over the valid answers'
+  effect: Missing answers and a "literally echoed placeholder token" (the prompt specified '#### <answer>')
+    were "both silently scored as incorrect"; the revision prompt "regularly exhausted the token budget
+    before reaching the marker". In the frontier arm, 28% and 49% (Hy3, GSM8K and MMLU) and 22%, 32% and
+    38% (Nemotron, GSM8K, MMLU and MATH) of initial answers were missing or echoed the placeholder. Appending
+    "Therefore, my final answer is" (32 tokens, no new turn) passed the decision rule in 6 of 8 fidelity-clean
+    cells; on 4B GSM8K it "recovers correct answers on 63.5% of the rows that the full two-round revision
+    protocol only recovers 19.2% of the time". Grammar-constrained re-extraction reached 0% bad answers
+    in all 14 cells where it ran and closed a median 71% (range 55-100%) of the gap between the apparent
+    effect and the content effect. A computer-algebra grader turned 92/326, 86/313 and 54/185 string-graded
+    MATH rows from wrong to right, none the other way. A permissive multiple-choice fallback "matching
+    any standalone letter anywhere in truncated reasoning prose" was found to be a bug.
+  conditions: Qwen3.5 0.8B to 9B (4-bit MLX) and Gemma-4-12B, plus Tencent Hy3 and Nemotron-3-Ultra-550B
+    through a free API tier (n=200, unsealed, Hy3 retired mid-collection); ARC, MMLU, CommonsenseQA, TruthfulQA-MC1,
+    GSM8K, MATH, TriviaQA; 29 admitted cells; the forced-continuation arm is exploratory by the authors'
+    account (run on reconstructed pre-fix prompts, its '#### X' fallback added after inspecting parser
+    failures); the paper's subject is measuring self-correction, not harness design
+  direction: supports
+  measured: true
+  locator: Abstract; §4.9-4.10, §4.12-4.13, §4.15; §9.1; §9.8; §11
+- source: Ivan Yee Lee, Loris D'Antoni, Taylor Berg-Kirkpatrick, "The Format Tax", https://arxiv.org/abs/2604.03616
+  date: '2026-04-04'
+  task: 'Request JSON, XML, Markdown or LaTeX output, with and without grammar-constrained decoding, against
+    a free-form baseline, and test two ways of separating reasoning from formatting: a second call that
+    reformats a free-form answer, and a thinking phase before the formatted output'
+  effect: 'Open-weight models: of 144 cells, 76 showed significant effects, "72 in the tax direction and
+    only 4 in the credit direction"; of 39 cells with a significant effect, 36 (92%) were already present
+    under the format-requesting prompt alone. Constrained decoding raised format compliance from 55.7%
+    to 92.2% while accuracy was 57.3% without it and 55.7% with it, against 61.5% free-form. Few-shot
+    examples and schema descriptions "leave the majority of the degradation intact". "2-Turn significantly
+    improves accuracy in 42 of 72 model-task-format comparisons (p<0.05, average +6.8 pp), while significantly
+    worsening only 2"; thinking "significantly improves 43 of 72 comparisons (+9.2 pp average)" but 11
+    (15%) significantly worsen. Closed models: gpt-5-nano -5.2 pp without constrained decoding and -8.0
+    pp with it; claude-haiku-4.5, grok-4.1-fast and gpt-5.4-nano near-zero or positive without it. Scoring:
+    a deterministic MATH-500 extractor missed correct answers embedded in format markup; against an LLM
+    judge it failed 3.3% (free-form), 4.4% (JSON), 4.9% (XML), 10.5% (Markdown) and 5.8% (LaTeX) of judged
+    rows that the judge accepted, with 0.1% the other way, and switching to the judge cut the measured
+    MATH-500 tax from -10.1 to -6.6 pp.'
+  conditions: qwen3-32b, qwen3-8b, olmo3.1-32b, olmo3-7b, smollm3-3b and nemotron3-nano (vLLM), and gpt-5-nano,
+    gpt-5.4-nano, claude-haiku-4.5 and grok-4.1-fast (native structured outputs); MATH-500, GPQA-Diamond,
+    ZebraLogic and WritingBench; the source and decoupling analyses cover open-weight models only; gpt-5.4-nano
+    degraded sharply under grammar enforcement on non-JSON formats; the authors exclude function calling,
+    where constraints encode correctness
+  direction: mixed
+  measured: true
+  locator: §3.3; §4.1-4.3, Tables 3-5; §5; §7; App. E Table 7; App. G Tables 8-9
 related:
 - 3.a.iv
+- 7.b.iii
 - 9.b.iii
 - 7.b.ii
+- 2.b.i
+- 1.b.i
+- 3.a.i
+- 7.c.vi
 provenance:
   layer: target
   origin: observed
@@ -85,3 +278,13 @@ provenance:
   sub_type: parsing
   harness_role: submission
   action: fix
+caveats: 'Most of the evidence comes from single-call benchmarks, not agent loops: no outside study here
+  measures a final-answer turn at an agent''s turn cap, and the forced-answer result is one exploratory
+  probe on small models (up to 9B) whose parser fallback was added after inspecting failures, failing
+  its rule in 2 of 8 cells. Format costs depend on the model: three recent closed models paid little or
+  no format tax while every open-weight model tested did, Claude Sonnet 4.5 scored higher with answer-first
+  JSON on GSM8K (96.13% against 87.79%), and a thinking phase made 11 of 72 comparisons significantly
+  worse. The largest extraction effect (20.8% to 93.9%) is one subject and one model and changes the prompt
+  as well as the parser, and lenient fallback parsing is not a free fix: on one leaderboard it scored
+  models that ignored the format leniently and compliant ones strictly. In VeRO the format reminder alone
+  was mixed on GPQA (train 0.54 to 0.60, test 0.54 against a 0.61 baseline).'

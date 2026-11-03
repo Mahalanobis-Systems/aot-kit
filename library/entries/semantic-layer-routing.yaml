@@ -19,61 +19,155 @@ evidence_domains:
 categories:
 - orchestration.route
 - retrieval.query
-summary: Where a semantic layer exists, have the agent answer metric questions by choosing metrics and
-  dimensions that the layer compiles to SQL, and write SQL only when the layer cannot answer. The layer
-  fails with an explicit error rather than a plausible wrong answer. Higher reasoning effort or a bigger
-  model did not close the gap; the layer did.
-how: 1. Confirm a semantic layer covers the metrics the agent is asked about. 2. Add a first path that
-  maps the question to metrics and dimensions; fall back to SQL on a layer error. 3. Paired eval on metric
-  questions, tracking explicit errors against wrong answers.
+summary: 'Have a data agent answer metric questions by picking metrics and dimensions that a semantic layer
+  compiles into SQL, and write SQL itself only when the layer can''t answer. On questions the layer models,
+  this beat direct text-to-SQL in dbt''s benchmark (98.2% against 90.0% for Claude Sonnet 4.6, 100% against
+  84.1% for GPT-5.3 Codex) and in an independent paired test on the same insurance data (all three runs right
+  on 37 of 38 questions against 21, with one refusal and no wrong-but-executed result in 114 runs against 29
+  wrong runs), and more reasoning effort did not close the gap. The margin is smaller with 2026 models (text-to-SQL
+  78.2% to 90.9% against 80.0% to 100% for the layer in dbt''s August rerun, where GPT-5.6 Luna did better
+  writing SQL), the layer path usually cost more per query, and in one vendor test on rule-heavy questions
+  a compiled layer lost to SQL written from tuned documentation, with the agent in its best run bypassing the
+  layer for most answers. Serve the layer as a compiler or lookup tools, not as definitions pasted into the
+  prompt: in two 2026 studies a pasted layer left strong agents no better or worse. The evidence is small and
+  comes mostly from the people who built the layer or system they test.'
+how: '1. Start from the baseline: run your current agent writing SQL with full schema context (5.b.i) on real
+  metric questions with checked answers, several runs per question, and record accuracy, answers that executed
+  but were wrong, refusals, and cost and latency per question. In one paired test, direct SQL was right on
+  all three runs for 21 of 38 questions and returned a wrong result that still executed on 29 of 114 runs.
+  Expect raw SQL to be weakest on real warehouses: on BEAVER''s private enterprise warehouses the best end-to-end
+  method reached 11.4%, and experts rated 53% of answers from LinkedIn''s production SQL assistant good. 2.
+  Measure coverage before routing: mark which questions the layer can answer with one query. dbt''s layer could
+  not answer 3 of its 11 benchmark questions (too many entity hops) until an LLM added 3 dbt models; in Baidu''s
+  deployment a compiled query representation over generated views expressed and executed 95.3% of user queries.
+  Close gaps in the layer first where they are cheap: on one small database, model-generated views took 29
+  to 116 s against 28,689 s for three analysts writing them by hand, at similar accuracy (80.42% against 78.06%).
+  Compile first the metrics your production model fails to derive: in one independent ablation, views compiled
+  from a data contract were right on all 176 tasks they covered, while agents writing SQL from the same definitions
+  fell short by 39.2, 37.3, 26.1 and 5.1 points from the weakest model to the strongest. 3. On the layer path,
+  let the model only choose: metrics, dimensions, filters and grain from the layer''s catalog, or from question-specific
+  options a lookup tool returns, while the layer resolves joins and compiles the SQL; the model writes no joins
+  or aggregations there. Ask for a single layer query or an explicit cannot-answer (dbt''s benchmark prompt
+  asks for one semantic-layer query or CANNOT_ANSWER). 4. Make the fallback explicit and logged: on a refusal
+  or compile error, retry once with the reason (in one study 10 of 114 runs retried and 9 then produced SQL);
+  where the model writes the query itself, check it against the layer''s definitions and abstain after a few
+  failed repairs (with GPT-4 this raised accuracy from 54.2% to 72.55% with 8% of answers "I don''t know");
+  then fall back to text-to-SQL with the schema in context for exploratory questions, or to a person for numbers
+  that go into reports (Baidu sends the 4.7% of queries its pipeline fails on to experts). Label every answer
+  with the path it took. 5. Check that the layer''s definitions match what users mean, and grow the layer from
+  the fallback log: a compiled view fixes one interpretation, and in one test a view that ranked by an average
+  where the questions meant a sum scored 0 of 19 (11 of 19 after falling back to SQL, 19 of 19 for SQL written
+  from documentation). Add the metrics, joins or views that recurring fallbacks and misses need, and keep test
+  questions the layer was not built against. 6. Budget for the catalog: with every metric and dimension in
+  the prompt, the layer path cost $0.0416 against $0.0128 per query for Claude Sonnet 4.6 in dbt''s benchmark,
+  and a Malloy layer used 2.52 times the median prompt tokens of SQL with documentation. Return only the options
+  or views relevant to the question through lookup tools, and keep the fixed part of the prompt cacheable (3.b.i).
+  Don''t paste the whole layer as text: a static layer in the prompt lowered GPT-5.6-sol by 2.3 and Claude
+  Sonnet 5 by 11.9 points on DDR-Bench while the same knowledge served through tools gained, and in a seven-model
+  study strong agents given a descriptive layer stopped checking the data (68% to 31% on those runs) and cost
+  1.1 to 1.9 times as much. 7. Measure with paired runs on the same questions, with your production model and
+  a cheaper one (in dbt''s August runs GPT-5.6 Luna scored 87.3% to 90.9% with SQL against 80.0% to 87.3% through
+  the layer): accuracy per path, wrong-but-executed answers against refusals, the share of answers that bypassed
+  or fell back from the layer, run-to-run spread, and cost and latency per question.'
 detect:
   static: a data agent that writes SQL directly although a semantic or metrics layer exists
   traces: wrong numbers on questions whose metric the layer defines; failure rows labeled reasoning-failure
-    on metric questions
-  evals: accuracy on metric questions, split by whether the layer defines them
+    on metric questions; with a layer in place, answers written in raw SQL for questions the layer covers,
+    and layer metrics or views that no answer uses
+  evals: accuracy on metric questions split by whether the layer defines them, with wrong-but-executed answers
+    counted apart from refusals, over several runs per question
 impact:
   quality:
     effect: improves
     size: large
-    when: 'dbt: 98.2% against 90.0% (Sonnet 4.6), 100% against 84.1% (GPT-5.3 Codex), 11 questions x 20
-      runs (Apr 2026)'
+    when: 'on questions the layer models: 98.2% against 90.0% (Claude Sonnet 4.6) and 100% against 84.1% (GPT-5.3
+      Codex), 11 questions x 20 runs (dbt, Apr 2026); all three runs right on 37 of 38 questions against 21,
+      with 0 of 114 runs wrong but executed against 29 (Ai, Aug 2026); 71.4% against 62.8% on BIRD-dev with
+      a compiled query representation (Lian, Jun 2026); narrower with 2026 models, 80.0% to 100% against 78.2%
+      to 90.9%, and lower than SQL at every effort for GPT-5.6 Luna (dbt, Aug 2026); 70.4% against 99.8% when
+      one model answered rule-heavy questions through a model-authored Malloy layer instead of SQL with documentation
+      tuned on the same benchmark (Matson, Aug 2026); on DABStep, views compiled from a data contract were
+      right on all 176 tasks they covered, where agents writing SQL from the same definitions fell 5.1 to 39.2
+      points short, the gap shrinking with model strength (Ye, Sep 2026); a layer pasted into the prompt as
+      description lowered or left unchanged accuracy for agents that already inspect the data (Sourati, Oct
+      2026)'
     basis: evidence
   cost:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: 'per query, $0.0416 against $0.0128 (Claude Sonnet 4.6) and $0.0172 against $0.0068 (GPT-5.3 Codex)
+      with the whole metric catalog in the prompt (dbt, Aug 2026); 2.52 times the median prompt tokens and
+      $11.81 against $8.58 for a run of 419 questions through a Malloy layer (Matson, Aug 2026); 6,112,623
+      against 5,185,149 prompt tokens on BIRD-dev (Lian, Jun 2026); building the layer is extra: three analysts
+      took 28,689 s to write views for one small database, against 29 to 116 s for a model (Lian, Jun 2026);
+      a descriptive layer in every prompt cut tool calls 22 to 30% but raised cost 1.1 to 1.9 times (Sourati,
+      Oct 2026)'
+    basis: evidence
   performance:
-    effect: unknown
+    effect: mixed
+    size: small
+    when: mean latency per query 2.22 s against 2.63 s (Claude Sonnet 4.6), 1.85 s against 2.74 s (GPT-5.3
+      Codex) and 3.80 s against 9.88 s (GPT-5.6 Sol, high), but 9.05 s against 5.77 s for GPT-5.6 Luna (medium)
+      (dbt, Aug 2026); 8.91 s against 9.43 s per question (Lian, Jun 2026); the Malloy layer was slower, not
+      quantified (Matson, Aug 2026)
+    basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: 'for a fixed plan and layer the compiled SQL is the same every time, so a metric is computed one
+      way for every user, and the planner cannot name a table, join or SQL fragment (Ai, Aug 2026); on the
+      questions it could answer, the layer path scored the same on all 20 runs for three models, where text-to-SQL
+      for two GPT models varied by 12.5 points between best and worst run, though on the modeled schema GPT-5.2
+      still varied by 18.2 points through the layer (dbt, Aug 2026); the benefit covers only answers that go
+      through the layer: the best Malloy run answered 56.6% of questions in raw SQL (Matson, Aug 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
+  - governance
 measure:
 - method: experiment
   tier: 3
-  how: paired eval on metric questions
+  how: 'paired runs on the same metric questions with checked answers, several runs each, with the production
+    model and a cheaper one: text-to-SQL with full schema context, the layer path alone, and layer first with
+    fallback; report accuracy per path, wrong-but-executed answers against refusals, the share of answers that
+    fell back or bypassed the layer, run-to-run spread, and cost and latency per question'
+- method: monitor
+  how: 'in production: the share of answers by path (layer, SQL fallback, person), refusals and compile errors
+    by reason, questions that fall back repeatedly (candidates to add to the layer), layer metrics and views
+    no answer uses, and tokens and latency per query by path'
 evidence:
 - source: 'Jason Ganz, Benoit Perigaud (dbt Labs), "Semantic Layer vs. Text-to-SQL: 2026 Benchmark Update",
     https://docs.getdbt.com/blog/semantic-layer-vs-text-to-sql-2026'
   date: '2026-04-07'
   task: Route metric questions through a deterministic semantic layer
-  effect: 'On questions the Semantic Layer can reach (not too many entity hops), 11-question ACME set
-    x 20 runs: SL 100.0% for both Sonnet 4.6 and GPT-5.3 Codex vs text-to-SQL 62.5% (Sonnet 4.6) and 51.2%
-    (GPT-5.3 Codex) on raw tables; 2023 GPT-4 was SL 83.1% vs text-to-SQL 26.9%. Across the model x reasoning-effort
+  effect: 'On questions the Semantic Layer can reach (not too many entity hops), 11-question ACME set x 20
+    runs: SL 100.0% for both Sonnet 4.6 and GPT-5.3 Codex vs text-to-SQL 62.5% (Sonnet 4.6) and 51.2% (GPT-5.3
+    Codex) on raw tables; 2023 GPT-4 was SL 83.1% vs text-to-SQL 26.9%. Across the model x reasoning-effort
     sweep on SL-answerable questions, SL scored 87.2-100.0% vs text-to-SQL 50.0-65.0% (SL advantage 24.7-50.0
-    pp). Before extra modeling, SL scored 0.0% on the too-many-hops questions (it refused), giving 72.7%
-    overall vs text-to-SQL 64.5%. Qualitative: "the Semantic Layer tells you it can''t answer. It never
-    returns invalid data. Text-to-SQL will cheerfully give you a wrong number."'
+    pp). Before extra modeling, SL scored 0.0% on the too-many-hops questions (it refused), giving 72.7% overall
+    vs text-to-SQL 64.5%. Qualitative: "the Semantic Layer tells you it can''t answer. It never returns invalid
+    data. Text-to-SQL will cheerfully give you a wrong number."'
   direction: supports
   measured: true
-  locator: 'How the two approaches actually work; Which model should you use? table; The main event: 2023
-    vs. 2026 table'
+  locator: 'How the two approaches actually work; Which model should you use? table; The main event: 2023 vs.
+    2026 table'
+  conditions: Claude Sonnet 4.6 and GPT-5.3 Codex at default effort, GPT-4 for the 2023 run; ACME Insurance
+    benchmark from data.world, 11 questions (3 need more entity hops than MetricFlow joins) x 20 runs; the
+    layer path is one prompt holding every metric, dimension and entity definition that asks for a single semantic-layer
+    query or CANNOT_ANSWER (benchmark code); text-to-SQL is given the whole DDL; dbt Labs' own product
 - source: 'Jason Ganz, Benoit Perigaud (dbt Labs), "Semantic Layer vs. Text-to-SQL: 2026 Benchmark Update",
     https://docs.getdbt.com/blog/semantic-layer-vs-text-to-sql-2026'
   date: '2026-04-07'
   task: Try semantic layer first, then modeling, then text-to-SQL
-  effect: Recommendation derived from the benchmark above; the routing policy itself was not evaluated.
-    Packaged as a dbt agent skill for answering natural-language questions.
+  effect: 'Recommendation derived from the benchmark above; the routing policy itself was not evaluated: "check
+    if the Semantic Layer can answer first. If not, check if a minor modeling change would close the gap. Otherwise,
+    fall back to text-to-SQL with as much schema context as possible." To reach the 3 too-many-hops questions,
+    an LLM asked to create as few dbt models as possible created 3, after which the layer answered all 11.
+    Packaged as a dbt agent skill for answering natural-language questions.'
   direction: supports
   measured: false
   locator: Which should you use?
@@ -82,26 +176,252 @@ evidence:
   date: '2026-04-07'
   task: Do not buy semantic-layer accuracy with bigger models or effort
   effect: 'Sweep on SL-answerable questions (Opus 4.6, Sonnet 4.6, GPT-5.3 Codex, GPT-5.2; Anthropic low..max,
-    OpenAI none..xhigh): most configurations hit 95-100% SL accuracy regardless of effort; Sonnet 4.6
-    100.0% at low/medium/max vs Opus 4.6 87.2-87.5% at every effort. GPT models at xhigh averaged over
-    20 s per query vs 8 s at high with no meaningful accuracy gain; for Anthropic models effort changed
-    neither results nor latency. (The post calls it 16 permutations; the table lists 18 rows.)'
+    OpenAI none..xhigh): most configurations hit 95-100% SL accuracy regardless of effort; Sonnet 4.6 100.0%
+    at low/medium/max vs Opus 4.6 87.2-87.5% at every effort. GPT models at xhigh averaged over 20 s per query
+    vs 8 s at high with no meaningful accuracy gain; for Anthropic models effort changed neither results nor
+    latency. (The post calls it 16 permutations; the table lists 18 rows.)'
   direction: supports
   measured: true
   locator: Which model should you use? (It matters less than you'd think)
+  conditions: Claude Opus 4.6, Claude Sonnet 4.6, GPT-5.3 Codex and GPT-5.2 across effort levels; 5 runs per
+    configuration on the 8 questions the layer can answer (benchmark results pages); dbt Labs' own product
 - source: 'Michael Rumiantsau, Ivan Fokeev (Cube), "Semantic Layers for Reliable LLM-Powered Data Analytics:
     A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
   date: '2026-04-28'
-  task: Write the semantic layer instead of upgrading the model
-  effect: 'Pairwise McNemar, n=99: within the with-document cluster all p >= 0.79 (67.7-68.7%); within
-    the DDL-only cluster all p >= 0.42 (45.5-50.5%); all nine cross-cluster comparisons p < 0.01. Sonnet
-    4.6 plus the document used ~28% fewer input tokens than Opus 4.7 plus the document at equal accuracy.
-    Authors caution n=99 cannot resolve differences of about 5 pp.'
+  task: Give the model the business semantics instead of upgrading the model (a semantic-layer document in
+    the prompt, not a layer that compiles queries)
+  effect: 'Pairwise McNemar, n=99: within the with-document cluster all p >= 0.79 (67.7-68.7%); within the
+    DDL-only cluster all p >= 0.42 (45.5-50.5%); all nine cross-cluster comparisons p < 0.01. Sonnet 4.6 plus
+    the document used ~28% fewer input tokens than Opus 4.7 plus the document at equal accuracy. Authors caution
+    n=99 cannot resolve differences of about 5 pp.'
   direction: supports
   measured: true
   locator: Section 5.2 Table 2; Section 5.3
+  conditions: Claude Opus 4.7, Claude Sonnet 4.6 and GPT-5.4 at medium effort; 99 Contoso retail questions
+    on ClickHouse, single shot; Claude Sonnet 4.6 as judge (analytical verdict); the 'semantic layer' is a
+    4 KB hand-written markdown document added to the prompt, the same result 5.b.i cites; Cube's own study
+- source: Jacob Matson, Alex Monahan (MotherDuck), "AI Writes the Semantic Layer", https://motherduck.com/blog/AI-writes-the-semantic-layer/
+  date: '2026-08-20'
+  task: Answer DABStep questions through a model-authored Malloy semantic layer (answers submitted as Malloy
+    and compiled to SQL, SQL used only to explore; a later harness allowed a SQL off-ramp) against an agent
+    writing SQL from a markdown context layer, on the same data, database and scorer
+  effect: 'Post: the Malloy layer "consumed 2.5x more tokens, was less accurate (95% vs. 100%), and slower";
+    "The ability to compile and validate Malloy improved accuracy substantially"; "The semantic layer did not
+    provide the expected retrieval advantage." Linked results (RESULTS.md, 419 held-out questions): with the
+    model fixed (Gemini, low reasoning), markdown plus SQL 418/419 = 99.8% against Malloy 295/419 = 70.4% (-29.4
+    points), median prompt tokens 42,370 against 106,609 (2.52x), cost $8.58 against $11.81. Best Malloy run
+    (Sonnet author, Opus fixer) 382/419 = 91.2%, hard 324/348, with 56.6% of questions answered in raw SQL
+    (237 SQL, 134 authored Malloy, 47 view selections); 12 of 83 layer views used in that run and 52 of 83
+    never referenced by any run; a rebuild that fixed the central defect did not move the score. On one question
+    template the layer view ranked by an average where the gold is a sum: 0/19 through the view, 11/19 after
+    falling back to SQL, 19/19 for the baseline. Train about 94.7% against held-out 91.2%.'
+  conditions: DABStep (Adyen payments, fee-rule questions), 26 train and 419 held-out questions; layer authored
+    by Claude Opus 4.7 from the manual, the schema and the 26 train answers, never hand-edited; the markdown
+    baseline was tuned against the whole benchmark in the authors' June 2026 post, which the results call heavily
+    tuned; one benchmark, one layer build, no repeated runs; governance not tested; MotherDuck sells the warehouse
+    and a context product, not a semantic layer
+  direction: contradicts
+  measured: true
+  locator: 'Post: Framing the experiment; The Findings; So what is a semantic layer for?; repository projects/agentic-malloy
+    RESULTS.md: The matrix; The controlled result; Findings 1-4; What is NOT claimed'
+- source: Yi Ai, "Bounded Semantic Planning and Deterministic Compilation for Reliable Enterprise Text-to-SQL",
+    https://arxiv.org/abs/2608.16663
+  date: '2026-08-17'
+  task: Let the model only ground phrases and choose from question-specific governed options (concepts, metrics,
+    attributes, route handles) returned by typed tools, while code resolves join paths, roles and grain, compiles
+    the SQL, checks known governance violations and refuses on failure (one fresh retry carrying the refusal
+    reason); against direct DDL-to-SQL with the same model
+  effect: 'Table 1, 38-question adjudicated set, 3 runs each (gpt-5.6-luna): solid success (all three runs
+    correct) 37/38 = 97.4% [86.5, 99.5] against 21/38 = 55.3% [39.7, 69.9]; discordance 16 to 0, two-sided
+    exact McNemar p = 3.05 x 10^-5; successful runs 113/114 against 78/114; refusals 1/114 against 0/114; adjudicated
+    wrong runs 0/114 against 29/114, plus 7/114 judge-flagged data-only coincidences for the baseline. Strict
+    scoring 37/38 against 18/38; all 44 items 38/44 = 86.4% against 22/44 = 50.0%. SPC alone with gpt-5.4 36/38
+    and gemini-3.6-flash 35/38. 10 of 114 SPC runs used the retry, 9 of them then produced SQL. Checker: all
+    9 deliberately grain-unsafe mutations flagged, none of 4 safe controls. "For ad hoc databases, lightly
+    modeled domains, and predominantly simple analytical questions, semantic context combined with direct LLM
+    SQL generation may provide a better engineering trade-off."'
+  conditions: ACME Insurance benchmark (data.world lineage, dbt's adaptation, SQLite port), 38 of 44 questions
+    after a post hoc exclusion registry; one author who built the ontology, mapping, compiler and checker while
+    inspecting the benchmark; the arms differ in information (a governed ontology and mapping) as well as mechanism;
+    GPT-4o judges unsettled cases; token, call and cost parity not measured; not reproducible end to end from
+    public artifacts
+  direction: supports
+  measured: true
+  locator: §1 Figure 1; §4.1-4.8; §5.3-5.5; §6.1 Table 1; §6.2-6.6; §7; §8; §9
+- source: dbt Labs, "LLM Semantic Layer Benchmark" (results pages and repository, August 2026 update), https://dbt-labs.github.io/dbt-llm-sl-bench/
+  date: '2026-08-10'
+  task: Rerun the 11-question layer against text-to-SQL benchmark on the modeled schema with Claude Opus 5,
+    Claude Sonnet 5 and GPT-5.6 Luna, Terra and Sol across effort levels, and report accuracy, cost and latency
+    per query for every model, effort and path, plus run-to-run spread
+  effect: 'With modeling (all 11 questions answerable by both paths), August models: layer 80.0% to 100%, text-to-SQL
+    78.2% to 90.9%. Claude Opus 5 100% at low, medium and high against 84.8% to 90.9%; GPT-5.6 Sol 100% at
+    every effort against 90.9%; Claude Sonnet 5 87.3% to 94.5% against 78.2% to 90.9%; GPT-5.6 Terra 80.0%
+    to 98.2% against 80.0% to 90.9% (xhigh 80.0% against 89.1%); GPT-5.6 Luna 80.0% to 87.3% against 87.3%
+    to 90.9%, lower through the layer at every effort. Cost per query, layer against text-to-SQL: Claude Sonnet
+    4.6 $0.0416 against $0.0128, GPT-5.3 Codex $0.0172 against $0.0068, Claude Opus 5 (medium) $0.0893 against
+    $0.0366, GPT-5.6 Sol (high) $0.0501 against $0.0225; mean latency 2.22 s against 2.63 s (Sonnet 4.6), 1.85
+    s against 2.74 s (GPT-5.3 Codex), 3.80 s against 9.88 s (Sol, high), 9.05 s against 5.77 s (Luna, medium).
+    Without modeling, on the 8 layer-answerable questions: Sonnet 4.6 (medium) $0.0285 against $0.0076 at 2.97
+    s against 2.60 s. Repeated runs (20 per question): without modeling, layer standard deviation 0.0 for Sonnet
+    4.6, GPT-5.2 and GPT-5.3 Codex, text-to-SQL 0.0, 5.6 and 3.8 (GPT spread 12.5 points between best and worst
+    run); with modeling, layer 3.7, 6.8 and 0.0 (GPT-5.2 spread 18.2 points), text-to-SQL 2.8, 6.1 and 5.0.'
+  conditions: ACME Insurance, 11 questions; 3 runs per configuration for Claude Opus 5, 5 for the other August
+    models, 20 for the April models (Claude Sonnet 4.6, GPT-5.2, GPT-5.3 Codex); the layer path is one prompt
+    holding every metric, dimension and entity definition that asks for a single semantic-layer query or CANNOT_ANSWER;
+    text-to-SQL gets the full DDL including the added models; accuracy over runs that completed; no write-up
+    accompanies the August rows; dbt Labs' own product and benchmark
+  direction: mixed
+  measured: true
+  locator: Repository README, Updates; Comparing models and thinking effort, With modeling (Summary) and Without
+    modeling (Summary); Repeated runs on selected models; src/llm_bench/services/query_generation.py
+- source: 'Jinqing Lian, Chaofan Li, Yingxia Shao, et al. (Beijing University of Posts and Telecommunications,
+    Baidu), "CoeusBI: A Comprehensive Interactive Business Intelligence System Powered by LLMs at Baidu [Extended
+    Version]", https://arxiv.org/abs/2606.15384'
+  date: '2026-06-13'
+  task: Have a model write a dialect-free intermediate representation (measures, dimensions, filters, time
+    range, comparison, limit) over automatically generated views, compile it to SQL deterministically, and
+    send what it cannot express to human experts rather than to free-form SQL; ablate the representation against
+    SQL written directly over the same views
+  effect: 'Production: "the single-view IR pipeline successfully expresses and executes 95.3% of user queries
+    end-to-end. The remaining 4.7% of queries fail to process autonomously" (out-of-coverage intents and pipeline
+    errors) and go to an expert interface; expert-written queries feed batched view updates once error frequencies
+    pass a threshold. Table 10 (BIRD-dev): full system 71.4% EX at 8.91 s per question against 62.8% at 9.43
+    s without the IR-to-SQL pipeline (SQL written by XiYanSQL-QwenCoder-2504 over the same views); prompt tokens
+    6,112,623 against 5,185,149 and response tokens 187,110 against 67,052 in total; CoeusBI with QwenCoder-2504
+    throughout 70.6% (Table 3). Table 7 (BIRD student_club, DIN-SQL consuming the views): three analysts took
+    28,689 s to write views against 29 to 116 s for models, at 78.06% against 80.42% (DeepSeek-v4-pro views)
+    mean EX. SRD production set (171 queries, 148 tables, 25,258 columns, ClickHouse): 86.5% UEX against 28.7%
+    to 59.1% for published NL2SQL and NL2BI baselines.'
+  conditions: Baidu business lines on ClickHouse; DeepSeek-V3 writes the representation in the reported runs
+    (the production model, a fine-tuned DeepSeek-R1-Distill-Qwen-32B, is not evaluated); the ablation swaps
+    the model as well as the path; the 95.3% counts queries that executed, not checked answers; UEX re-grades
+    misses by a panel of three DBAs; the authors evaluate their own system; the paper's routing agent chooses
+    between a new query and a follow-up edit, not between the layer and SQL
+  direction: supports
+  measured: true
+  locator: §3; §6.1-6.3; §8.1.3; §8.2 Tables 3-4; §8.3.2 Table 7; §8.4.1 Table 10
+- source: Qing Ye, "Which Part of the Context Layer Does the Work? Separating Semantic Content from Retrieval
+    Scaffolding in Text-to-SQL Agents", https://arxiv.org/abs/2609.22259
+  date: '2026-09-06'
+  task: 'Separate what a context layer contributes: schema only, the layer''s tools and lookup instruction
+    with every prose field emptied, the full data contract, the same knowledge pasted into the prompt, and
+    a ceiling where the contract''s SQL is compiled into views'
+  effect: Content raises hard-task accuracy "from 13.9% to 55.1%, 22.6% to 56.6%, 22.9% to 68.4% and 37.0%
+    to 77.4%"; tools and instruction without content are worth 0 to 5 points on two flash models and 14 to
+    15 on two frontier models (§5.2). Compiled views are right on all 176 tasks they cover; on those tasks
+    agents deriving their own SQL fall short by 39.2, 37.3, 26.1 and 5.1 points in order of model capability
+    (§5.3). The contract arm writes the needed fee clauses 39%, 65%, 55% and 98% of the time against 3%, 9%,
+    4% and 4% with the knowledge pasted into the prompt (§6.1). Ungoverned arms submitted 166 mutating statements,
+    governed arms none. No gain outside the contract's domain.
+  conditions: GLM-5.3-flash, DeepSeek-V4-flash, Claude Sonnet 5, GPT-5.6-sol; DABStep, 401 tasks per model
+    (279 for DeepSeek after lost rows); one run per model, no seed control for the frontier runs; reconstructed,
+    lenient golds; one benchmark and domain; single author, preregistered, not peer reviewed
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §5.2; §5.3; §6.1; §8.4; Table 3; Appendix B
+- source: 'Zhivar Sourati et al. (Oracle AI, USC, UPenn), "Same Context, Different Agents: A Behavioral Study
+    of Semantic Layers, Multi-Agent Orchestration and Memory Compaction in Data Agents", https://arxiv.org/abs/2610.20959'
+  date: '2026-10-14'
+  task: Give data agents an LLM-written semantic layer (descriptions, data profile, join keys) in the prompt,
+    alone and combined with orchestration and compaction, and track how each kind of agent behaves
+  effect: Agents that give up early gain 4.6 points; for agents that already investigate, "every CET lowers
+    accuracy or leaves it unchanged" (§4.2). With the layer, Opus stops using tools in 73 runs where it had
+    used them; on investigator runs that stop looking, accuracy falls from 68% to 31%; of 100 right-to-wrong
+    flips, the layer misled the agent in 2 and the agent stopped checking in 25 (§4.4). 22 to 30% fewer calls
+    but 1.1 to 1.9 times the cost, because the layer sits in every prompt (§4.4). A layer written by a 3B model
+    gives about the same gain as one by GPT-5.5 (Figure 24).
+  conditions: Seven LLMs (GPT-5.4, GPT-5.5, GPT-6 Astra, Sonnet 5.5, Opus 5.5, Gemini 2.5 Flash, GLM-4.7-Flash);
+    1,514 tasks from KramaBench, DataClaw, FDABench and HDR over files, documents, databases and the web; 95%
+    bootstrap intervals; the layer is a description, not a query compiler; v2 title (v1 says "Orchestration
+    and Compaction")
+  direction: contradicts
+  measured: true
+  locator: §4.2; §4.4; Figure 24
+- source: 'Chong, Zhang, Fan, Du (Renmin University), "EvoOntology: A Self-Evolving Ontology Layer for Data
+    Agents", https://arxiv.org/abs/2609.15779'
+  date: '2026-09-14'
+  task: Compare no layer, a static semantic layer prepended to the prompt, and an ontology the agent queries
+    through tools and that refines itself
+  effect: 'Table 1 (DDR-Bench 10-K, overall): the static prompt layer changes GPT-5.5 by -1.2, GPT-5.6-sol
+    -2.3, Claude Sonnet 5 -11.9 (-15.0 on the trajectory score), Opus 4.8 -4.9 and DeepSeek-V4-Flash +2.0;
+    the tool-served ontology gains +17.8 on average on the trajectory score. Tokens per task 52.6K against
+    42.0K, about 20% below the baseline (Appendix B, Table 8).'
+  conditions: Six backbones, fixed ReAct agent; DDR-Bench, InsightBench and BIRD (oracle-knowledge setting);
+    the authors built both the static layer and their own method
+  direction: mixed
+  measured: true
+  locator: Table 1; Appendix B Table 8
+- source: Juan Sequeda, Dean Allemang, Bryon Jacob (data.world), "A Benchmark to Understand the Role of Knowledge
+    Graphs on Large Language Model's Accuracy for Question Answering on Enterprise SQL Databases", https://arxiv.org/abs/2311.07509
+  date: '2023-11-13'
+  task: GPT-4 writing SQL from the database schema against SPARQL over an ontology mapped onto the same insurance
+    database
+  effect: 'Table 1: all questions 16.7% with SQL against 54.2% over the ontology; on the two high-schema-complexity
+    groups 0% against 35.7% and 0% against 38.5%.'
+  conditions: GPT-4 zero-shot; 43 questions on a 13-table subset of the OMG property and casualty model (the
+    source of the ACME Insurance benchmark); the SQL arm got table definitions only, no business context; small
+    ontology; a knowledge-graph vendor's study
+  direction: supports
+  measured: true
+  locator: Table 1
+- source: 'Dean Allemang, Juan Sequeda (data.world), "Increasing the LLM Accuracy for Question Answering: Ontologies
+    to the Rescue!", https://arxiv.org/abs/2405.11706'
+  date: '2024-05-20'
+  task: Check each generated query against the ontology, have the model repair it, and answer "I don't know"
+    after three failed repairs
+  effect: Accuracy 72.55% (from 54.2%), 8% unknown answers, error rate 20% (§1, Table 1); 10.46% error on low-complexity
+    questions over a low-complexity schema; the check repairs about half the time, 55.57% of achievable improvement
+    (Table 2).
+  conditions: Same 43-question benchmark and GPT-4 zero-shot setup; a knowledge-graph vendor's study
+  direction: supports
+  measured: true
+  locator: §1; Tables 1-2
+- source: 'Peter Baile Chen, Fabian Wenz, Yi Zhang, et al. (MIT and others), "BEAVER: An Enterprise Benchmark
+    for Text-to-SQL", https://arxiv.org/abs/2409.02038'
+  date: '2024-09-03'
+  task: Raw text-to-SQL on private enterprise data warehouses, end to end and with oracle hints for each subtask
+  effect: Best end to end ReFoRCE with Claude 4.5 Sonnet at 11.4% (Table 4; the abstract's 10.8% is GPT-5.2);
+    real queries 32.0%, synthetic 7.2% (Table 5); with all hints average 25.9%, domain-knowledge F1 27.1 (Table
+    6).
+  conditions: v3 (May 2026) figures; 9,128 question-SQL pairs, 812 tables, 19 domains; seven LLMs, four methods;
+    no semantic-layer arm
+  direction: supports
+  measured: true
+  locator: 'v3: Tables 4-6'
+- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data Analytics",
+    https://arxiv.org/abs/2507.14372
+  date: '2025-07-18'
+  task: A production text-to-SQL assistant with knowledge-graph context and no semantic layer, ablated by component
+  effect: 'Expert review: 53% of answers on 124 questions rated 4 or 5; most common issue "Filter is incorrect"
+    (24%) (§3.3.4). Table 2: schemas only 9% scored 4 or above, full system 48%, and removing domain knowledge
+    49%.'
+  conditions: GPT-4o; one run per configuration; GPT-4o judge for the ablation; over 300 weekly users; the
+    company evaluates its own system
+  direction: supports
+  measured: true
+  locator: §3.3.4; Table 2
+- source: 'Morris Lee, "Business Truth, not SQL Accuracy: A Rule-Gated 7B Analytics Agent Outperforms a Direct-Prompted
+    32B Baseline", https://arxiv.org/abs/2608.09254'
+  date: '2026-08-10'
+  task: Gate a 7B analytics agent with rules derived from a semantic layer and the catalog plus deterministic
+    checks after execution, against a 7B model retrieving over the layer and a 32B model prompted directly;
+    ablate abstain-or-escalate routing
+  effect: Business Truth Rate (right answer, or right clarification or refusal) 0.562 against 0.300 and 0.300
+    (Table 2); false success 0.754 to 0.351; routing tuned on validation scored 0.537 and "over-abstains on
+    test" (Table 10, §6.5); resampling by question template widens intervals to include zero (Table 8).
+  conditions: Qwen2.5-Coder 7B and 32B; 80 test tasks over synthetic DuckDB warehouses; one evaluation, one
+    annotator; the model still writes SQL; "routing" here escalates to a larger model
+  direction: mixed
+  measured: true
+  locator: Table 2; Table 8; Table 10; §6.5
 related:
 - 5.b.i
+- 8.b.ii
+- 3.a.i
+- 2.a.iii
+- 9.a.i
+- 1.b.i
+- 3.b.i
 provenance:
   layer: target
   origin: observed
@@ -109,7 +429,19 @@ provenance:
   sub_type: control_flow
   harness_role: retrieval
   action: add
-caveats: Applies only where a semantic layer already covers the metrics being asked about; building one
-  is data-side work and a separate change. Both studies come from semantic-layer vendors (dbt Labs, Cube),
-  and the question sets are small (11 questions x 20 runs; 99 questions). The routing policy itself, layer
-  first and SQL as fallback, was recommended by dbt but not evaluated.
+caveats: 'The case for the layer path rests on small question sets from one insurance dataset (dbt''s 11 questions,
+  a vendor benchmark; an independent author''s 38, whose compiler was built while inspecting those questions
+  and whose layer arm also got semantics the SQL arm lacked) and on systems evaluated by their builders, with
+  Baidu''s ablation also swapping the model. The routing policy itself (layer first, SQL as fallback) is still
+  not tested against either path alone; the closest numbers are Baidu''s 95.3% of production queries handled
+  by its compiled representation, with the rest sent to experts, and a vendor test in which the agent took
+  the SQL route for 56.6% of answers. Against it: in dbt''s August 2026 rerun the margin narrowed and GPT-5.6
+  Luna did better with SQL, and on DABStep''s fee-rule questions a model-authored Malloy layer lost to SQL
+  written from documentation by 29.4 points with the model fixed, though that documentation had been tuned
+  on the same benchmark. Cube''s paired study, often cited for semantic layers, tested a document in the prompt
+  rather than a layer that compiles queries (see 5.b.i). Independent 2026 work splits the effect: the semantic
+  content does most of the work (Ye, on DABStep with one run per model, found it lifted hard-task accuracy
+  by 34 to 46 points) and compiling it adds most for weaker models; layers given as descriptions in the prompt
+  helped agents that give up early but made thorough agents stop checking the data (Sourati, seven models,
+  1,514 tasks). The ontology results that first made the case (data.world, 16.7% against 54.2% with GPT-4)
+  gave the SQL arm no business context.'

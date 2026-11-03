@@ -7,6 +7,21 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+- 11 cards are rewritten, with a sharper summary and how-to and 53 new sources (each dated, quoted
+  and located in its entry): size run budgets (7.b.iii, 5 new sources; set caps from successful
+  runs and show the agent the budget left), make the final answer extractable (9.b.i, 4), restructure
+  the system prompt (3.a.iv, 4), link large schemas by exploration (8.b.ii, 5; first check the
+  schema really is too large to load whole), tune the search tool (8.b.i, 4; a reader that keeps the
+  pages it opens), bound tool output (2.c.i, 5; cut by whole lines or records, never by character
+  position), route metric questions through a semantic layer (7.a.i, 12), verify citations claim by
+  claim (9.a.ii, 4), triage false success with a trained detector (9.b.ii, 4; never show the judge
+  the agent's own success claim), and surface information the source holds but the agent cannot read
+  (8.a.ii, 4). Contributed by the Mahalanobis Systems maintainers.
+- 9.c.i is narrowed and renamed "Drop ad-hoc test-writing prompts; tell test-heavy models not to
+  write tests" (was "Don't prompt agents to write their own tests"), with 2 new sources; a test
+  written before the fix and shown to fail is a different change. Contributed by the Mahalanobis
+  Systems maintainers.
+
 ## 0.2.0 — 2026-10-26
 
 - 20 optimizations go from outline to full card, with a summary, a how-to and the signals that say

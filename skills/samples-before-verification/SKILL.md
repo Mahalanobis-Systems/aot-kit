@@ -58,6 +58,7 @@ Running several independent attempts and picking by majority vote or a judge rai
 
 - `aot-kit:audit-verifier-cascade` (9.c.iii, Audit a verifier-gated cascade against a gold sample the verifier never sees)
 - `aot-kit:false-success-detector` (9.b.ii, Triage false success with a cheap trained detector, not an LLM judge)
+- `aot-kit:no-self-written-tests` (9.c.i, Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)

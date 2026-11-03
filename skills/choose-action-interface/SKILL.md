@@ -65,6 +65,7 @@ The paper flags this as intuitively helpful but the test gain is within noise; M
 - `aot-kit:constrain-agent-reach` (10.a.i, Constrain what the agent can touch)
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
 - `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
+- `aot-kit:semantic-layer-routing` (7.a.i, Route metric questions through a deterministic semantic layer; fall back to text-to-SQL)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)

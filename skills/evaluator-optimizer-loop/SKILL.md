@@ -76,6 +76,7 @@ Most studies are small or single-run (one app per harness, 150 Bash questions, 2
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:audit-verifier-cascade` (9.c.iii, Audit a verifier-gated cascade against a gold sample the verifier never sees)
 - `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
+- `aot-kit:no-self-written-tests` (9.c.i, Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests)
 - `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
 - `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
 - `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)

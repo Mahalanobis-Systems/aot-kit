@@ -57,6 +57,7 @@ Tokenize PII in the client so it never reaches the model, wrap untrusted tool an
 
 - `aot-kit:constrain-agent-reach` (10.a.i, Constrain what the agent can touch)
 - `aot-kit:staged-compaction` (5.a.i, Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary)
+- `aot-kit:surface-unreadable-information` (8.a.ii, Surface information the source holds but the agent cannot read)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
 - `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)

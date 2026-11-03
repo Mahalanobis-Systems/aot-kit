@@ -100,7 +100,7 @@ Real trade-offs within the existing design; needs the calibrated quality eval an
 | `ground-queries-in-schema` | 5.b.i | Give the model the schema it queries, in context: descriptions, keys, codes, sample values |  |
 | `samples-before-verification` | 9.c.ii | Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays | P05, P36, P31 |
 | `verify-citations` | 9.a.ii | Verify citations claim by claim for factual support |  |
-| `no-self-written-tests` | 9.c.i | Don't prompt agents to write their own tests; suppress it for test-heavy models |  |
+| `no-self-written-tests` | 9.c.i | Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests |  |
 | `semantic-layer-routing` | 7.a.i | Route metric questions through a deterministic semantic layer; fall back to text-to-SQL |  |
 | `choose-retriever` | 8.a.i | Choose the retriever by corpus size and question type |  |
 | `choose-action-interface` | 2.a.iii | Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task | P06 |

@@ -74,6 +74,8 @@ Fail-soft handling is necessary but not sufficient: in VeRO removing all 11 cras
 - `aot-kit:risky-action-policy` (10.b.i, Gate irreversible actions: allow, ask or deny by side effect)
 - `aot-kit:filesystem-checkpoints` (4.b.i, Filesystem-based agent state and checkpoints)
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
+- `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
+- `aot-kit:tune-search-tool` (8.b.i, Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
 

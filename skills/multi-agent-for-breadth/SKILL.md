@@ -59,6 +59,7 @@ Spawn parallel sub-agents when the work splits into independent, breadth-first p
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
 - `aot-kit:verify-completion` (9.b.iii, Verify completion against the environment before the agent stops)
+- `aot-kit:verify-citations` (9.a.ii, Verify citations claim by claim for factual support)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
 - `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)

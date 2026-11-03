@@ -60,6 +60,7 @@ Put static content (identity, rules, tool definitions) before a boundary and per
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
 - `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
 - `aot-kit:ground-queries-in-schema` (5.b.i, Give the model the schema it queries, in context: descriptions, keys, codes, sample values)
+- `aot-kit:semantic-layer-routing` (7.a.i, Route metric questions through a deterministic semantic layer; fall back to text-to-SQL)
 - `aot-kit:inject-runtime-context` (3.a.iii, Dynamic context injection)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)

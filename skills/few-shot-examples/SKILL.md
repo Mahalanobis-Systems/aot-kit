@@ -71,6 +71,7 @@ The large gains are from data agents asked about custom metrics or underspecifie
 - `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 - `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
 - `aot-kit:extractable-final-answer` (9.b.i, Make the final answer reliably extractable: state the format, extract robustly, force an answer at the limit)
+- `aot-kit:surface-unreadable-information` (8.a.ii, Surface information the source holds but the agent cannot read)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

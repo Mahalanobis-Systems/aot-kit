@@ -77,6 +77,7 @@ Most measured gains come from deep-research and long-horizon coding systems buil
 - `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 - `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 - `aot-kit:skill-library` (4.c.ii, Skill library evolution)
+- `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
 

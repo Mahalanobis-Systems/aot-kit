@@ -211,7 +211,7 @@ optimizations:
 - id: 9.c.i
   legacy_id: T51
   skill: no-self-written-tests
-  name: Don't prompt agents to write their own tests; suppress it for test-heavy models
+  name: Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests
   kind: technique
   tier: 3
   categories:

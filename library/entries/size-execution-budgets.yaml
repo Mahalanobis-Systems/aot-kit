@@ -15,38 +15,93 @@ domains:
 - general
 evidence_domains:
 - web-research
+- code-generation
+- computer-use
+- conversation
 categories:
 - orchestration.bound
-summary: 'Set the turn or step cap, the wall-clock deadline and per-command timeouts from what runs that
-  succeeded actually needed, not from framework defaults, so a run that is still making progress is not
-  stopped short. This is one of three changes that bound a run, each for a different failure: this one
-  lets productive runs finish, 7.b.i stops runs that have stalled, and 9.b.i makes sure a run that does hit
-  the limit still returns its best answer. Raise a cap only together with 7.b.i, or a stall becomes a longer
-  stall. Timeouts are tuned both ways: a timeout that kills commands that would have finished is too low,
-  one that lets a hung command eat the run is too high.'
-how: '1. From traces, take the distribution of turns, wall-clock and command durations on runs that succeeded.
-  2. Find the runs that ended at a limit while still progressing: new tool results, new files or a changing
-  answer in their last turns. 3. Set each cap above the successful range (for example the 95th percentile)
-  and each command timeout above the longest command that finished, with 7.b.i in place before raising a
-  cap. 4. Re-run the truncated cases and compare limit-ended outcomes, cost and turns on the same cases.'
+summary: 'Set turn caps, deadlines and command timeouts from what your successful runs actually used,
+  show the agent how much budget is left, and never run a command without a timeout. This is one of three
+  changes that bound a run: this one lets productive runs finish and keeps the rest from running long,
+  7.b.i stops runs that have stalled, and 9.b.i makes sure a run that hits the limit still returns its
+  best answer, so raise a cap only together with 7.b.i. On 100 SWE-bench Verified tasks, a turn cap at
+  the 75th percentile of each model''s uncapped runs, with a turns-left reminder, cut cost by 24% to 68%
+  for a -5 to +2 point change in solve rate, and in another study showing the agent its remaining calls
+  lifted a 50-call run from 36.8% to 55.4% resolved. The limits: a higher cap buys little where runs stop
+  on their own or stall (raising four local computer-use models from 15 to 100 steps left average success
+  at 24.44% and 24.91% while prompt tokens rose 5.50x), and a deadline stated only in the prompt was not
+  kept (161% of a 15-minute budget used on average).'
+how: '1. Start from the limits as they are: from traces, or one uncapped run on a sample of cases, take
+  the distribution of turns, tool calls, wall-clock and command durations, split into runs that succeeded
+  and runs that failed, and count the runs that end at each limit (turn cap, deadline, command timeout).
+  2. Find the runs that ended at a limit while still progressing (new tool results, new files or a changing
+  answer in their last turns); only those can be saved by a higher cap. Runs that end at the cap after
+  repeating themselves are 7.b.i''s, and a higher cap only makes them longer: raising four local computer-use
+  models from 15 to 100 steps left average OSWorld success at 24.44% and 24.91% while steps per task rose
+  4.08x and prompt tokens 5.50x, with failures moving from cap stalls to premature false successes. Put
+  7.b.i in place before raising any cap. 3. Set the turn or tool-call cap from that distribution, not
+  a framework default: on 100 SWE-bench Verified tasks, a cap at the 75th percentile of each model''s
+  uncapped turn counts cut cost by 24% to 68% with solve rates moving -5 to +2 points against no cap,
+  while a 25th-percentile cap lost 13 to 37 points. To save more, start lower and grant one extension
+  to runs that have not finished: a 50th-percentile cap with one extension to the 75th matched the fixed
+  75th-percentile cap within 2 points at 12% to 24% lower cost. 4. Tell the agent its remaining budget
+  every turn (turns or calls used and left, time left), not only in the first prompt: under a 50-call
+  cap on SWE-bench Verified, a used-and-remaining block after each tool result lifted resolved tasks from
+  36.8% to 55.4% at about the same calls and cost, and on a retail support benchmark a 10-call cap with
+  the block beat a 50-call cap without it (pass^4 27.2% against 26.3%) with fewer calls. 5. Give every
+  command a timeout and return a timeout to the agent as a result it can act on: a shell with no default
+  timeout left 34 runs blocked in a final command that never returned, while a 300 s limit turned the
+  same hang into an error the model diagnosed and fixed. Set each timeout above the longest command that
+  finished in successful runs, and lower it where hung commands eat the run. 6. Enforce wall-clock deadlines
+  in the harness, not only in the prompt: with the budget stated only in the prompt, runs used 161% of
+  a 15-minute budget on average and 15% finished on time; harness hooks that add the time remaining to
+  each tool result brought time used to 99.7% of the budget, and also clamping each command''s timeout
+  to the time left gave 74% of runs on time and 90% valid submissions (78% prompt-only), since the commonest
+  overrun was a command launched with a limit longer than the time remaining. Do not expect a longer deadline
+  alone to raise quality: in that study it did not. 7. Re-run the cases that ended at a limit, then the
+  full set, at the old and new limits on the same cases and model, and compare success, limit-ended outcomes
+  by kind, turns, tool calls, tokens, cost and wall-clock per case, and how the failures shift.'
 detect:
-  static: caps, deadlines and command timeouts at framework defaults, unchanged since the agent was built
+  static: caps, deadlines and command timeouts at framework defaults, unchanged since the agent was built;
+    a shell with no default command timeout; a deadline stated only in the prompt, with no clock or remaining-budget
+    signal in context
   traces: runs ending at the turn cap or deadline while still producing new information in their last
     turns (a run that ends at the cap after repeating itself is 7.b.i's signal, not this one); commands
-    killed by a timeout that finish when re-run with a longer one
-  evals: limit-ended outcomes (turn cap, deadline, command timeout) on cases where the run was still progressing
+    killed by a timeout that finish when re-run with a longer one; a command that never returns until
+    the run's deadline; a command launched with a time limit longer than the time left; runs that stop
+    on their own far below a cap that was raised
+  evals: limit-ended outcomes (turn cap, deadline, command timeout) on cases where the run was still progressing;
+    success and cost at two cap settings on the same cases
 impact:
   quality:
-    effect: unknown
-    when: the only evidence is how often optimizers changed these limits, not what the change did
-  cost:
     effect: mixed
     size: medium
-    when: more turns per case when a cap is raised
+    when: 'caps below what runs need cost the most: a 25th-percentile turn cap lost 13 to 37 points of
+      solve rate and a 50-call cap held SWE-bench Verified to 36.8% against 63.0% at 70 calls, while a
+      75th-percentile cap with a turns-left reminder moved solve rates by -5 to +2 points against no cap
+      (Gao, Oct 2025; Liu, Nov 2025); showing the remaining budget each turn lifted the 50-call result
+      to 55.4% (Liu, Nov 2025); raising caps that runs rarely reach added little (BrowseComp 10.5% at
+      30 calls, 12.6% at 100; OSWorld 24.44% at 15 steps, 24.91% at 100) (Liu, Nov 2025; Lee, Jul 2026);
+      a shell with no default timeout left 34 runs blocked in a command that never returned (Li, Oct 2026)'
+    basis: evidence
+  cost:
+    effect: mixed
+    size: large
+    when: 'a turn cap at the 75th percentile of uncapped runs cut cost by 24% to 68%, and starting at
+      the 50th percentile with one extension saved 12% to 24% more within 2 points of solve rate (Gao,
+      Oct 2025); a remaining-budget signal at a 10-call cap matched a 100-call cap on BrowseComp at 31.3%
+      lower cost (Liu, Nov 2025); raising a cap costs more: 15 to 100 steps raised steps per task 4.08x
+      and prompt tokens 5.50x for no gain (Lee, Jul 2026), and 50 to 70 calls raised SWE-bench Verified
+      cost per task from 18.50 to 21.59 cents (Liu, Nov 2025)'
     basis: evidence
   performance:
     effect: mixed
     size: medium
+    when: a deadline stated only in the prompt ran to 161% of a 15-minute budget (mean 1,453 s); harness
+      clocks brought it to 99.7% (897 s) and clamping command timeouts to the time left to 847 s (Wang,
+      Oct 2026); a hung command with no timeout ran to the 40-minute deadline where a 300 s command timeout
+      let the same task finish in 11 minutes (Li, Oct 2026); higher caps lengthen runs (steps per task
+      4.08x from 15 to 100 steps) (Lee, Jul 2026)
     basis: evidence
   security:
     effect: unknown
@@ -54,30 +109,159 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - cost
+  - quality
 measure:
 - method: before-after
   tier: 2
-  how: limit-ended outcomes, cost and turns on the same cases, before and after
+  how: the same cases and model at the current and the new limits, first the cases that ended at a limit,
+    then the full set, with a remaining-budget signal (turns or calls left, time left) as its own arm;
+    report success, limit-ended outcomes by kind (turn cap, deadline, command timeout), turns, tool calls,
+    tokens, cost and wall-clock per case, and the failure mix, since a higher cap can turn cap stalls
+    into premature false successes
+- method: monitor
+  how: 'in production traces: share of runs ending at each limit and whether they were still producing
+    new results in their last turns; turns, tool calls and wall-clock per run against each cap, split
+    by success; commands killed by a timeout and whether a re-run with a longer one finished; commands
+    run with no timeout or with a timeout longer than the time left; time used against the deadline'
 evidence:
 - source: repo figure_04
   task: five follow-up benchmarks
   effect: MAX_TURNS raised 63 times, lowered 14; MAX_STEPS raised 26, lowered 5. The most-edited constants
     in the corpus.
+  date: 2026-02
 - source: repo figure_01
   task: five follow-up benchmarks
   effect: Turn-budget edits in 11 to 18 of 20 runs per benchmark.
+  date: 2026-02
 - source: paper Table 10
   task: GAIA
   effect: Knight 40 max turns vs Pawn 20.
+  date: 2026-02
 - source: repo figure_04
   task: five follow-up benchmarks
   effect: SOFT_DEADLINE_SEC 2 up / 3 down, COMMAND_TIMEOUT_SEC 1 up / 4 down, RESEARCH_DEADLINE_SEC 0
     up / 2 down. Direction is mixed, unlike turn budgets.
+  date: 2026-02
+- source: 'Aaron Wang, Neelabh Madan, Vlad Sobal, Matthew Trager, Michael Kleinman, Elman Mansimov, Wei
+    Xia, Stefano Soatto (AWS), "On the Clock: Towards Punctual and Productive Time-Budgeted AI Agents",
+    https://arxiv.org/abs/2610.10833'
+  date: '2026-10-07'
+  task: Give an agent a wall-clock budget in the prompt only, then add harness hooks that put the time
+    remaining into each tool result (plus a periodic reminder and generation-time accounting), then enforce
+    the deadline by clamping each shell command's timeout to the time left or by refusing over-long commands
+  effect: 'MLE-Bench Lite at a 15-minute budget (Table 2): prompt only, 15% of runs on budget, mean 1,453
+    s, 78% valid submissions, quality 49.4 percentile; with clocks, 62%, 897 s, 88%, 42.1; with clocks
+    and command timeouts clamped to the time left, 74%, 847 s, 90%, 46.8; refusing over-long commands
+    instead, 88%, 812 s, 78%, 42.4. The text puts time used at 161.4% of the budget prompt-only and 99.7%
+    with clocks, "with no measurable change in quality (47.5 to 47.0 percentile, within error)". "The
+    dominant failure mode was that when the agent recognized that little time remained, it launched a
+    tool call whose duration exceeded that budget", and "commands are frequently issued with no limit".
+    Prompt only, on one competition the agent ran 9.7 to 12.9 minutes whether the budget was 8, 15 or
+    60 minutes; with the harness, quality showed "no upward trend as budget grows". On Zork I, budgets
+    stated in the prompt were overshot, often to the 2x hard cutoff; a clock appended by the harness after
+    every turn gave the best adherence of the harness options, but scores stayed below 5.'
+  conditions: Qwen3.6-27B in the OpenCode harness on five MLE-Bench Lite competitions (pooled); Qwen3-4B,
+    Qwen3.5-9B and Qwen3.8-27B on Zork I with thinking off, n=16 episodes per cell; workshop paper; run
+    counts per MLE-Bench condition not stated; quality is leaderboard percentile over valid, on-budget
+    submissions; RL arms not used here
+  direction: mixed
+  measured: true
+  locator: Abstract; §1 Table 1; §4.1-4.2, Tables 2-3; Figure 2; Figure 4; §5
+- source: 'Yixuan Li, Yiyun Zhou, Yao Long Teng, Fuchao Yang, Yanchen Deng, Zhiyi Lyu, Xuyu Dong, Feng
+    Chen, Bo An, "Finding the Right Fit: Model-Harness Interactions across Agent Tasks", https://arxiv.org/abs/2610.00917'
+  date: '2026-10-01'
+  task: Compare harnesses that bound shell commands by default with one whose shell has no default timeout,
+    in matched trajectories of the same model on the same tasks
+  effect: '"PI''s shell has no default timeout, so 34 PI runs on TB4 and TUA sat blocked in a final command
+    that never returned and produced no signal at all; the other harnesses bound commands by default."
+    In a matched case (Kimi K3, a GIMP script left waiting for input), openJiuwen''s shell "returned it
+    after 300 s and the model diagnosed and recovered (reward 1)", the run taking 11 minutes; under PI
+    the call never returned and the run "ended at the 40-minute deadline with no output file" (reward
+    0). GPT-6 Astra "sets explicit timeouts on 56–67% of its PI shell calls" and got its best Terminal-Bench
+    4 and ALE-CLI scores under PI.'
+  conditions: Claude Opus 5, GPT-6 Astra, GLM-5.3, Kimi K3 and DeepSeek V4 Pro on TUA-Bench (120), ALE-CLI
+    (99) and a 63-task Terminal-Bench 4 subset; harness default limits (OpenHands 500 steps, openJiuwen
+    8 outer rounds, the others none); counts come from the authors' coding of final attempts, not a controlled
+    timeout ablation; the matched case is one task
+  direction: supports
+  measured: true
+  locator: §5.1 Feedback and Recovery; Figure 3; App. A Table 5
+- source: 'Woongkyu Lee, Jungwook Choi (Hanyang University), "Rethinking Inference-Time Scaling in Local
+    Computer-Use Agents: Failure Modes and Compute Tradeoffs", https://arxiv.org/abs/2607.28573'
+  date: '2026-07-30'
+  task: Raise the maximum step count of a single-agent computer-use loop from 15 to 50 to 100 and record
+    success, steps, prompt tokens and how runs fail
+  effect: 'Figure 4, average of four models: success 24.44% at 15 steps, 25.17% at 50 and 24.91% at 100,
+    while steps per task rose to 2.47x and 4.08x and prompt tokens to 2.75x and 5.50x of the 15-step setting.
+    "increasing S from 15 to 100 yields little to no improvement in task success across most models";
+    Qwen3 improved somewhat from 15 to 50. "increasing S reduces max-step stalls but shifts failures toward
+    premature false successes", and "longer horizons often allow agents to continue erroneous behavior."
+    The authors conclude S "should be treated as a bounded budget aligned with the model''s reasoning
+    capacity."'
+  conditions: Qwen3-VL-8B-Instruct, Qwen3-VL-30B-A3B-Instruct, UI-TARS-1.5-7B and OpenCUA-7B on 361 OSWorld
+    tasks, screenshots only, served with vLLM on one A100; success values are the figure's printed labels;
+    failure cohorts shown for Qwen3-VL-30B-A3B only; no repeat runs reported
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.2.1; §3.4; §4.1 Finding 3, Figure 4; §5
+- source: Tengxiao Liu, Zifeng Wang, Jin Miao, et al. (Google), "Budget-Aware Tool Use Enables Effective
+    Agent Scaling", https://arxiv.org/abs/2511.17006
+  date: '2025-11-21'
+  task: Give a ReAct agent per-tool call budgets and append a block with the budget used and remaining
+    for each tool after every tool result (Budget Tracker), against the same agent with only the hard
+    cap, across budgets
+  effect: 'BrowseComp, Gemini-2.5-Pro ReAct: 10.3% at a 10-call budget, 10.5% at 30 and 12.6% at 100,
+    with search calls averaging 7.87, 13.77 and 14.24; with the tracker, 12.8% at 10 calls at 6.8 cents
+    per question against 9.9 cents for ReAct at 100 (31.3% less). Share of questions reaching the search
+    cap at 30, 50 and 100 calls: 9.24%, 0.79% and 0.00% for Gemini-2.5-Pro, 42.81%, 14.22% and 2.60% for
+    Gemini-2.5-Flash. At 100 calls per tool the tracker raised accuracy on all three web benchmarks for
+    all three models (BrowseComp 12.6 to 14.6, 9.7 to 10.7 and 12.2 to 14.0). tau2-bench retail, Gemini-2.5-Flash:
+    baseline Avg@4 47.8%, 59.0% and 59.0% at 10, 30 and 50 calls (pass^4 21.9%, 26.3%, 26.3%; 6.29, 6.59
+    and 6.59 calls used); with the tracker 55.5%, 61.4% and 63.2% (pass^4 27.2%, 28.9%, 36.0%; 5.38 calls
+    at the 10-call cap). SWE-bench Verified (500 tasks), Gemini-3-Flash-Preview in mini-swe-agent: baseline
+    36.8%, 53.2% and 63.0% resolved at 50, 60 and 70 calls (46.0, 50.7 and 53.6 calls; 18.50, 20.40 and
+    21.59 cents); with the tracker 55.4% at 50 (45.7 calls, 18.88 cents) and 70.0% at 70.'
+  conditions: Gemini-2.5-Pro, Gemini-2.5-Flash and Claude-Sonnet-4 on BrowseComp (1,266), BrowseComp-ZH
+    (289) and HLE-Search (200), temperature 0.7, Gemini-2.5-Flash judge, main table averaged over 3 runs;
+    the tau2-bench retail (114 tasks) and SWE-bench Verified results were added in v2 (Aug 2026) and give
+    no run counts; the authors propose the tracker; the BATS planning and verification framework is not
+    used here
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1-3.3, Tables 1-2, Figure 3; App. C.1 Table 5; App. C.2 Table 6; App. C.3 Table
+    7
+- source: 'Pengfei Gao, Chao Peng (ByteDance), "More with Less: An Empirical Study of Turn-Control Strategies
+    for Efficient Coding Agents", https://arxiv.org/abs/2510.16786'
+  date: '2025-10-19'
+  task: Cap a coding agent's turns at the 25th, 50th and 75th percentile of each model's uncapped turn
+    counts, with a turns-left reminder every turn, and compare with no cap and with a dynamic cap that
+    starts lower and grants one extension when no patch exists
+  effect: 'Uncapped: solve rate 75% (Claude 4 Sonnet), 63% (Gemini 2.5 Pro) and 62% (GPT 4.1) at $585.21,
+    $407.66 and $322.02 for 100 tasks; 75th-percentile turn counts 63.75, 44.5 and 66.25. Fixed cap with
+    reminder at the 75th percentile: 71%, 65% and 57%, cost down 23.62%, 68.28% and 38.43%; at the 50th:
+    63%, 52% and 57%; at the 25th: 60%, 26% and 49%, with 63 empty patches for Gemini. With no reminder
+    (uncapped runs re-scored at the cap), the 75th-percentile solve rates would be 63%, 54% and 54%. Dynamic
+    50th to 75th percentile against a fixed 75th: 70% vs 71%, 64% vs 65%, 59% vs 57%, at 13.42%, 24.18%
+    and 12.27% lower cost; dynamic 25th to 50th against a fixed 50th: 64% vs 63%, 55% vs 52%, 57% vs 57%,
+    at 15.56%, 5.95% and 24.30% lower cost. In one case study the uncapped agent failed after an 82-turn
+    run of compounding fixes where the 75th-percentile agent solved the task in 35 turns.'
+  conditions: TRAE Agent (file editor, bash, task_done) on a 100-task SWE-bench Verified subset sampled
+    in proportion to repositories; Claude 4 Sonnet, Gemini 2.5 Pro and GPT 4.1; one run per setting; up
+    to three attempts per task to produce a patch; prompt caching disabled in the cost model; ICSE 2026;
+    the no-reminder rows were added in v2 (Nov 2025)
+  direction: supports
+  measured: true
+  locator: Abstract; §2.3-2.4; §3.1 Table 2; §3.2 Tables 3-4; §3.3 Table 5; §4.1; §5
 related:
 - 7.b.i
 - 9.b.i
 - 2.b.i
 - 5.a.i
+- 1.b.i
+- 6.b.i
+- 9.b.iii
 provenance:
   layer: target
   origin: observed
@@ -85,6 +269,16 @@ provenance:
   sub_type: resource_limits
   harness_role: budget_turns
   action: tune
-caveats: 'The evidence is frequency only: VeRO''s optimizers raised turn caps far more often than they
-  lowered them (MAX_TURNS 63 up, 14 down) and moved timeouts both ways, but no run measured the effect.
-  Client retries for rate limits and transient errors are not a budget; they are in 2.b.i.'
+caveats: 'The measured studies are few and narrow: the turn-cap study ran one agent on 100 SWE-bench Verified
+  tasks once per setting with prompt caching off, its no-reminder comparison re-scores uncapped runs rather
+  than running them, and its abstract''s extra 12% to 24% saving from extensions is 5.95% to 24.30% in
+  its tables; the deadline study used one 27B open model on five MLE-Bench Lite competitions, and its
+  text says quality held (47.5 to 47.0) where its table shows 49.4 against 42.1. Whether a higher cap
+  pays depends on whether runs reach it: with 100 calls allowed, a web-search agent used 14.24 searches
+  on average and 0.8% of its questions needed more than 50, while a 50-call cap held SWE-bench Verified
+  to 36.8% against 63.0% at 70 calls; for local computer-use models a higher step cap bought cost and
+  turned cap stalls into premature false successes rather than passes. The remaining-budget gains come
+  from the authors who propose the signal, a longer deadline did not by itself raise quality in the one
+  study that tested it, and VeRO''s counts (turn caps raised 63 times, lowered 14) show what optimizers
+  changed, not what it did; client retries for transient errors are 2.b.i, and in-model thinking budgets
+  are 1.b.i, not budgets in this sense.'

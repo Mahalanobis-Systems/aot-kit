@@ -13,38 +13,113 @@ levers:
 - control-flow
 domains:
 - judging
-evidence_domains: []
+evidence_domains:
+- conversation
+- tool-use
+- computer-use
+- code-generation
+- judging
 categories:
 - verification.completion
 - verification.spend
-summary: Train a lightweight text classifier (TF-IDF with logistic regression) on 50-100 labeled runs
-  to flag likely false successes for review. LLM judges, including reasoning models and tuned judge prompts,
-  peaked at AUROC 0.65 and were anti-correlated on false success against honest failure; the detector
-  reached 0.83-0.95 and caught 72% at a 10% review budget.
-how: 1. Label 50-100 runs as true success, false success or honest failure from the environment (9.b.iii).
-  2. Train the classifier on the run's closing text and tool sequence. 3. Route the top 10% by score to
-  review; track catch rate against the labels.
+summary: 'To catch agent runs that claim success but failed, rank finished runs with a small model trained
+  on your own labeled runs and send the top of the ranking to human review, instead of asking an LLM judge
+  that reads the agent''s own claim. In one study on tau2-bench customer-service runs, no LLM judge exceeded
+  AUROC 0.65 and judges took confident closing messages as proof, while TF-IDF classifiers trained on
+  a corpus with 616 labeled false successes reached 0.83 to 0.85 on unseen tasks and caught 72% of false
+  successes when flagging 10% of runs (half the flags were false alarms); in a second study, a 4B judge
+  fine-tuned on about 2,600 labeled tau2-bench runs told failed from successful runs better than two 2026
+  frontier judges (AUROC 0.899 against 0.794 and 0.847), at about 1% of the strongest one''s inference
+  cost. It pays where the trajectory itself shows the failure and labels exist: each new domain needs
+  50 to 100 more labeled examples per class, precision falls as false successes get rarer, and on web
+  and computer-use runs a frontier judge (AUROC 0.929) and an engineered verifier that checks every screenshot
+  (1 to 8% of failed runs accepted) did as well or better.'
+how: '1. Start from the baseline: how runs are marked complete today (the agent''s own status, an LLM
+  judge, or nothing) and a labeled sample of finished runs. Label each run from the environment''s end
+  state, never from the agent''s words (9.b.iii), as true success, false success (the agent claims success,
+  the state shows failure) or honest failure (the agent says it failed or hands off), and triage only
+  the runs that claim success. Report the false-success share (in one study 45 to 48% of failures in single-control
+  tau2-bench domains, 3% in a domain where the simulated user could check state, and 75.8% among AppWorld
+  agents that write an explicit status), and score the current judge and a content-blind baseline on the
+  same runs: step count alone separated failed from successful tau-bench runs at AUROC 0.716 in one study.
+  2. Check that the trajectory records the evidence a reviewer would use (tool results, state-changing
+  calls and what they returned). Where the outcome is decided by something the trajectory never shows,
+  such as hidden tests, judges trained on the runs reached only AUROC 0.53 to 0.65 on code repair in one
+  study, and nothing could be decided automatically. 3. Train the detector on the labeled runs, split
+  by task so no task is in both training and test: unigram and bigram TF-IDF features (up to 30,000) of
+  the closing message and trajectory text, or of the sequence of API calls (method plus endpoint), with
+  class-balanced logistic regression. In one study this reached AUROC 0.849 on unseen tau2-bench tasks
+  from a corpus of 616 labeled false successes and 8,146 successes, and a fine-tuned 184M-parameter DeBERTa
+  did no better (0.827). With a few thousand labels, a small fine-tuned judge is the stronger option:
+  a 4B model prompted to treat the agent''s claims as no evidence and scored by its probability of answering
+  SUCCESS rather than FAIL reached AUROC 0.899 after fine-tuning on about 2,600 labeled tau2-bench runs
+  (0.903 after a further RL stage). For an open-weight agent with no failure labels yet, a reference fitted
+  on a few tens of verified successful runs can rank runs by their distance from it (AUROC 0.787 from
+  the agent''s own activations in one tau-bench study, against 0.551 for text embeddings). 4. Recalibrate
+  for each new domain and agent version. Zero-shot transfer between tau2-bench airline and retail fell
+  to AUROC 0.69; adding 50 to 100 labeled false successes and honest failures per class from the new domain
+  raised logistic regression from 0.693 to 0.788 to 0.827, while XGBoost fell from 0.657 to 0.538; runs
+  from an earlier benchmark generation transferred at 0.68 to 0.73. Refit a label-free reference when
+  the agent changes: in one study a stale reference fell from 0.818 to 0.793 after the agent''s sampling
+  changed, and refitting restored 0.814. 5. If an LLM judge stays in the loop (as a second opinion or
+  in an ensemble), keep the agent''s own success claims out of its input and have it check the trace:
+  in one GUI-agent study, withholding the agent''s report raised a judge''s recall of false successes
+  by 13.3 and 43.4 points for two models, and in the tau2-bench study the best judge condition was the
+  one with the closing message removed (0.640). A 75/25 blend of detector and judge scores raised AUROC
+  from 0.834 to 0.855 there. 6. Flag the top r% of runs by score for human review, with r set by review
+  capacity, and never fail a flagged run automatically. Precision depends on how rare false successes
+  are: 50% at a 10% flag rate (72% caught) on test data where about 7% of runs were false successes (616
+  of 8,762), and, in another study, an implied 0.25 when 5% of runs fail and 0.06 when 1% do. To let part
+  of the queue be decided without review, certify the threshold with a task-level bootstrap (resample
+  tasks, not runs): a certificate that treated runs as independent claimed 98% automation while its realized
+  error exceeded the budget in 17.5% of task resamples, and under the task-level certificate the fine-tuned
+  4B judge could auto-reject 29.7% of tau2-bench runs with at most 10% error. 7. Measure on a fresh labeled
+  sample split by task, against the current judge and the step-count baseline on the same runs: AUROC,
+  recall and precision at the chosen flag rate, and the false-success share, since recall at a fixed flag
+  rate depends on it (in the tau2-bench study the detector''s 72% and the judge''s 13% came from sets
+  where about 7% and nearly half of the runs were false successes). Relabel a random sample each period
+  to catch drift.'
 detect:
-  traces: runs that end with a success claim; the closing message text and the tool-call sequence are
-    the detector's inputs
-  evals: an LLM judge currently used to decide whether a run completed; a labeled sample with a false-success
-    rate above a few percent
+  traces: runs that end with a success claim; the closing message, the tool-call sequence and whether
+    any state-changing call succeeded are the detector's inputs; read-only call sequences that end in
+    a completion claim
+  evals: on a labeled sample split by task, false successes above a few percent of runs that claim success;
+    a completion judge whose AUROC is close to that of step count or transcript length, or whose verdicts
+    change when the agent's report is removed
+  static: completion decided by the agent's own status field, or by an LLM judge whose prompt includes
+    the agent's final message or self-report
 impact:
   quality:
     effect: improves
     size: medium
-    when: 'as a review triage signal: 72% of false successes caught at a 10% review budget, against 13%
-      for the best judge (Jun 2026)'
+    when: 'as a review triage signal on customer-service and tool-use runs: AUROC 0.834 against 0.640
+      for the best transcript-reading judge on the same tau2-bench set, and 72% of false successes caught
+      at a 10% flag rate with 50% precision (Advani, Jun 2026); a fine-tuned 4B judge told failed from
+      successful tau2-bench runs at AUROC 0.899 to 0.903 against 0.794 and 0.847 for two frontier judges
+      (Gan, Sep 2026); on web and GUI runs LLM verifiers did as well or better: a frontier judge at 0.929
+      against 0.922 (Gan, Sep 2026), 1 to 8% of failed runs accepted by a verifier that checks every screenshot
+      (Rosset, Apr 2026), and F1 0.75 to 0.81 for an auditor kept blind to the agent''s report (Zhu, Oct
+      2026)'
     basis: evidence
   cost:
     effect: improves
     size: large
-    when: compared with an LLM judge
+    when: 'a TF-IDF detector needs one CPU inference per run and no GPU, against an API call per judge
+      decision (Advani, Jun 2026); a fine-tuned 4B judge needs one forward pass, about 1% of the inference
+      cost of the strongest frontier judge (about 1,000 reasoning tokens per run), and its certified auto-decisions
+      saved about 30 reviewer-hours per 1,000 tau2-bench runs at 6 minutes per review (Gan, Sep 2026);
+      LLM verifiers that worked on GUI runs took 6 calls on a median 22K-token trace (Zhu, Oct 2026) to
+      about 65 calls per run (Rosset, Apr 2026); offset by labels: hundreds per domain (616 false successes
+      on tau2-bench), about 2,600 runs to fine-tune the 4B judge, and 50 to 100 per class for each new
+      domain'
     basis: evidence
   performance:
     effect: improves
     size: large
-    when: 3,300x lower latency than a judge call
+    when: 1.19 ms per run on CPU against about 4,000 ms per judge call, about 3,300 times faster (Advani,
+      Jun 2026); label-free scoring 0.35 to 1.14 ms per run on one CPU core (Naagarajan, Oct 2026); a
+      batched 4B judge about 10 runs per second on one GPU (Gan, Sep 2026); it runs on finished runs,
+      so it adds no latency to the agent
     basis: evidence
   security:
     effect: unknown
@@ -52,34 +127,62 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
+- method: experiment
+  tier: 2
+  how: 'on a labeled sample of finished runs split by task (labels from environment state), score the
+    detector, the current judge with and without the agent''s report, and a step-count baseline on the
+    same runs: AUROC, recall and precision at the chosen flag rate, and the false-success share among
+    runs that claim success'
 - method: monitor
-  how: catch rate at a fixed review budget against a labeled sample
+  how: 'in production: flag rate, reviewer-confirmed precision of flagged runs, and recall on a random
+    sample labeled from environment state each period; refit the detector when recall drops after an agent,
+    model or domain change'
 evidence:
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
   task: Triage false success with a lightweight trained detector
-  effect: Task-disjoint AUROC 0.849 (LR) / 0.825 (XGB) / 0.827 (DeBERTa-v3) on tau2-bench and 0.953 (XGB)
-    on AppWorld API-call sequences, versus best LLM judge 0.640 and 0.537. At a 10% flag rate the detector
-    recovers 72% of false successes [95% CI 63-80] vs 13% [8-17] for the best judge (Sonnet 4.5 no_closing);
-    at 5%, 51% vs 6%. Precision at 10% flag rate is only 50%. 1.19 ms per CPU inference vs ~4,000 ms per
-    judge call (~3,300x). Cross-domain zero-shot transfer drops to 0.69 (airline<->retail); cross-generation
-    (tau-v1 -> tau2) 0.73; rewriting honest-failure closings in confident style flips the detector on
-    10/50 (20%).
+  effect: 'Task-disjoint AUROC for false success against true success on tau2-bench: 0.849 (LR) / 0.825
+    (XGB) / 0.827 (DeBERTa-v3), against 0.640 for the best LLM judge; on the judges'' own tau2-bench set
+    the detector scored 0.834 (Figure 7). On AppWorld API-call sequences, 0.915 (LR) / 0.953 (XGB) separates
+    false successes from honest failures (all failed runs; the honest-failure label is the agent''s own
+    status=fail), not from true successes; judges there scored 0.537 at best on the same contrast, where
+    a judge that called every run failed would score about 0.5. At a 10% flag rate the detector (XGB)
+    recovers 72% of false successes [95% CI 63-80] at 50% precision vs 13% [8-17] for the best judge (Sonnet
+    4.5 no_closing); at 5%, 51% vs 6%. The two recalls come from different sets: the reported precision
+    and recall imply about 7% false successes in the detector''s test data (616 of 8,762 runs in the corpus)
+    and about 45% in the judge''s set (about 95 false against 105 true successes), where flagging 10%
+    of runs can catch at most about a fifth of the false successes. 1.19 ms per CPU inference vs ~4,000
+    ms per judge call (~3,300x). Cross-domain zero-shot transfer drops to 0.69 (airline<->retail); cross-generation
+    (tau-v1 -> tau2) 0.68-0.73; rewriting honest-failure closings in confident style flips the detector
+    on 10/50 (20%) and GPT-4o and Sonnet 4.5 judges on 11/45 (24%).'
   direction: supports
   measured: true
   locator: §4.2, §4.4, Tables 4 and 6, Appendix H
+  conditions: 'tau2-bench public leaderboard runs: 9,876 trajectories from 8 model families (Claude Opus
+    4.5 and Sonnet 4.5, GPT-5.2, Gemini 3 Pro and Flash, GLM-5, two Qwen models); 616 false successes
+    labeled by regular expressions on the closing message (91.5% agreement with a human on 200 runs, kappa
+    0.86) against 8,146 true successes; detector features from closing-message text; task-disjoint splits
+    over 5 seeds; AppWorld released outputs, 1,879 failed runs (1,425 false successes, 454 honest failures)
+    from two self-assessing architectures and four models; judges scored on a stratified tau2-bench set
+    and 200 AppWorld runs; single author, workshop paper'
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
-  task: Calibrate the detector on 50-100 in-domain examples
+  task: Calibrate the detector to a new domain with 50-100 labeled examples per class
   effect: 'tau2-bench airline<->retail LODO: TF-IDF+LR 0.693 zero-shot -> 0.736 (K=10 per class) -> 0.788
     (K=50) -> 0.827 (K=100). TF-IDF+XGB degrades 0.657 -> 0.538 at K=100. Entity stripping does not help
     (LR 0.690, XGB 0.684).'
   direction: supports
   measured: true
   locator: Appendix I, Table 13; §5 Limitations
+  conditions: tau2-bench airline<->retail leave-one-domain-out; K labeled false successes and K labeled
+    honest failures from the target domain added to the training set, tested on the remaining target-domain
+    runs; the base detector is trained on the full labeled corpus of the other domain, not on 50-100 runs
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
@@ -89,18 +192,26 @@ evidence:
   direction: supports
   measured: true
   locator: §4.4, Figure 7
+  conditions: tau2-bench judge evaluation set; TF-IDF + XGBoost detector against Sonnet 4.5 with the closing
+    message removed
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
   task: Do not rely on an LLM judge to detect false success
   effect: 'tau2-bench, 295 trajectories, 5 judges (GPT-4o, Sonnet 4.5, Llama 3.3-70B, DeepSeek-R1, o3-mini)
     x 5 prompt conditions x 3 phrasings: no configuration exceeds AUROC 0.65 on false success vs true
-    success (best 0.640). On false success vs honest failure every cell is 0.18-0.30, i.e. anti-correlated
-    with truth; assertion-vocabulary trajectories score 0.27-0.36 more "completed" regardless of outcome.
-    AppWorld, 200 API-call sequences, 3 judges: best 0.537.'
+    success (best 0.640). On false success vs honest failure (both failed runs) every cell is 0.18-0.30:
+    judges rated false successes as more complete than honest failures, where a judge that called both
+    failed would score about 0.5; assertion-vocabulary trajectories score 0.27-0.36 more "completed" regardless
+    of outcome. AppWorld, 200 API-call sequences (100 false successes, 100 honest failures), 3 judges:
+    best 0.537.'
   direction: supports
   measured: true
   locator: §4.3, Table 5, Figures 4-5
+  conditions: judges at temperature 0 through OpenRouter, shown the trajectory (and in one condition the
+    full task specification) but not the environment state; the paper describes the tau2-bench set as
+    295 runs with roughly 95 false successes, 105 true successes and 105 honest failures, which sum to
+    305
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
@@ -113,6 +224,9 @@ evidence:
   direction: supports
   measured: true
   locator: §3.5, §4.3, Table 5, Appendix D
+  conditions: same judge sets as the item above; the AppWorld conditions (blind, with_task, checklist)
+    score false successes against honest failures, where about 0.5 is what a judge that calls every run
+    failed would get, so values below 0.5 mean the judge rated false successes as more complete
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
   date: '2026-06-01'
@@ -123,9 +237,107 @@ evidence:
   direction: supports
   measured: true
   locator: §4.1, §4.3, Figure 1, Table 5
+  conditions: false-success rates are shares of each model's tau2-bench failures, with labels from regular
+    expressions on the closing message; reasoning-trace lengths are for Qwen3-Max-Thinking only
+- source: Yunfeng Zhu, Shengcheng Yu, Zihan Li, Zhenyu Chen (Nanjing University, Technical University
+    of Munich, Nanjing Normal University), "Who Verifies the Agent's Success Claim? Self-Report Leakage
+    in GUI-Agent Completion Judging", https://arxiv.org/abs/2610.29609
+  date: '2026-10-21'
+  task: Judge whether a GUI agent's success claim is supported by its recorded trace, with and without
+    the agent's own report in the judge's input, and with a structured auditor that reads the claim and
+    the trace separately and applies deterministic rules to the extracted evidence
+  effect: 'Table II: withholding the agent''s final and per-step reports raised trace-only recall of dangerous
+    misreports (success claimed, trace shows non-completion) by 43.4 points for Qwen3.5-35B-A3B and 13.3
+    for DeepSeek-284B-A13B (+38.0 and +14.0 on the held-out batch); for Qwen, report exposure flipped
+    79 correct non-completion verdicts against 1 recovery. Table III (465 audit records, 180 positives):
+    matched claim-aware judge F1 0.56 and 0.63, report-withheld prompt 0.62 and 0.64, structured auditor
+    0.75 [0.69, 0.80] and 0.78 [0.73, 0.82] (0.77 and 0.81 on the held-out batch); flagging every confident
+    success claim gave precision 0.45 at recall 0.77. Table IV: with flag and review both blocking automatic
+    pass, the auditor blocked 138 of 180 (77%) and 159 of 180 (88%) at 48% and 56% inspection load, about
+    16% and 19% of all 1,384 runs once harness status had cleared clean passes. Table V: human trace-only
+    readers reached F1 0.90 to 0.95.'
+  conditions: AppAgent and Mobile-Agent-v3 on AndroidWorld and Themis tasks; 1,384 in-scope runs, of which
+    465 hard records were left after harness status; completion and claim labeled separately by two annotators
+    (kappa 0.78 to 0.80) and adjudicated; developed on 335 records, 130 held out; temperature 0, five
+    runs with a 3-of-5 vote; each audit takes five claim-blind extraction calls and one claim call on
+    a median trace of about 22K tokens; the authors propose the auditor
+  direction: mixed
+  measured: true
+  locator: Abstract; §IV-A to IV-E, Table I; §V-A Table II; §V-B Tables III-IV; §V-C Table V
+- source: Ramesh Arvind Naagarajan, Stefan Streif (Chemnitz University of Technology, Fraunhofer IME),
+    "Structural Baselines Matter for Agent Failure Detection and Attribution", https://arxiv.org/abs/2610.16661
+  date: '2026-10-12'
+  task: Score finished tau-bench runs for silent failure (goal unmet, no error raised) with content-blind
+    baselines, a zero-shot LLM judge, text embeddings and a label-free detector fitted only on trusted
+    successful runs, and work out precision at realistic failure rates
+  effect: 'Table 1 (660 runs, 64 trusted successes): transcript length AUROC 0.640, step count 0.716 (0.769
+    airline, 0.585 retail), give-up keyword 0.594, zero-shot Mistral-24B judge 0.433 [0.358, 0.501], text
+    embedding 0.551, distance of the agent''s activations from trusted runs 0.787 [0.708, 0.857] (0.679
+    after removing the length effect); on runs with no tool error, 0.624 against 0.582 for text. A label-tuned
+    fusion reached 0.862 against 0.859 label-free, and a supervised activation probe (165 runs, 21 successes)
+    0.793 against 0.842. App. C.9: at a 10% false-positive rate the fused detector''s recall of 0.632
+    implies precision 0.25 when 5% of runs fail and 0.06 when 1% do. App. C.6: references of 5 to 21 trusted
+    runs gave 0.81 to 0.84. App. C.8: after the agent''s sampling changed, a stale reference gave 0.793
+    against 0.818, refit 0.814. §5.6: scoring 0.35 to 1.14 ms per run on one CPU core.'
+  conditions: Llama-3.1-8B-Instruct agent (70B on one arm) on tau-bench airline and retail with simulated
+    users (GPT-4o or a local Qwen2.5-32B); about 90% of runs fail and most failures are omissions or hand-offs,
+    not success claims; the activation signal needs an open-weight agent; three prespecified tests Holm-corrected,
+    the rest exploratory; precision values are computed from recall and false-positive rate, not observed;
+    the authors propose the label-free detector
+  direction: mixed
+  measured: true
+  locator: Abstract; §3; §4.1; §5.2 Table 1; §5.6; §6; App. A.1-A.2, C.3, C.6, C.8-C.10
+- source: Chengguang Gan, Yunhao Liang, Qinghao Zhang, Shiwen Ni, "Certified Selective Automation of LLM
+    Agent Evaluation", https://arxiv.org/abs/2609.34320
+  date: '2026-09-28'
+  task: Fine-tune a small judge (4B, scored by its next-token probability of SUCCESS against FAIL) on
+    labeled agent runs, compare it with strongly prompted frontier judges at telling successful from failed
+    runs, and certify how much of the review queue each can decide automatically with a task-level bootstrap
+  effect: 'Table 2 (test AUROC; certified reject coverage at alpha=0.1, delta=0.05): tau2-bench corpus,
+    untrained 4B 0.798 (coverage 0.000), after SFT 0.899 (0.293), after reject-weighted GRPO 0.903 (0.297);
+    AgentRewardBench web corpus 0.897, 0.925, 0.922 (0.510, 0.560, 0.585); code repair judged by hidden
+    tests 0.531, 0.645, 0.530 with nothing certified. Table 3, frontier judges with chain of thought and
+    a stated probability: gpt-5.6-sol 0.794 on tau2-bench (coverage 0) and 0.929 on web (0.704); claude-sonnet-5
+    0.847 (0) and 0.905 (0.497); four of six frontier configurations certified nothing. The strongest
+    frontier configuration costs about 100 times more per decision (about 10^3 reasoning tokens against
+    one forward pass). §3: on a corpus with intra-task correlation 0.80, a certificate treating runs as
+    independent certified 98% automation at alpha=0.2 while its realized error exceeded the budget in
+    17.5% of task resamples. App. L: certified coverage removes about 29.7 (tau2-bench) and 58.5 (web)
+    reviewer-hours per 1,000 runs at 6 minutes per review.'
+  conditions: 'tau2-bench: 6,400 trajectories over 421 tasks (airline, retail, telecom; outcomes from
+    database-state checks), test 1,280 runs over 84 tasks, 48% success, about 2,600 in-domain labels for
+    SFT; web: 1,289 expert-labeled AgentRewardBench runs from four agents on five live benchmarks, test
+    200 runs over 68 tasks; splits by task (40/30/15/15); Qwen3.5-4B with LoRA; the judge prompt says
+    the agent''s claims are not evidence; the task is success against failure, not false success against
+    true success; the authors propose the certificate and the trained judge'
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §3 Table 1; §4; §5 Tables 2-3; §7 Table 4; App. F, G, H, L
+- source: Corby Rosset, Pratyusha Sharma, Andrew Zhao, Miguel Gonzalez-Fernandez, Ahmed Awadallah (Microsoft
+    Research, Browserbase), "The Art of Building Verifiers for Computer Use Agents", https://arxiv.org/abs/2604.06240
+  date: '2026-04-05'
+  task: Build an LLM verifier for computer-use trajectories (rubrics, separate process and outcome scores,
+    every screenshot scored for evidence) and compare its agreement with human outcome labels against
+    prior trajectory judges
+  effect: 'Table 2, outcome labels (internal set n=140 / Online-Mind2Web n=106): Universal Verifier on
+    GPT-5.2 false-positive rate (failed runs judged successful) 0.01 / 0.08, false-negative rate 0.32
+    / 0.31, Cohen''s kappa 0.64 / 0.58, accuracy 0.81 / 0.88; WebVoyager judge on GPT-4o FPR 0.45 / 0.60
+    (0.10 / 0.28 on GPT-5.2, with FNR 0.24 to 0.44 and 0.12 to 0.18); WebJudge on o4-mini 0.22 / 0.40
+    (0.07 / 0.26 on GPT-5.2, FNR 0.33 to 0.57 and 0.12 to 0.29). Inter-annotator outcome kappa 0.53 to
+    0.57. Table 8: a typical 47-screenshot trajectory took 65 LLM calls without voting. Built from about
+    3,000 lines of code and 2,000 lines of prompts over 96 experiments. App. B.4: 8 of 30 AgentRewardBench
+    runs its annotators labeled successful were failures under the authors'' guidelines.'
+  conditions: Fara-7B computer-use agent on WebTailBench (in-house expert labels) and Online-Mind2Web
+    (two external annotators per run); small labeled sets; the verifier sees all screenshots and actions;
+    Microsoft's own verifier, open-sourced with the benchmark; vendor result
+  direction: contradicts
+  measured: true
+  locator: Abstract; §1; §3; §4 Algorithm 1; §5; §6 Table 2; App. B.4, Table 8, Tables 11-14
 related:
 - 9.b.iii
+- 9.c.iii
 - 9.c.ii
+- 7.c.ii
 provenance:
   layer: target
   origin: observed
@@ -133,3 +345,17 @@ provenance:
   sub_type: validation
   harness_role: submission
   action: add
+caveats: 'The detector''s evidence for the triage task itself comes from one single-author workshop study
+  on tau2-bench, whose false-success labels are regular expressions on the closing message the detector
+  also reads (91.5% agreement with a human on 200 runs); its AppWorld result separates false successes
+  from honest failures rather than from true successes, and its headline 72% against 13% compares recall
+  on sets where about 7% and nearly half of the runs were false successes (AUROC on the same set, 0.834
+  against 0.640, is the fair comparison). Detectors learn domain vocabulary (AUROC 0.69 across tau2-bench
+  domains without new labels), were flipped by confident rewrites of honest-failure closings in 20% of
+  cases, and lose precision as false successes get rarer (an implied 0.25 when 5% of runs fail in another
+  study, where step count alone reached 0.716), so they rank runs for review and do not decide them. Better-built
+  judges narrow or reverse the gap: 2026 frontier judges reached AUROC 0.79 to 0.85 at telling failed
+  from successful tau2-bench runs and 0.93 on web runs, withholding the agent''s report raised a GUI judge''s
+  recall of false successes by 13 to 43 points, and Microsoft''s own verifier accepted 1 to 8% of failed
+  computer-use runs at about 65 model calls per run; where the outcome is decided by evidence the trajectory
+  never shows (hidden tests), trained judges did little better than chance.'

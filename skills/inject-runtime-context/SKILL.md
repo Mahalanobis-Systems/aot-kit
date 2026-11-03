@@ -68,6 +68,7 @@ Few studies isolate the date on agent tasks; the measured support is indirect: a
 ## Related
 
 - `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
+- `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

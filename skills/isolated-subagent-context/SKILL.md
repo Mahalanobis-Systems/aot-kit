@@ -79,6 +79,7 @@ The large gains come from very large corpora (data rooms, multi-million-token in
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:reduce-tool-surface` (2.a.i, Reduce the tool surface: remove and consolidate tools, then defer the rest behind search)
+- `aot-kit:no-self-written-tests` (9.c.i, Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
 - `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 - `aot-kit:skill-library` (4.c.ii, Skill library evolution)

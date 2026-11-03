@@ -18,46 +18,115 @@ domains:
 evidence_domains:
 - data-analysis
 - web-research
-- code-generation
+- document-extraction
+- retrieval
 categories:
 - retrieval.sources
-summary: 'Find information a connected source holds that the agent never reads, and expose it. At file
-  level: a reader that drops a format (PDF, Excel, Word, ZIP) or a channel (cell colors, formatting,
-  comments). At warehouse level: tables and columns never queried, found by comparing what the agent queried
-  against the source''s catalog and joining that to failed cases; then add them to the schema context.
-  An index over existing metadata raised table discovery sharply. The runtime alternative, a catalog-search
-  tool the agent calls, did not beat giving the schema up front.'
-how: 1. List the source's contents (formats, catalog). 2. Diff against what the agent's tools can read
-  and what its queries touched. 3. Join the gap to failed or insufficient-evidence cases. 4. Extend the
-  reader, or add the missing tables to the schema context (5.b.i). 5. Paired eval on the cases that failed
-  for lack of data.
+summary: 'Find what your agent''s sources hold but its readers never pass on, and expose it: file formats
+  and channels a converter drops (font color, highlight, comments, footnotes, PDF or spreadsheet content)
+  and, in a warehouse, tables, joins and past queries the agent never reads. It pays where the answer
+  sits in the dropped part: on 76 real policy documents, recovering the requirements authors had colored
+  or highlighted scored micro F1 0.690 with a parser that kept those cues, against 0.150 with docling
+  and 0.075 with plain text, and in industry reports a metadata index raised table-discovery Recall@10
+  from 0.075 to 0.450 and a knowledge graph over metadata raised scores from 9% to 48%. Expose the channel
+  that holds the evidence, not everything: OCR text added 13 to 16 points for a small page-image reader
+  on text evidence but extracted text was neutral to harmful on charts, PDF reading left one GAIA agent
+  flat, and loaders widened for coverage also passed on content Office hides, which LLM file services
+  then reported as fact in 48% to 76% of trials.'
+how: '1. Start from the baseline: run the current agent on questions whose answers live in each part of
+  the source, and record what its readers emit per file type and which tables and columns its queries
+  touch. List the source''s contents: file formats and, inside each, the channels (font color, highlight,
+  comments, footnotes, headers and footers, document properties, tracked changes, hidden sheets, images
+  and charts); for a warehouse, the catalog and the query history. 2. Diff what the readers emit against
+  the source, format by format and channel by channel, and diff the tables and columns queried against
+  the catalog. In one study, docling and plain-text extraction dropped color and highlight, and headers,
+  footers, footnotes and document properties were unreachable from a body-only walk of a Word file; adding
+  those four raised the authors'' parser on the Word file-fidelity track of Microsoft''s Office Comprehension
+  Benchmark from 0.853 to 0.959. 3. Join the gap to failed or insufficient-evidence cases, and check how
+  often the channel carries meaning: 32.8% of 6,462 policy documents carried deliberate color or highlight
+  (10.3% on an obligation), and those two cues carried the whole effect (+0.302 and +0.262 macro F1 when
+  removed one at a time), while bold, italic, monospace and strikethrough each moved it by at most 0.003.
+  4. Extend the reader for the channels that carry answers, in code where possible, and label what a cue
+  means rather than passing the raw value: typed tags (critical warning, warning, deprecated) added +0.085
+  macro F1 over identical raw color markers (p = 0.049; positive on five of six models, significant on
+  three). At warehouse level, add the missing tables to the schema context (5.b.i), and mine the query
+  history into per-table cards (join recipes, filters, example SQL): in one retailer''s warehouse, replacing
+  handcrafted documentation with cards distilled from past queries raised table-selection recall from
+  0.714 to 0.805 and AST similarity from 0.490 to 0.550 (Claude Sonnet 4.6). 5. Match the representation
+  to where the evidence lives: for a 2B page-image reader, adding OCR text raised strict accuracy by 13
+  to 16 points on text evidence (about double with the PDF text layer, which helped all six open 2B to
+  8B readers tested), but extracted text was neutral to harmful on charts and figures (-0.046) and trailed
+  where retrieval had missed gold pages (-0.061, p = 0.099), so add it for text evidence behind retrieval
+  that works. 6. Bound what you expose: a loader widened for coverage also reads what the application
+  hides (hidden sheets, rows and columns, vanished text, off-page text boxes, alt text, stale caches);
+  markitdown and Apache Tika exposed 17 and 16 of 21 such mechanisms, and LLM file services reported a
+  planted hidden fact in 48% to 76% of trials. Tag text from channels the author''s application does not
+  show with its provenance so the model can discount it (10.c.i). 7. Measure with paired runs, current
+  reader against extended reader on the same model: the cases that failed for lack of data plus questions
+  whose answer lives only in each channel, stratified by evidence modality and retrieval recall; score
+  precision and false positives as well as recall (a converter that dropped the cues raised the false-positive
+  rate on unflagged requirements from 0.011 to 0.043), and track tokens per document (the cue-preserving
+  form cost about twice plain text).'
 detect:
-  static: a file tool limited to plain-text formats; a spreadsheet reader that drops formatting; the source
-    catalog lists tables or columns the agent's prompts and tools never reference
+  static: a file tool limited to plain-text formats; a converter that drops font color and highlight,
+    comments, footnotes, headers and footers or document properties; a broad converter that emits hidden
+    sheets, rows or off-page text with no provenance tag; the source catalog lists tables or columns the
+    agent's prompts and tools never reference
   traces: failed opens of PDF, Excel, Word or ZIP files; the set of tables and columns queried, compared
     with the catalog, joined to failures; failure rows labeled domain-knowledge-deficit or missed-read
-  evals: failures where the answer existed in an unread part of the source
+  evals: failures where the answer existed in an unread part of the source; evals that score recall but
+    not false positives on unflagged items, or pool text and chart evidence into one number
 impact:
   quality:
     effect: improves
-    size: medium
-    when: Excel colors +4.9% on FACTS; Genie metadata index raised table-discovery Recall@10 from 0.075
-      to 0.450 (May 2026); PDF reading flat on GAIA
+    size: large
+    when: 'Where the answer sits in the dropped channel: author-flagged requirements recovered at micro
+      F1 0.690 with color and highlight kept, against 0.150 (docling) and 0.075 (plain text), across six
+      models (Zhao, Oct 2026); OCR text added 13 to 16 points for a 2B page-image reader on text evidence
+      (Xia, Oct 2026); a metadata index raised table-discovery Recall@10 from 0.075 to 0.450 (Databricks,
+      May 2026, vendor) and a metadata knowledge graph raised score from 9% to 48% (Chen, Jul 2025); query-history
+      cards raised AST similarity 0.490 to 0.550 (Gwimm, Aug 2026). Flat or worse where it is not: extracted
+      text -0.046 on chart and figure questions and +0.004 pooled on MMLongBench-Doc (Xia, Oct 2026);
+      PDF reading flat on GAIA (VeRO, Feb 2026); on BEAVER, cards plus raw SQL 9.00% against 6.33%, p
+      = 0.12 (Gwimm, Aug 2026).'
     basis: evidence
   cost:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: Keeping formatting cues cost roughly twice plain-text tokens per document; parsing ran in code
+      with no LLM calls (Zhao, Oct 2026). Genie's 0.23x relative cost covers its whole harness, not this
+      change (Databricks, May 2026).
+    basis: evidence
   performance:
     effect: unknown
   security:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: 'When a loader is widened for coverage: broad converters (markitdown, Apache Tika) emitted 17
+      and 16 of 21 constructions Office does not show, four native-ingestion LLM APIs reported a planted
+      hidden fact in 48% to 76% of trials, and 17.5% of 4,263 ordinary files carried at least one such
+      construction (Liu, Aug 2026). Provenance tags on text from hidden channels are the authors'' suggested
+      defense, untested.'
+    basis: evidence
   governance:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - security
 measure:
 - method: experiment
   tier: 3
-  how: paired eval on the questions that failed for lack of data
+  how: 'paired eval, current reader against extended reader on the same model: the questions that failed
+    for lack of data, plus questions whose answer lives only in one channel (color or highlight, comment,
+    footnote, header, hidden sheet, chart, an unqueried table); score recall, precision and false positives
+    on unflagged items, stratified by evidence modality and retrieval recall, and record tokens per document'
+- method: monitor
+  how: per format and channel, the share of files whose loader output lacks content present in the file
+    (failed opens, cues detected in the file but absent from the output) or includes text from views the
+    application hides, and the share of catalog tables and columns never queried, each joined to failure
+    labels; ingestion assertions that every detected cue maps to an emitted span
 evidence:
 - source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
     Analytics", https://arxiv.org/abs/2507.14372
@@ -138,20 +207,120 @@ evidence:
 - source: paper Figure 14
   task: GAIA
   effect: '"Added PDF reading support" in the last phase, flat on train (0.24).'
+  date: 2026-02
 - source: paper Table 10
   task: GAIA/FACTS/SimpleQA
   effect: Knight ships with complex-format reading; Pawn reads .txt/.md/.json/.csv only.
+  date: 2026-02
 - source: blog tricks table (Original template)
   task: FACTS
   effect: +4.9%; "identified that GAIA questions encode data in cell background colors".
-caveats: 'The only evidence is one row of the blog''s tricks table (checked against the table
-  image, 2026-09-23). It is about background colors alone, not formatting in general, and it credits
-  a FACTS gain to GAIA questions without saying how the two relate. Read it as one instance of 8.a.ii, not
-  as a general spreadsheet technique.'
+  date: 2026-02
+- source: 'Yikai Zhao, Saurabh Pandey, Pradeep Kumar Misra (Amazon), "What the Author Wrote, What the
+    Agent Reads: Silent Cue Loss in Enterprise Document Ingestion", https://arxiv.org/abs/2610.30026'
+  date: '2026-10-21'
+  task: Parse Word policy documents with a parser that keeps run-level cues (font color, highlight, bold,
+    strikethrough) plus headers, footers, footnotes, comments and document properties, tags cues with
+    typed roles, and compare it with formatting-blind converters on listing the requirements the author
+    singled out
+  effect: 'Table 1 (76 documents, 3 repeats, Claude Opus 4.6): micro F1 0.690 (authors'' parser) vs 0.586
+    docx2python (keeps formatting as HTML), 0.150 docling, 0.075 plain text; false-positive rate on unmarked
+    requirements 0.011 vs 0.043 for docling. Per-cue leave-one-out: highlight +0.302 and color +0.262
+    macro F1 (Holm p < 1e-4); bold, italic, monospace and strikethrough within +/-0.003 of zero. Pre-registered
+    test (79 documents, 6 repeats): typed roles +0.085 macro F1 over identical untyped markers (CI +0.035
+    to +0.145, Holm p = 0.049). Six answering models: plain text 0.007 to 0.075; typing significant on
+    3 of 6, no benefit on the two that barely attempt the task. Table 2, Microsoft OCB Word file-fidelity
+    track (326 items): 0.959 vs 0.810 docx2python, 0.720 docling, 0.668 unstructured, 0.634 plain text;
+    adding headers, footers, footnotes and document properties raised the authors'' parser from 0.853
+    to 0.959. Prevalence: 32.8% of 6,462 documents carry deliberate color or highlight, 10.3% on an obligation.
+    Cost: code-only, no LLM calls, roughly twice plain-text tokens.'
+  conditions: 84 real .docx policy documents from a public corpus (332 marked, 4,192 unmarked requirements;
+    76 to 79 scored per run), deterministic lexical scoring with no LLM judge; Claude Opus 4.6 at temperature
+    0, replicated on five Claude models and GPT-5.6; labels from OOXML run properties, checked against
+    rendered pages (kappa 0.72), not by humans; a text-only classifier reaches AUC 0.664, so the task
+    is built to depend on the cue; the authors' own parser
+  direction: supports
+  measured: true
+  locator: §4.1-4.8; Table 1, Figure 1, Table 2, Figure 2, Table 3
+- source: 'Qingtao Xia, Siyao Cheng, Jiahua Bao, Jiaxing Du, Jie Liu (Harbin Institute of Technology),
+    "Found but Not Read: When Extracted Text Closes the Retrieval-Reading Gap in Document Vision-Language
+    Models", https://arxiv.org/abs/2610.02880'
+  date: '2026-10-02'
+  task: Add extracted text (CPU OCR or the PDF text layer) to the retrieved page images a vision-language
+    reader already receives
+  effect: 'Table 2 (Qwen3-VL-2B, 1,173 questions per task, recall@16 about 1.0), strict accuracy images
+    / +OCR / +PDF text layer: V-MQAR 0.153 / 0.287 / 0.432; V-NIAH 0.350 / 0.506 / 0.691 (OCR +0.134 and
+    +0.157). Text-layer gain positive for all six readers (p < 1e-13), narrowing from 2B to 8B but still
+    +0.23 at 8B. Image crops of the evidence recover 87% and 92% of the gain; boxes drawn on the page
+    recover none. Table 3, MMLongBench-Doc (838 answerable questions): +0.004 pooled; single-tag questions
+    +0.085 on text vs -0.046 on chart or figure (difference +0.131, p = 0.0024); partial-recall stratum
+    -0.061. Text from another document adds nothing (+0.000 and -0.009).'
+  conditions: FoveDoc-Bench (2,346 questions over 1,173 born-digital documents, built by the authors)
+    and MMLongBench-Doc; ColQwen2 retrieves 16 pages; six open VLMs from 2B to 8B (Qwen3-VL 2B/4B/8B,
+    Qwen2.5-VL-7B, LLaVA-OneVision-7B, Idefics3-8B); GPT-5.4 judge, 96% agreement with two authors on
+    200 samples
+  direction: mixed
+  measured: true
+  locator: §3-5; Tables 2-3; Figures 2-5
+- source: 'Side Liu, Jiangpeng Liu, Jinwen Xin, Guojun Peng, Jiang Ming (Tulane University, Wuhan University),
+    "Beyond the Editing Canvas: Evidence Divergence in OOXML-to-LLM Ingestion", https://arxiv.org/abs/2608.25880'
+  date: '2026-08-26'
+  task: Test whether Office-file extractors and LLM file-ingestion services pass on content that Word,
+    Excel or PowerPoint store but do not show (hidden and very-hidden sheets, hidden rows and columns,
+    vanished text, hidden shapes, off-page text boxes, alt text, stale formula caches, unselected compatibility
+    branches)
+  effect: '21 confirmed mechanisms; all 13 extractors emit at least one. Broad converters expose the most
+    (markitdown 17, Apache Tika 16) while python-docx reads one Word mechanism: "a pipeline that upgrades
+    its loader for better coverage can silently widen its attack surface." Over 8,400 API trials with
+    a planted benign fact visible only to extraction, mean propagation into answers was 0.48 (GLM) to
+    0.76 (Kimi) across four native-ingestion APIs and 0.52 to 0.76 across seven web chatbots; 0 of 840
+    on matched clean files. In ordinary files, 748 of 4,263 (17.5%) carry at least one such construction;
+    sixteen are rare (unseen or under 2%), five occur in 2.75% to 16.5%. Suggested defense: provenance
+    that marks text drawn from a channel the reader never sees.'
+  conditions: 210 constructed documents from TAT-QA financial excerpts (10 per mechanism) with benign
+    factual traps; 13 extractors at pinned versions; four native-ingestion APIs and seven web chatbots;
+    Sheetpedia, DocxCorp and public PPTX samples for base rates; rates describe the balanced test set,
+    not real-world attack prevalence
+  direction: contradicts
+  measured: true
+  locator: §4.2-4.6; Table 4, Table 5, Figure 4, Figure 8
+- source: 'Kate Gwimm, Carson Eisenach (Amazon), "Beyond the Harness: End-to-End Optimization of Context
+    Artifacts for Enterprise Text-to-SQL", https://arxiv.org/abs/2608.22830'
+  date: '2026-08-24'
+  task: Distill historical production query profiles into per-table SQL reference cards (join recipes,
+    filter templates, example CTEs) and retrieve them for text-to-SQL, in place of handcrafted table documentation
+  effect: 'Table 2 (internal benchmark of 5,176 production queries, 517-query sample, real retrieval):
+    with the baseline harness, replacing documentation with cards raised table-selection recall 0.714
+    to 0.805 and AST similarity 0.490 to 0.550 for Claude Sonnet 4.6 (95% CIs separated), and 0.660 to
+    0.737 and 0.407 to 0.509 for Qwen Coder 3-30B; optimizing the retrieval harness alone gave AST 0.503
+    and 0.456. Execution accuracy on 102 executable queries: 0.255 to 0.333 and 0.176 to 0.235, CIs overlapping.
+    Table 3, BEAVER held-out 300 (Claude Sonnet 4.5): few-shot 6.33%, raw historical SQL 6.33%, cards
+    6.67%, cards plus raw SQL 9.00% (p = 0.12 vs raw).'
+  conditions: One online retailer's warehouse, about 100K query profiles; single-call retrieval harness,
+    no agentic loop; internal results mostly structural proxies (AST, string similarity, LLM judge); the
+    baseline context already included raw query profiles; BEAVER dw split; deeply compositional queries
+    near 1.5% under every context
+  direction: mixed
+  measured: true
+  locator: §4.1 Table 2, Table 4; §4.2 Table 3, Table 5
+caveats: 'The file-level evidence rests on one study per claim with the authors'' own benchmarks: the
+  color and highlight result comes from a task built so the answer is the cue (a text-only classifier
+  reached AUC 0.664), with the authors'' own parser and labels not yet checked by humans, and typed cue
+  labels helped on only three of six models. Exposing a channel helps only where the evidence lives in
+  it: extracted text was neutral to harmful on charts and figures and pooled to +0.004 on MMLongBench-Doc,
+  measured with open 2B to 8B readers only, and VeRO''s PDF reading left GAIA flat. The warehouse half
+  rests on in-house and vendor reports (LinkedIn, Databricks, Amazon); the only public-benchmark check
+  was directional (9.00% against 6.33%, p = 0.12, with cards alone tying raw historical SQL), and VeRO''s
+  +4.9% FACTS row credits GAIA''s cell colors without saying how the two relate. Widening a loader also
+  widens what a document can plant: hidden-view content reached LLM answers in 48% to 76% of trials on
+  a constructed test set.'
 related:
 - 5.b.i
 - 8.b.i
 - 2.a.i
+- 8.a.i
+- 10.c.i
+- 3.a.i
 provenance:
   layer: target
   origin: observed

@@ -74,7 +74,7 @@ Most of the evidence is math, code and puzzles with ground truth; the form-criti
 - `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
-- `aot-kit:no-self-written-tests` (9.c.i, Don't prompt agents to write their own tests; suppress it for test-heavy models)
+- `aot-kit:no-self-written-tests` (9.c.i, Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 - `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 - `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))

@@ -75,6 +75,7 @@ Most evidence comes from instruction-following benchmarks graded by GPT-4 (Alpac
 - `aot-kit:audit-verifier-cascade` (9.c.iii, Audit a verifier-gated cascade against a gold sample the verifier never sees)
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:false-success-detector` (9.b.ii, Triage false success with a cheap trained detector, not an LLM judge)
+- `aot-kit:verify-citations` (9.a.ii, Verify citations claim by claim for factual support)
 - `aot-kit:tree-of-thought` (7.c.vii, Tree-of-Thought)
 - `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
 

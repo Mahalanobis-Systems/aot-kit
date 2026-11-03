@@ -1,9 +1,9 @@
-# 9.c.i: Don't prompt agents to write their own tests; suppress it for test-heavy models
+# 9.c.i: Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests
 # Register entry. Schema: ../schema/entry.schema.json. Vocabulary: ../vocabulary.yaml.
 id: 9.c.i
 legacy_id: T51
 slug: no-self-written-tests
-name: Don't prompt agents to write their own tests; suppress it for test-heavy models
+name: Drop ad-hoc test-writing prompts; tell test-heavy models not to write tests
 kind: technique
 status: card
 tiers:
@@ -17,110 +17,203 @@ evidence_domains:
 - code-generation
 categories:
 - verification.spend
-summary: Agent-written tests are mostly print probes and do not change resolve rate. Prompting for them
-  added 20% output tokens for no gain; suppressing them for models that write many saved 33-49% of input
-  tokens for a non-significant loss. Keep test writing for bugs with explicit repro conditions, and make
-  those tests assertion-based.
-how: 1. From traces, measure the share of tokens spent writing and running tests, and whether they contain
-  assertions. 2. Remove any instruction to write tests; for test-heavy models add an instruction not to,
-  except for bugs with a stated repro. 3. Paired eval on resolve rate and tokens.
+summary: 'Telling a coding agent to write its own tests mostly buys cost, not fixes, so drop the instruction
+  and tell test-heavy models not to. In one prompt study on SWE-bench Verified, asking GPT-5.2 for tests added
+  19.8% output tokens and resolved the same 359 of 500 tasks, and telling two test-heavy models not to write
+  tests cut input tokens 33 to 49% for a non-significant loss of 1.8 to 2.6 points. The checks agents run for
+  themselves are weak: in another study 46.0% of the passing checks one agent ran also passed on the unpatched
+  code. Keep a test the patch must ship with. A test written before the fix, shown to fail and hardened against
+  wrong fixes is a different change, with its own gains and costs.'
+how: '1. Start from the current agent''s traces as the baseline: measure the share of API calls and tokens
+  spent writing tests and, separately, running them; whether new test files hold assertions or only print values;
+  and, for each check that passed after the agent''s first edit, whether it also passes when replayed on the
+  unpatched code. In one study of GPT-5.6-sol on 110 tasks, 46.0% of replayable passing checks also passed
+  on the unpatched code, and 23.8% of runs submitted with no other kind of passing evidence. 2. Remove instructions
+  that ask for tests or reproduction scripts, including testing cues in the scaffold''s default prompt. 3.
+  For models that write tests in most tasks (four of six models in one study did so in 83.0% to 98.6% of tasks),
+  add an instruction not to write new test files or scripts: on SWE-bench Verified this cut input tokens 49.0%
+  and 32.9% and API calls 35.4% and 24.5% for Kimi K2 Thinking and DeepSeek v3.2 Reasoner, for a non-significant
+  loss of 2.6 and 1.8 points. Don''t add a test request to a model that rarely writes tests: GPT-5.2 then wrote
+  tests on 322 more of 500 tasks, used 19.8% more output tokens and resolved the same 359. 4. Keep a test where
+  it is part of the deliverable rather than a self-check: if reviewers expect a fix to ship with a fail-to-pass
+  test, ask for it in the patch. Code owners reviewing Google''s AI-generated fixes strongly preferred that,
+  and asking Gemini 2.5 Pro for a fix plus a reproduction test gave plausible fixes for a similar number of
+  bugs as asking for the fix alone. 5. Measure with paired runs on the same tasks, with and without the instruction,
+  and several runs per arm, because single runs move many tasks both ways (83.2% of tasks kept their outcome
+  in one study while net changes were at most 13 of 500): resolve rate with an exact McNemar test, input and
+  output tokens, API calls and wall-clock per task.'
 detect:
-  static: a prompt that tells the agent to write tests
-  traces: test files written with print statements and no assertions; test writing and running over about
-    20% of tokens
+  static: a prompt or scaffold default (such as a reproduce-the-issue step) that tells the agent to write tests
+    or scripts as a self-check
+  traces: test files written with print statements and no assertions; test writing and running over about 20%
+    of tokens; passing checks that also pass when replayed on the unpatched code; runs that submit right after
+    their own new test passes
   evals: resolve rate unchanged between runs with and without agent tests
 impact:
   quality:
     effect: none
-    when: -1.8 to -2.6 points, not significant (Apr 2026)
+    size: small
+    when: prompting for or against agent tests changed resolve rate by 0 to 2.6 points on SWE-bench Verified,
+      none significant (Chen, Feb 2026)
     basis: evidence
   cost:
     effect: improves
     size: medium
-    when: -33 to -49% input tokens
+    when: told not to write tests, two test-heavy models used 32.9% and 49.0% fewer input tokens and 14.0%
+      and 43.1% fewer output tokens; asked to, GPT-5.2 used 9.0% more input and 19.8% more output tokens (Chen,
+      Feb 2026)
     basis: evidence
   performance:
     effect: improves
     size: small
+    when: API calls fell 24.5% and 35.4% when test-heavy models were told not to write tests and rose 5.5%
+      when GPT-5.2 was asked to (Chen, Feb 2026); no study timed the change itself
     basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: degrades
+    size: small
+    when: 'if suppression also drops the test a fix should ship with: code owners reviewing Google''s AI-generated
+      fixes strongly preferred fixes with a fail-to-pass reproduction test, and 39% of human-written null-pointer
+      fixes there changed a test (Cheng, Jan 2026); keep such tests in the patch'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - cost
 measure:
 - method: experiment
   tier: 3
-  how: paired eval with and without the instruction
+  how: 'paired runs on the same tasks with and without the test instruction, several runs per arm: resolve
+    rate with an exact McNemar test, input and output tokens, API calls and wall-clock per task'
+- method: monitor
+  how: 'in production traces: the share of tokens and API calls spent writing and running tests, logged separately;
+    new test files with prints and no assertions; the share of passing checks that also pass when replayed
+    on the unpatched code; runs that submit right after their own new test passes'
 evidence:
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Prompting the agent to write its own tests does not help
-  effect: 'Encourage prompt: GPT-5.2 flips No test -> Has test on 322/500 tasks (64.4%) with net 0 change
-    in resolved (359 -> 359, McNemar p=1.000) while API calls +5.5%, input tokens +9.0%, output tokens
-    +19.8% (all Wilcoxon p<0.001). Gemini 3 Pro flips 185 tasks (37%), resolved 371 -> 366 (p=0.522),
-    cost change not significant. Observationally, GPT-5.2 writes tests in 3/500 tasks yet resolves 71.8%
-    vs Claude Opus 4.5''s 74.4% with tests in 83% of tasks; within each model, resolved and unresolved
-    tasks have similar test-writing rates.'
+  effect: 'Encourage prompt: GPT-5.2 flips No test -> Has test on 322/500 tasks (64.4%) with net 0 change in
+    resolved (359 -> 359, McNemar p=1.000) while API calls +5.5%, input tokens +9.0%, output tokens +19.8%
+    (all Wilcoxon p<0.001). Gemini 3 Pro flips 185 tasks (37%), resolved 371 -> 366 (p=0.522), cost change
+    not significant. Observationally, GPT-5.2 writes tests in 3/500 tasks yet resolves 71.8% vs Claude Opus
+    4.5''s 74.4% with tests in 83% of tasks; within each model, resolved and unresolved tasks have similar
+    test-writing rates.'
   direction: supports
   measured: true
-  locator: §3.1 Table 1, §5.1 Table 7, §5.2 Table 8
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+  locator: 'v2 (Apr 2026): §3.1 Table 1, §5.1 Table 7, §5.2 Table 8'
+  conditions: mini-SWE-agent with no testing tools; SWE-bench Verified (500 tasks); one baseline and one intervention
+    run per model; encourage prompt on GPT-5.2 and Gemini 3 Pro, discourage prompt (default testing cue removed,
+    no new test files or scripts) on Kimi K2 Thinking and DeepSeek v3.2 Reasoner; tests counted only as new
+    files named test_*, *_test.py or tests.py
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Suppress ad-hoc test writing for test-heavy models
-  effect: 'Discourage prompt, SWE-bench Verified: Kimi K2 Thinking resolved 317 -> 304 (-2.6pp, McNemar
-    p=0.228), API calls -35.4%, input tokens -49.0%, output tokens -43.1%; DeepSeek v3.2 Reasoner resolved
-    300 -> 291 (-1.8pp, p=0.435), API calls -24.5%, input -32.9%, output -14.0% (all cost changes Wilcoxon
-    p<0.001, bootstrap CIs exclude zero). 83.2% of tasks keep the same outcome across interventions.'
+  effect: 'Discourage prompt, SWE-bench Verified: Kimi K2 Thinking resolved 317 -> 304 (-2.6pp, McNemar p=0.228),
+    API calls -35.4%, input tokens -49.0%, output tokens -43.1%; DeepSeek v3.2 Reasoner resolved 300 -> 291
+    (-1.8pp, p=0.435), API calls -24.5%, input -32.9%, output -14.0% (all cost changes Wilcoxon p<0.001, bootstrap
+    CIs exclude zero). 83.2% of tasks keep the same outcome across interventions.'
   direction: supports
   measured: true
-  locator: §5.1 Table 7, §5.2 Table 8
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+  locator: 'v2 (Apr 2026): §5.1 Table 7, §5.2 Table 8'
+  conditions: mini-SWE-agent with no testing tools; SWE-bench Verified (500 tasks); one baseline and one intervention
+    run per model; encourage prompt on GPT-5.2 and Gemini 3 Pro, discourage prompt (default testing cue removed,
+    no new test files or scripts) on Kimi K2 Thinking and DeepSeek v3.2 Reasoner; tests counted only as new
+    files named test_*, *_test.py or tests.py
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Turn print-probe tests into assertion-based oracles
   effect: 'Recommendation from the discussion, untested. Motivating data: value-revealing prints outnumber
-    assertions for every model (e.g. Claude Opus 4.5 25.00 prints vs 5.16 assertions per resolved task;
-    MiniMax M2 34.06 vs 7.37); 69.7-77.5% of prints inspect raw values; assertions are mostly property
-    (33.6-41.4%) or exact-value (34.5-42.9%) checks, relational checks 3.0-7.9%.'
+    assertions for every model (e.g. Claude Opus 4.5 25.00 prints vs 5.16 assertions per resolved task; MiniMax
+    M2 34.06 vs 7.37); 69.7-77.5% of prints inspect raw values; assertions are mostly property (33.6-41.4%)
+    or exact-value (34.5-42.9%) checks, relational checks 3.0-7.9%.'
   direction: supports
   measured: false
-  locator: §4 Tables 4-6, §6.1, §8
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+  locator: 'v2 (Apr 2026): §4 Tables 4-6, §6.1, §8'
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Package targeted testing as a focused subagent or skill
-  effect: 'Recommendation, untested: "the goal should not be to simply make agents write more tests, but
-    to make testing more targeted and budget-aware ... generating one minimal regression test, strengthening
-    a weak oracle ..., or running only the smallest relevant test slice."'
+  effect: 'Recommendation, untested: "the goal should not be to simply make agents write more tests, but to
+    make testing more targeted and budget-aware ... generating one minimal regression test, strengthening a
+    weak oracle ..., or running only the smallest relevant test slice."'
   direction: supports
   measured: false
-  locator: §6.1 Implications
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+  locator: 'v2 (Apr 2026): §6.1 Implications'
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Log test-writing and test-running cost separately
-  effect: Recommendation, untested. Motivated by unresolved tasks running tests more (ExecCount 6.52 vs
-    4.89, ExecPerTest 1.70 vs 1.46, Mann-Whitney significant) and interventions moving cost far more than
-    outcomes.
+  effect: Recommendation, untested. Motivated by unresolved tasks running tests more (ExecCount 6.52 vs 4.89,
+    ExecPerTest 1.70 vs 1.46, Mann-Whitney significant) and interventions moving cost far more than outcomes.
   direction: supports
   measured: false
-  locator: §3.3 Table 3, §6.1
-- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering
-    Agents", https://arxiv.org/abs/2602.07900
-  date: '2026-04-09'
+  locator: 'v2 (Apr 2026): §3.3 Table 3, §6.1'
+- source: Chen et al., "Rethinking the Value of Agent-Generated Tests for LLM-Based Software Engineering Agents",
+    https://arxiv.org/abs/2602.07900
+  date: '2026-02-08'
   task: Reserve test writing for bugs with explicit repro conditions
   effect: 'Exploratory only: 8 SWE-bench Verified issues appear both in encourage-prompt Fail->Success-with-new-tests
     and discourage-prompt Success->Fail-with-tests-removed (e.g. astropy-13236, django-11790, sympy-21612);
     themes summarized with GPT-5.4 help. Authors: "necessarily limited", no issue taxonomy tested.'
   direction: supports
   measured: false
-  locator: §5.1.1
+  locator: 'v2 (Apr 2026): §5.1.1'
+- source: 'Xiaonan Xu, Wenjing Wu (Georgia Tech, University of Colorado Boulder), "Validation Evidence in LLM
+    Repair Agents: How Much of What Passes Actually Tests the Bug?", https://arxiv.org/abs/2607.28871'
+  date: '2026-07-30'
+  task: Replay every check a repair agent ran after its first edit (repository tests it chose, its own scripted
+    oracles and print probes) on the unpatched code, its candidate and the developer fix, and test whether
+    telling the agent when a passing check also passes on the unpatched code changes how it closes
+  effect: 'Table 3: of 2,548 passing checks with evaluable replays (3,730 events in 643 runs), 1,141 were regression-only
+    and 30 misleading, so 46.0% also passed on the unpatched code; 26.9% of the checks that failed on the unpatched
+    code and passed on the candidate also failed on the developer fix. 23.8% of baseline runs submitted with
+    only such non-discriminating passing evidence. Table 4 (preregistered, 110 tasks, 2 runs per arm): evidence-inadequate
+    closure 23.8% baseline, 21.4% with a matched generic reminder, 13.6% with bug-contrast feedback (feedback
+    minus reminder -7.8 points, 95% CI -12.9 to -2.7, p=0.0029); official resolution 65.9%, 66.0% and 66.8%
+    (feedback minus reminder +0.48 points, CI -3.73 to 4.69). Table 5: the replay added a median 11.0 s per
+    run; mean wall time 390, 381 and 440 s. Exploratory 20-task replications: baseline evidence-inadequate
+    closure 40.5% for gpt-5.6-terra against 18.9% for gpt-5.6-sol, and 8.3% under a plan-execute-verify scaffold;
+    on terra the reminder alone matched the full effect.'
+  conditions: gpt-5.6-sol at high effort in an unconstrained tool loop capped at 200 responses; 55 SWE-bench
+    Verified and 55 SWE-rebench tasks across 64 repositories; agent-written test files stripped before official
+    evaluation; both point estimates fall below the prespecified 10-point smallest effect of interest; one
+    model family; replay code available on request only
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1-3.4; §4.2-4.3 Tables 1-2; §5.1 Table 3; §5.3-5.5 Tables 4-5; §5.6 Table 6; §6.3
+- source: Runxiang Cheng, Michele Tufano, José Cambronero, et al. (Google), "Dynamic Cogeneration of Bug Reproduction
+    Test in Agentic Program Repair", https://arxiv.org/abs/2601.19066
+  date: '2026-01-27'
+  task: Instruct Google's production repair agent to return a reproduction test with its fix (in any order,
+    test first, or test last) against fix only or test only, on internal bugs
+  effect: '§5.1: all three cogeneration prompts "produce at least one plausible fix for a similar number of
+    bugs compared to Fix-only" (pass@k plotted in Figure 2, not tabulated); the agent took more steps when
+    told to prioritize the test. Table 2: told to write the test first, the agent edited a test first in 78.66%
+    of runs (test-last 4.16%, freeform 24.54%, fix only 2.27%). Table 3: probability of a plausible fix given
+    a test that fails on the bug and passes on the agent''s fix, 0.53 test-first against 0.45 freeform and
+    test-last. Table 4 (freeform): plausible fix in 0.14 of patches with no test, 0.24 with a test, 0.44 when
+    the test fails on the bug and passes on the fix. §2.2: code owners reviewing the agent''s fixes "strongly
+    prefer fix patches to also have an accompanying fail-to-pass BRT"; 39% of human-written null-pointer fixes
+    in 2024 changed a test.'
+  conditions: Gemini 2.5 Pro at temperature 0.2; 120 human-reported Google bugs from May to September 2025
+    (C++ 36, Java 34, Go 17, Python 17, Kotlin 14, Dart 2); 20 runs per bug and configuration with a 25-step
+    limit; plausibility judged by the developer's reproduction test; v1 (Jan 2026) and v3 (Aug 2026) report
+    the same tables; the code-owner preference is qualitative
+  direction: mixed
+  measured: true
+  locator: §2.2.1-2.2.2; §3.1 Listings 1-3; §4.1-4.2; §5.1; §5.2 Tables 2-3; §5.3.1 Table 4
 related:
 - 9.a.i
+- 9.b.iii
+- 9.c.ii
+- 7.c.iii
+- 5.c.ii
 provenance:
   layer: target
   origin: observed
@@ -128,3 +221,9 @@ provenance:
   sub_type: instructions
   harness_role: prompt
   action: remove
+caveats: 'The case for dropping tests rests on one prompt study (mini-SWE-agent on SWE-bench Verified, one
+  run per arm, two models per direction, counting only files named like tests), and the share of weak checks
+  comes from one model family on 110 tasks. It covers ad-hoc self-checks only: in 2026 studies, tests made
+  into real checks (written before the fix, shown to fail on the unpatched code, then hardened against wrong
+  fixes or written by a separate strong model and frozen) raised resolve rate, at about twice the cost per
+  issue. Apart from 120 internal bugs at Google, all results come from Python issue-resolution benchmarks.'

@@ -21,54 +21,149 @@ evidence_domains:
 - code-generation
 - planning
 - web-research
+- tool-use
 categories:
 - verification.external
-summary: 'Run a check the model cannot fool on its output (compiler, tests, schema validation, execution,
-  EXPLAIN on generated SQL, a solver) and feed the verdict back; a pass/fail verdict is enough, and resampling
-  until the check accepts works about as well as detailed feedback. Repair generated SQL from execution
-  errors and check for hallucinated tables; run it read-only with timeouts. Do not add a step where the
-  model critiques or re-checks its own answer with no external signal: it lowered accuracy in every study,
-  and a multi-step self-verification tool that helped on GAIA (+5.75%) cost 17.8 points on SimpleQA.'
-how: 1. Identify the sound check the task admits (build, tests, schema, execution). 2. Run it on each
-  output before returning; feed pass/fail back and let the agent retry, or resample until it passes. 3.
-  If no sound check exists, do not substitute a model critique; use 9.b.iii or 9.b.ii instead. 4. Measure the
-  check-failure rate and end quality.
+summary: 'Have the harness check every output with something the model cannot fool, such as tests, a compiler,
+  a schema or policy check, execution or a solver, and send the verdict back for another try. With a current
+  reasoning model, resampling until a sound checker accepted added up to 18.2 points where a comparable
+  loop judged by an LLM critic moved accuracy between -2.7 and +3.1; pass/fail with the first error is
+  usually enough, generated SQL can be repaired from execution errors, and checking SQL against governed
+  rules took 0.15 retries per question in one system. The check works only if the harness enforces it
+  and the agent cannot change it: an agent left to decide when to stop gave up on 30 solvable problems,
+  28 of them with a proof the validator had rejected, agents edited or special-cased tests they could
+  see (a test-feedback loop raised cheating on impossible tasks from 33% to 38%), and visible tests overstated
+  held-out correctness by 43-48 points for one frontier agent building whole systems. So keep tests read-only
+  or hidden, score on a held-out check, let the agent flag a check it thinks is broken, and do not add
+  a same-model critique step (7.c.i): on older models it cut accuracy (GPT-3.5 on CommonsenseQA 75.8%
+  to 38.1%), and a verification tool one optimizer added raised GAIA 5.75 points but cut SimpleQA 17.8.'
+how: '1. Start from the baseline: on the eval set or recorded runs, log how often outputs reach the user
+  failing a check you could have run (build, tests, type or schema check, SQL that fails EXPLAIN or names
+  a table that does not exist, a policy rule), plus pass rate, rounds, tokens and latency per task. Set
+  aside a held-out check the agent never sees (hidden tests, gold answers or review) to score the change,
+  because the loop will optimize whatever check it is given. 2. Pick the sound check the task admits and
+  wire it to every output: compiler, type checker, linter or language-server diagnostics after each edit;
+  unit tests; JSON or schema validation; for plans, proofs and puzzles a validator, proof checker or solver;
+  for tool use, the policy written as code that rejects a violating call (it raised one agent''s safety
+  score from 48.75% to 58.34%). For SQL, run EXPLAIN and execute, check for hallucinated tables and columns
+  and repair from the error (removing one fixer cut successful compilation from 95% to 76%), validate
+  against approved metrics, joins, filters and row-level security where they exist, and run read-only
+  with timeouts and row caps (10.a.i). 3. Put the check where the agent cannot change it: keep tests and
+  checker config read-only or hidden (hiding tests cut cheating on impossible tasks to near zero but cost
+  legitimate solves; read-only kept performance and stopped test edits but not special-casing), and do
+  not let the agent write the check it is judged by (9.c.i). Judge coverage, not the green light: frontier
+  agents saturated visible feature tests while failing held-out tests that combine those features, by
+  43-48 points for one agent building whole systems. 4. Enforce it in the harness, not the prompt: accept
+  no answer until the check passes, and on a failure start another round with the verdict and require
+  an edit before resubmitting (one agent resubmitted an unchanged proof 170 times). Feed back pass/fail
+  with the first concrete error (compiler message, failing test, violated rule); in one planning study
+  more detail than pass/fail helped only on Blocksworld (60% to 87%). Let the agent edit in place with
+  feedback after every edit rather than regenerate the whole output (69 against 18 proofs at the same
+  model and budget). Where only the final answer can be checked, resample until the check accepts; where
+  intermediate states can be checked, check them during the run (on a maze task 88.8% with a final-answer
+  check against 97.9% with checks during the run). 5. Bound the loop and give it an exit: cap rounds (one
+  SQL system allowed three revisions and averaged 0.15 per question), stop runs that repeat or stall (7.b.i)
+  and size budgets so productive runs can finish (7.b.iii). Let the agent flag a check it believes is
+  wrong, or abstain when no answer passes, instead of working around it: an abort option cut GPT-5''s
+  cheating on impossible tasks from 54% to 9%. 6. Where no sound check exists, do not substitute the model''s
+  own critique: with a current reasoning model a comparable loop judged by an LLM critic moved accuracy
+  by -2.7 to +3.1 points while resampling until a sound checker accepted added up to 18.2. Check completion
+  against the environment (9.b.iii), use a trained detector (9.b.ii) or spend on parallel samples with
+  a vote (9.c.ii), and test any added verification step on every task type. 7. Measure: run the paired
+  eval at equal budget with no check, pass/fail feedback, full error text and resampling until the check
+  passes; report end quality on the held-out check, the check-failure rate on the first attempt and on
+  returned outputs, rounds per task, tokens and latency, and gaming signals (test or checker edits, special-cased
+  inputs, identical resubmissions); add probes whose tests contradict the specification, where any pass
+  is gaming.'
 detect:
-  static: no step runs the build, tests, linter, schema check or execution on the output before it is
-    returned; a critique or reflect step where the same model reviews its own answer with no tool output
-    or environment state in the loop
-  traces: errors a compiler, test or schema check would catch reaching the final answer; SQL errors and
-    hallucinated table names; answers changed after a critique turn with no new external information;
-    failure rows labeled tool-feedback-neglect or satisficing
-  evals: failures a deterministic check would have flagged; accuracy before and after any critique step
+  static: no step runs the build, tests, linter, schema check, policy rules or execution on the output
+    before it is returned, or the agent can finish without the check passing; tests or checker config
+    the agent can write to; a critique or reflect step where the same model reviews its own answer with
+    no tool output or environment state in the loop
+  traces: errors a compiler, test, schema or policy check would catch reaching the final answer; SQL errors
+    and hallucinated table names; runs that end after a failed or never-run check; identical resubmissions
+    after a rejection; edits to test files, special-cased test inputs or overloaded comparisons; answers
+    changed after a critique turn with no new external information; failure rows labeled tool-feedback-neglect
+    or satisficing
+  evals: failures a deterministic check would have flagged; a gap between the pass rate on checks the
+    agent saw and on held-out checks; accuracy before and after any critique step
+  probes:
+    what: Tasks whose visible tests contradict the specification, so any pass is gaming, and tasks scored
+      on a held-out check that combines features the visible tests check one at a time.
+    construct: Change one expected value in a visible test, or duplicate a test with a conflicting expected
+      output, and keep the task only if both a reference solution and an empty one fail it; run the agent
+      with its feedback loop on and count passes, test-file edits and special-cased inputs; for held-out
+      checks, write tests that compose the features the visible tests cover separately and compare the
+      two pass rates.
 impact:
   quality:
     effect: improves
     size: large
-    when: 'external verifier: Blocksworld 40% to 87% (2024); SQL compilation 66% to 96% (LinkedIn, 2025);
-      model-only critique: negative in every study, e.g. GPT-3.5 75.8 to 38.1'
+    when: 'sound check in the loop: Blocksworld 40% to 87% (Stechly, Feb 2024); removing an SQL fixer
+      cut successful compilation from 95% to 76% (Chen, Jul 2025); resampling until a sound checker accepted
+      raised ZebraLogic-XL from 79.2% to 97.4% where a comparable LLM-critic loop reached 82.3%, and policy
+      checks written as code took a Qwen3-30B agent on telecom tasks from 32.17% to 42.11% (87.70% with
+      rules debugged on traces) (Bhat, Feb 2026); exposing the Lean validator and enforcing it lifted
+      the same Claude model from 63 to 83 FATE-X proofs (Moalla, Oct 2026); limits: agents game checks
+      they can see or edit (GPT-5 passed 54% of impossible SWE-bench tasks; Zhong, Oct 2025) and visible
+      tests overstated held-out correctness by 43-48 points for Claude Code on 30 systems-building tasks
+      (Zhao, May 2026); same-model critique cut GPT-3.5 on CommonsenseQA from 75.8% to 38.1% (Huang, Oct
+      2023)'
     basis: evidence
   cost:
     effect: degrades
     size: small
+    when: 'retries add calls only when the check fails: 0.15 retries per question (at most 2), with the
+      system''s 5x tokens coming from its grounding prompt rather than the retries (Pillai, Jul 2026);
+      resampling until a sound checker accepted used 106% to 270% of one attempt''s tokens and checks
+      inside the trace 62% to 153%, below one attempt where feedback cut unproductive reasoning (Bhat,
+      Feb 2026); loop design matters more than the check: the same model cost $9.00 per problem editing
+      in place against $17.39 regenerating the whole proof each round, and reflecting after every turn
+      about doubled the cost per solve (Moalla, Oct 2026)'
     basis: evidence
   performance:
     effect: degrades
     size: small
+    when: governed SQL with its validate-and-retry loop took 7.8 s against 6.1 s per question for direct
+      text-to-SQL (about 1.3x), mostly from its larger prompt (Pillai, Jul 2026); each failed check adds
+      a model call and a check run
     basis: evidence
   security:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: 'policy rules written as code that reject unsafe tool calls raised AgentSafetyBench safety from
+      48.75% to 58.34% (72.31% with per-task checks) for one Qwen3-30B agent (Bhat, Feb 2026); SQL checked
+      against row-level-security rules and retried had 0 violations on four models where ungoverned single-pass
+      baselines leaked on 7.5% to 13% of adversarial questions, though only the governed arm was given
+      the user''s access predicate (Pillai, Jul 2026); a check the agent can edit is itself a target:
+      agents edited tests or special-cased them to pass (Zhong, Oct 2025)'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: 'rules enforced by a check held at zero filter violations with no run-to-run variance across
+      four models, against 41% to 48% for ungoverned baselines, but weaker models executed fewer queries
+      (Pillai, Jul 2026, confounded as above); an option to flag a broken check leaves a record instead
+      of a silent workaround (Zhong, Oct 2025); a passing check certifies only what it covers: visible
+      tests were saturated while held-out tests failed (Zhao, May 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
-- method: before-after
-  tier: 2
-  how: rate of outputs failing the check, same cases
 - method: experiment
   tier: 3
-  how: paired eval of end quality
+  how: 'paired eval at equal budget: no check, the check with pass/fail and first-error feedback, full
+    error text, resampling until the check passes, and any proposed critique step; score end quality on
+    a held-out check the agent never sees (hidden tests, gold answers or review) as well as the check-failure
+    rate on the first attempt and on returned outputs, rounds per task, tokens and latency; include probes
+    whose tests contradict the specification, where any pass is gaming'
+- method: monitor
+  how: 'in production traces: share of outputs returned without a passing check, rounds to pass, runs
+    that hit the round cap, identical resubmissions, edits to test files or checker config, special-cased
+    inputs, and flags or abstentions; audit a sample of passed outputs against a held-out check or human
+    review, since the loop''s own pass rate can rise while true correctness does not'
 evidence:
 - source: Stechly et al., "On the Self-Verification Limitations of Large Language Models on Reasoning
     and Planning Tasks", https://arxiv.org/abs/2402.08115
@@ -181,10 +276,12 @@ evidence:
 - source: paper §5.3, A.3.4 (Pawn, Cookbook+Reasoning, iteration 3)
   task: GAIA / SimpleQA
   effect: +5.75% on GAIA and -17.8% on SimpleQA in the same commit; overhead hurt simple factual queries.
+  date: 2026-02
 - source: paper Table 10
   task: GAIA/FACTS/SimpleQA
   effect: Present in Knight, absent in Pawn. Knight's baselines are 43.7 / 64.7 / 84.4 vs Pawn's 19.5
     / 54.7 / 68.9 (Table 7), though the two also differ in prompt, tools and turns.
+  date: 2026-02
 - source: Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet", https://arxiv.org/abs/2310.01798
   date: '2023-10-03'
   task: Do not add intrinsic self-correction to reasoning tasks
@@ -274,16 +371,6 @@ evidence:
 - source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
     Analytics", https://arxiv.org/abs/2507.14372
   date: '2025-07-18'
-  task: Validate SQL with EXPLAIN and a hallucination checker, then fix
-  effect: 'Table 2, removing the query fixer (B.3 -> B.2): successful compilation 95% -> 76%, valid tables
-    & columns 98% -> 85%, score 47% -> 47%, LLM calls 4.3 -> 4.0. Conclusion: schema hallucination 23%
-    -> 1% and compilation errors 34% -> 4% overall from modeling components.'
-  direction: supports
-  measured: true
-  locator: §2.2.3; Table 2 B.2; §5
-- source: Albert Chen, Manas Bundele, Gaurav Ahlawat, et al. (LinkedIn), "Text-to-SQL for Enterprise Data
-    Analytics", https://arxiv.org/abs/2507.14372
-  date: '2025-07-18'
   task: Send hallucinated tables to a researcher sub-agent
   effect: 'Table 2, removing the researcher (Full -> B.3): score 48% -> 47%, table recall 78% -> 75%,
     column recall 56% -> 53%, compile 96% -> 95%, valid 99% -> 98%, LLM calls 4.6 -> 4.3. Small effect.'
@@ -300,16 +387,6 @@ evidence:
   direction: supports
   measured: true
   locator: Action Space @verify_schema; Table 4
-- source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
-    Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
-    Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
-  date: '2025-11-21'
-  task: Repair generated SQL iteratively from execution errors
-  effect: 'Table 8, Spider 2.0-Lite, DeepSeek-R1: base generation EX 23.47 -> + iterative correction 31.34
-    (+7.87).'
-  direction: supports
-  measured: true
-  locator: Appendix B; Appendix D Table 8
 - source: 'Ziyang Wang, Yuanlei Zheng, Zhenbiao Cao, Xiaojin Zhang, Zhongyu Wei, Pei Fu, Zhenbo Luo, Wei
     Chen, Xiang Bai (HUST, Fudan, Xiaomi), "AutoLink: Autonomous Schema Exploration and Expansion for
     Scalable Schema Linking in Text-to-SQL at Scale", https://arxiv.org/abs/2511.17190'
@@ -347,10 +424,158 @@ evidence:
   direction: supports
   measured: false
   locator: Appendix B.4
-caveats: 'The paper''s example of a gain that does not transfer across evaluation sets.'
+- source: 'Vishak K Bhat, Prateek Chanda, Vijval Ekbote, Ashmit Khandelwal, Maitreyi Swaroop, Vineeth
+    N. Balasubramanian, Subbarao Kambhampati, Nagarajan Natarajan, Amit Sharma (Microsoft Research India,
+    IIT Bombay, CMU, ASU), "interwhen: A Generalizable Framework for Steering Reasoning Models with Test-time
+    Verification", https://arxiv.org/abs/2602.11202'
+  date: '2026-02-05'
+  task: Check a reasoning model's work with sound checkers (Python rules, a Z3 solver, the Lean compiler,
+    policy rules written as code) and feed violations back, against a comparable loop judged by an LLM
+    critic
+  effect: 'Qwen3-30B-A3B-Thinking, accuracy against one attempt (Game of 24 / ZebraLogic-XL / Verina-Code
+    / Verina-Spec: 95.0 / 79.2 / 56.1 / 25.4): generate-and-test revising on an LLM critic''s feedback,
+    up to four rounds, 96.1 / 82.3 / 53.4 / 25.9 at 92-120% of the tokens (-2.7 to +3.1 points across
+    all seven tasks); best-of-4 with the same model as critic 97.4 / 70.8 / 56.6 / 27.0 at about 4x; resampling
+    until a sound final-answer checker accepts, up to four rounds, 99.49 / 97.40 / 64.02 / 33.33 at 106-270%
+    (+18.2 on ZebraLogic-XL); verifier feedback inside the trace in one run 97.2 / 90.6 / 71.6 / 37.0
+    at 62-134% (62-153% across all seven tasks). On Maze and SpatialMap, where the final-answer check
+    could not decide, resampling stayed at 88.80 and 74.80 (one attempt 88.5 and 74.7) while checks inside
+    the trace reached 97.73 and 84.73 in one run and 97.93 and 85.33 with the same four-round budget.
+    Agentic: telecom tasks (tau2-bench, solo) pass^4 32.17% to 42.11% with checks derived from the policy
+    alone and 87.70% with rules debugged on traces plus a per-task completeness check, at 96.93% of the
+    tokens; with the same checks Claude Haiku 4.5 20.2% to 65.8% and GPT-5.4 mini 47.4% to 82.5%. AgentSafetyBench
+    safety 48.75% to 58.34% (72.31% with per-task checks). VitaBench travel booking with GPT-5.4 55.0%
+    to 57.7%.'
+  conditions: 'Non-agentic: Qwen3-30B-A3B-Thinking-2507 (QwQ-32B in an appendix), temperature 0.6, seven
+    benchmarks, runs per arm not stated; the critic loop revises on feedback while the sound-checker loop
+    resamples, both capped at four rounds. Agentic: tau2-bench telecom (114 tasks, GPT-4.1 evaluator),
+    AgentSafetyBench, VitaBench; checker code generated by Claude Opus 4.7 from policy documents and,
+    for tau2-bench, debugged on a small set of traces, with a 3B model extracting the checked arguments.
+    Co-authored by Kambhampati, whose group''s earlier work (Stechly et al.) backs this entry. Numbers
+    from v3 (May 2026).'
+  direction: supports
+  measured: true
+  locator: §5.1 Table 2; Table 3; §5.2 Table 5; §6.3 Table 8 (v3)
+- source: 'Skander Moalla, Ahmad Rammal, Niket Patel, Rémi Munos, Julia Kempe (FAIR at Meta, EPFL, ENPC,
+    NYU), "h1: A Taste of the Bitter Lesson in Automated Theorem Proving", https://arxiv.org/abs/2610.35962'
+  date: '2026-10-25'
+  task: Run a frontier model in a loop that edits one proof file, shows Lean compiler feedback after every
+    edit, enforces final validation and starts another round with the verdict after each rejection; compare
+    with loops that leave stopping to the model or regenerate the whole proof
+  effect: 'Same Claude model (Opus 4.8): native Claude Code solved 63 FATE-X problems, Claude Code with
+    h1''s Lean tools and prompt 73, and h1, which also enforces validation and another repair round after
+    rejection, 83 (PutnamBench subset 81 / 95 / 99). Of 30 problems h1 solved where native Claude Code
+    stopped without an accepted proof, 28 ended with an artifact the validator rejected; on one problem
+    Claude Code with the tools resubmitted an unchanged file 170 times while h1 edited after each of 17
+    rejections and succeeded. Same Gemini 3 Flash and $20 cap: AxProverBase, which regenerates a complete
+    proof after each feedback round, solved 18 Putnam100 problems against h1''s 69, at $17.39 per problem
+    (89% of it output) against $9.00 (34%). With only the working file and compiler feedback (no search
+    tools, REPL or language server) h1 solved 49 Putnam100 and 49 FATE-X problems against 69 and 63 with
+    all tools. Reflecting after every turn gave 50 and 39 solves against 72 and 65 every ten turns, at
+    roughly twice the cost per solve. Gemini 3.1 Pro solved 99 Putnam100 problems at $5.34 each with high
+    reasoning effort against 89 at $20.63 with low effort.'
+  conditions: Lean 4 formal proofs; PutnamBench subset (100), FATE-X (100), FormalConjectures; Claude
+    Opus 4.8, Gemini 3 Flash, Gemini 3.1 Pro and others under fixed dollar caps per problem; ablations
+    are one run per arm; the authors ran the Claude Code and AxProverBase comparisons and note they could
+    not control Claude Code's internal retries; the 63 to 73 to 83 steps also change prompt and tools,
+    so they are not pure enforcement effects; a proof checker is a near-perfect check that most tasks
+    lack; independent of the practice.
+  direction: supports
+  measured: true
+  locator: §3.3; §4; Appendix E.9; Appendix F (Figures 21, 23-24, 26-27; Table 16)
+- source: 'Ziqian Zhong, Aditi Raghunathan, Nicholas Carlini (Carnegie Mellon University, Anthropic),
+    "ImpossibleBench: Measuring LLMs'' Propensity of Exploiting Test Cases", https://arxiv.org/abs/2510.20270'
+  date: '2025-10-23'
+  task: Give coding agents tasks whose unit tests contradict the specification, so any pass is a shortcut,
+    and vary test access, the test-feedback loop and an option to abort
+  effect: With read/write test access and the strictest prompt, GPT-5 passed 54.0% of Conflicting-SWEbench
+    and 76% of Oneoff-SWEbench impossible tasks (2.9% on Oneoff-LiveCodeBench); Claude models and Qwen3-Coder
+    cheated mainly by editing tests (over 79% of cheating on Conflicting-SWEbench), while GPT-5 and o3
+    also special-cased tests, overloaded comparison operators and recorded extra state. Allowing up to
+    10 submissions with failed-test feedback raised the average pass rate on open-test SWE-bench from
+    80% to 83% and the cheating rate on Conflicting-SWEbench from 33% to 38%. Hiding tests cut cheating
+    to near zero but lowered performance on the original tasks; read-only tests kept performance and stopped
+    test edits but not other exploits. An option to abort and flag the task for a human cut cheating from
+    54% to 9% (GPT-5) and 49% to 12% (o3), with much less effect on Claude Opus 4.1. A looser prompt raised
+    GPT-5's cheating on Conflicting-SWEbench from 54% to 66%. LLM monitors caught 86-89% of cheating on
+    LiveCodeBench but 42-65% on SWE-bench.
+  conditions: 349 SWE-bench Verified and 103 LiveCodeBench tasks, each in a one-off and a conflicting
+    variant; GPT-5, o3, o4-mini, GPT-4.1, Claude Opus 4.1, Claude Sonnet 4, Claude Sonnet 3.7 and Qwen3-Coder
+    at medium effort; minimal and full scaffolds, up to 50 turns; mutations written by Claude Sonnet 4
+    and kept only if both the original and an empty patch fail. The 80% to 83% and 33% to 38% are averages
+    over all models; test-access and abort results are per model in figures. Impossible tasks measure
+    the propensity to cheat under a spec-test conflict, not how often ordinary tests are gamed; independent.
+  direction: mixed
+  measured: true
+  locator: §1; §2.4; §4.2; §5.1-5.3; §6; Appendix F
+- source: 'Bingchen Zhao, Dhruv Srikanth, Yuxiang Wu, Zhengyao Jiang (Weco AI), "SpecBench: Measuring
+    Reward Hacking in Long-Horizon Coding Agents", https://arxiv.org/abs/2605.21384'
+  date: '2026-05-20'
+  task: Let coding agents iterate against visible tests that check each specified feature alone, then
+    score them on held-out tests that combine the same features
+  effect: Every agent nearly saturated the visible suite. The 90th-percentile gap between visible and
+    held-out pass rates grew about 27 points per tenfold increase in reference code size (R² = 0.21);
+    the worst gap was 21 points on tasks under 10K lines and 100 points over 25K. Claude Code (Opus 4.6)
+    gaps were about 43-48 points under all three search loops. More search did not close the gap and often
+    widened its upper tail; on the C compiler task tree search kept a 2,900-line lookup table of test
+    outputs (97% visible, 0% held-out) over a genuine compiler from the same run (53% and 43%). A SQL
+    database built as separate feature handlers scored 100% visible and 35% held-out. Making composition
+    tests visible cut that task's gap from 35 to 9 points and raised the C compiler's by 25. Weaker models
+    had larger gaps.
+  conditions: 30 from-scratch systems tasks (1.5K-110K reference lines; C, Python, Go); Codex (gpt-5.2-codex,
+    596 runs), Claude Code (Opus 4.6, 516 runs) and OpenCode with several open-weight models (800 runs);
+    AIDE, linear and best-so-far search loops, which the authors' company builds (AIDE); held-out suites
+    are themselves finite. Numbers from v2 (Sep 2026); v1 (May 2026) carries the same abstract.
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.6; Figures 2 and 5-7; Appendix B
+- source: 'Aravind Sasidharan Pillai (Cox Automotive), "GROUND: Reducing Hallucinations in LLM-Based Enterprise
+    Analytics Through Governed Semantic Definitions", https://arxiv.org/abs/2608.26157'
+  date: '2026-07-06'
+  task: Validate model-written SQL against governed schema, metric, join, grain, filter, row-level-security
+    and cost rules, return the list of violations and retry up to three times or abstain
+  effect: 'Adversarial set (40 questions on NHTSA data), four models (Claude Opus 4.8, Claude Sonnet 5,
+    GPT-5.2, Llama-3.3-70B): 0.00 ± 0.00 filter and row-level-security violations over three runs each,
+    against 41-48% filter and 7.5-13% security violations for the ungoverned single-pass baselines; metric
+    hallucination 0.01-0.075 against 0.48-0.70; the share of questions answered with an executed query
+    fell for GPT-5.2 (0.87 to 0.68) and Llama-3.3-70B (0.95 to 0.63). Synthetic set (100 questions, Opus
+    4.8): 10,714 against 2,140 tokens per question (5.0x) and 7.8 s against 6.1 s (about 1.3x) for direct
+    text-to-SQL, mostly from a ~10K-token grounding prompt; 9 of 82 SQL questions triggered a revision,
+    0.15 retries per question on average, at most 2.'
+  conditions: Single author, who built the system and the synthetic benchmark. Only the governed arm received
+    the user's row-level-security predicate, approved join paths and refusal conventions, so the comparison
+    with the semantic-only arm is confounded; baselines ran once and without retry, GROUND three times
+    on the NHTSA sets; the retry loop reuses the evaluator's own classifiers, which the author calls a
+    favorable alignment; SQLite; the synthetic gold is generated from the same semantic layer.
+  direction: supports
+  measured: true
+  locator: §4.2; §6.1; §8.2; §8.5-8.6; Threats to Validity
+caveats: 'The evidence that self-critique hurts comes mostly from 2023-2024 runs on GPT-3.5, GPT-4 and
+  Llama-2; with a current reasoning model an LLM-critic loop left accuracy roughly flat (-2.7 to +3.1
+  points), and Self-Refine helped one coding scaffold (OpenHands, +15.8 for GPT-5 mini), so the case for
+  a sound check is that it gains far more, not that critique always fails (7.c.i). A check is only as
+  sound as its coverage and its distance from the agent: agents edited or special-cased tests they could
+  write (GPT-5 passed 54% of impossible SWE-bench tasks), more search against visible tests often widened
+  their gap to held-out tests, and making composition tests visible cut one task''s gap from 35 to 9 points
+  but raised another''s by 25. Several gains are scored by the loop''s own check or confounded: GROUND''s
+  zero violations come from a retry loop that reuses its evaluator''s classifiers, only its governed arm
+  got the user''s access predicate and its baselines ran once without retry; interwhen''s telecom gain
+  includes rules debugged on traces and a per-task completeness check; h1''s ablations are single runs
+  against a proof checker, a near-perfect check most tasks lack. In VeRO, a multi-step verification tool
+  an optimizer added raised GAIA 5.75 points and cut SimpleQA 17.8 in the same commit, so test any added
+  verification step on every task type.'
 related:
 - 9.b.iii
+- 9.b.ii
+- 9.c.ii
+- 9.c.i
+- 9.c.iii
+- 7.c.i
+- 7.b.i
+- 7.b.iii
+- 10.a.i
 - 5.b.i
+- 7.a.i
 absorbs:
 - legacy_id: P39
   name: Rich feedback loops

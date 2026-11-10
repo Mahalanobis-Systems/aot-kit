@@ -16,60 +16,183 @@ domains:
 evidence_domains:
 - code-generation
 - web-research
+- computer-use
+- tool-use
 categories:
 - orchestration.bound
-summary: Track repeated identical actions (same tool, same arguments; same search query) and turns with
-  no new information. Inject a warning at a small streak (about 5 identical calls), refuse exact-repeat
-  queries, and end the run early at a longer streak (about 8 identical failures) or when progress has
-  stalled, instead of running to the turn cap. A prompt line telling the agent not to repeat itself is
-  a weak version of the same thing and is not a substitute.
-how: 1. In the loop, hash each tool call (name plus arguments) and each query; keep the last N. 2. On
-  a streak of 5, inject a 'you are repeating; change approach' message; on 8 identical failures, stop
-  with the best answer so far. 3. Define 'stalled' for the task (no new file, result or fact in K turns)
-  and stop on it. 4. Measure loop and turn-cap failures before and after.
+summary: 'When an agent repeats the same call and gets the same result, push it to change approach after
+  a few repeats, and end the run only after a long streak of identical failures. It pays mainly for loop-prone
+  models: loops appeared in 5.21% of Meta''s production coding-agent trajectories, where an observer that
+  flagged them (with other misbehaviors) and injected course-correction reminders cut tokens per session
+  5.3%, and on OSWorld forcing a change of approach after repeated no-change actions added up to 4.24
+  points for Gemini 3 Flash but 0.04 for Claude Sonnet 4.6 at 100 steps, and cost 6.15 points at a 15-step
+  budget. A prompt line or a silent refusal of exact repeats is not a substitute (with repeats refused,
+  an agent proposed already-run calls as often as before), and repetition alone is not failure: identical
+  repeats were rare after tool faults, retries with changed arguments were common, and blind retries were
+  as frequent in passing coding runs as in failing ones. Treat the stop as a tested backstop, not a saving:
+  ending stuck runs cost a small model 3.4 points of success, a rule-based abandon never fired for a frontier
+  terminal agent, and advisory controllers raised cost 19% to 47% with no gain, so test any controller
+  end to end against plain rules and a placebo.'
+how: '1. Start from the baseline: on the eval set or recorded traces, per model, measure the share of
+  runs with a loop (the same normalized call, tool name plus arguments with whitespace and argument order
+  normalized, returning the same result as an earlier call), the share of steps spent in loops, runs ending
+  at the turn cap or deadline, success, tokens, turns and wall-clock. Expect loops in a minority of runs
+  that varies by model and setup: 5.21% of a five-week sample of one company''s production coding-agent
+  trajectories (2.18% for Claude Sonnet 4.5, 3.59% for Claude Opus 4.5), 12.1% to 20.7% of failed OSWorld
+  tasks for two current backbones, and 21.3% to 40.0% of CodeGym tasks for three Gemini models with full
+  history (any single repeat counted), more once history is summarized (5.a.i). 2. Compare the call together
+  with its result, not the call alone: keep a hash of each normalized call and of its result (for a GUI
+  agent, of the screen) over a recent window, and count a repeat only when the same call returns the same
+  result or the same state recurs with no visible change; normalize search queries the same way to catch
+  near-duplicates. A streak of calls to one tool with changing arguments is usually a retry, not a loop:
+  after injected tool faults, agents called the same tool three or more times in a row in 12.5% to 22.2%
+  of trials but with identical arguments in only 0.8% to 1.8%, and on SWE-bench Verified blind retries
+  appeared in 46.0% of passing and 44.9% of failing runs (regression loops 38.7% and 39.5%), while cyclic
+  patterns were more common in failing runs (44.5% against 33.6%) and wasted more steps there (7.8 against
+  4.6 per instance). 3. On a short streak, inject a message that names the repeated call and its count
+  and requires a different approach, and escalate if the streak continues. Published harnesses warn at
+  two to five identical calls (one study''s harness at five identical calls or five identical failures,
+  Hermes after two identical failures; OpenCode asks the user at three). In a desktop agent that forced
+  a different interaction mode after two identical actions with no visible change and a new strategy after
+  the same screen recurred three times, steps spent in loops fell from 4.9% to 2.8% (Gemini 3 Flash) and
+  from 3.2% to 2.1% (Claude Sonnet 4.6); success rose 1.82 to 4.24 points for Gemini 3 Flash at 50 and
+  100 steps and 0.04 to 1.44 for Sonnet 4.6, but fell 6.15 points at a 15-step budget, where the escalation
+  steps crowded out the task. In production, 94.29% of loops flagged by an asynchronous observer did not
+  recur after one injected course correction (judged by an LLM). Neither a prompt line nor a silent refusal
+  changes behavior on its own: refusing an exact repeat and returning the earlier result kept repeated
+  calls from running (5.7% of tasks ran one, 46.7% tried) but the agent proposed already-run calls as
+  often as before (71.3% of tasks against 69.8%) and used as many tokens (24.9k against 23.9k), so keep
+  refusal only to avoid re-running calls with side effects (2.b.i); on that small model a reminder when
+  stuck left steps (14.85 against 15.00) and success (23.7% against 25.1%) about where they were. 4. Keep
+  a stop rule as a backstop, not a saving: end the run at a long streak of identical failures (eight in
+  two published harnesses, one of which ships the stop disabled) or when the task''s progress signal (step
+  5) has been flat for K turns, and return the best answer so far with the stop reason (9.b.i). Expect
+  it to fire rarely and to cost successes when it fires early: on a small open model under aggressive
+  summarization, ending the run when a stuck detector fired cut steps from 15.00 to 13.08 and tokens from
+  23.9k to 21.6k per task but success fell from 25.1% to 21.7% (one run), and a rule to abandon after
+  four consecutive failures past 40% of the step budget never fired in 63 runs of a Claude Sonnet 5.5
+  terminal agent (without a controller, 10 of 17 failures ended at a timeout or cap instead). Repetition
+  alone does not show a task is infeasible: require separate evidence before reporting failure. 5. Define
+  ''no progress'' for the task from what the run produces, not from its length: no new file or diff, test
+  result, retrieved fact, screen state or change to the draft answer in K turns; the tool-step count alone
+  ranked failing coding runs at chance (AUC 0.471 to 0.528). Put the detector in place before raising
+  a turn cap, keep the cap and deadline as the hard bound (7.b.iii), track progress items explicitly where
+  the task allows (7.b.iv), and make every stop path, detector or cap, return an extractable answer (9.b.i).
+  6. Keep detection cheap and test anything smarter end to end. Hashes and counters cost nothing; an LLM
+  check after every action does not: a loop breaker whose top tier asked an LLM judge after each action
+  cut actions per task from 16.80 to 14.28 but raised model calls from 28.40 to at least 41.52 and tracked
+  tokens from at least 257,618 to at least 422,074, and the production observer ran its LLM classifier
+  asynchronously at fixed intervals so the agent never waited on it. Compare any added controller against
+  plain rules and a placebo: on a terminal benchmark, advisory messages at small failure and repetition
+  streaks plus verify prompts at finish raised cost per attempt 24% (rules), 19% (a cheap decision model)
+  and 47% (a small LLM) with no detectable pass-rate change, while random advice at the same moments did
+  not raise cost (0.98 times). Don''t add a learned stop monitor yet: one trained on past runs saved 4.5%
+  of cost per retained solve at 99.0% retention for one agent, catching 5.0% of failing runs, and nothing
+  for another, and stopping pays only when the execution it avoids exceeds the monitor''s cost plus the
+  successes it kills. 7. Measure on the same cases and model, at the step budgets you run, with several
+  runs per arm: no detector, warning only, warning plus stop (and a placebo reminder when testing a controller);
+  report the share of runs with a loop and of steps spent in loops, warnings issued and whether the repeated
+  call recurred after them, stops and cap hits by reason, success overall and on the runs the stop ended
+  (replay them without the stop to count the successes it cut), tokens, turns and wall-clock. Re-measure
+  when the model changes: in one production sample the newer model looped more (3.59% against 2.18%).'
 detect:
   static: no comparison of a tool call or query against previous ones; the loop ends only at a fixed turn
     cap
-  traces: tool spans with identical name and arguments repeated 3 or more times in a run; the same query
-    string issued twice; runs ending at the turn cap; failure rows labeled redundancy or state-tracking-failure
-  evals: turn-cap and timeout outcomes as a share of failures
+  traces: tool spans whose normalized call (name plus arguments) and result repeat an earlier span in
+    the run; the same screen or state recurring three times with no visible change; streaks of identical
+    failing calls; runs ending at the turn cap or deadline after such a streak; a warning followed by
+    the same call again; failure rows labeled redundancy or state-tracking-failure (same-tool streaks
+    with changing arguments are retries, not loops)
+  evals: 'per model: share of runs with a loop and of steps spent in loops (5.21% of production coding
+    trajectories in one company; 2.1% to 4.9% of steps on OSWorld), turn-cap and timeout outcomes as a
+    share of failures, and success on runs a stop rule ended'
+  probes:
+    what: Tasks where a tool returns the same error or an unchanged result whatever the agent does, or
+      whose goal is unattainable
+    construct: Make one tool return an identical error or unchanged output on every call, or ask for a
+      file or fact that does not exist; check that the warning fires at the short streak, the run stops
+      at the long one and returns its best answer, and retries with changed arguments are not flagged
 impact:
   quality:
-    effect: improves
-    size: medium
-    when: adaptive termination +5.6% on FACTS; anti-loop prompt line GAIA +0.04, flat on SimpleQA (VeRO)
+    effect: mixed
+    size: small
+    when: forcing a change of approach at short streaks added 1.82 to 4.24 points on OSWorld and 5.2 to
+      7.8 on WindowsAgentArena for Gemini 3 Flash and 0.04 to 1.44 for Claude Sonnet 4.6, but cost 6.15
+      points at a 15-step budget (Han, Apr 2026); on a small open model, ending runs when a stuck detector
+      fired cut success from 25.1% to 21.7% and a reminder gave 23.7% (Chen, Oct 2026); advisory recover
+      and verify messages left a frontier terminal agent at 73.0% (Vats, Oct 2026); in VeRO, adaptive
+      termination +5.6% on FACTS, an anti-loop prompt line +0.04 on GAIA and flat on SimpleQA (VeRO, Feb
+      2026)
     basis: evidence
   cost:
-    effect: improves
-    size: medium
+    effect: mixed
+    size: small
+    when: an observer that flagged loops and other misbehaviors and injected reminders cut tokens per
+      session 5.3% in a production A/B test (Nanda, Feb 2026); ending stuck runs cut tokens per task from
+      23.9k to 21.6k, while refusing repeats saved nothing (24.9k) (Chen, Oct 2026); a loop breaker with
+      an LLM judge after each action raised tracked tokens per task from at least 257,618 to at least
+      422,074 (Han, Apr 2026); advisory controllers raised cost per attempt 19% to 47% (Vats, Oct 2026);
+      a learned stop monitor saved 4.5% of cost per retained solve for one agent and nothing for another
+      (Liang, Oct 2026)
     basis: evidence
   performance:
-    effect: improves
-    size: medium
-    when: the template with query dedup ran about 2x faster, bundled
+    effect: mixed
+    size: small
+    when: forced changes cut steps spent in loops from 4.9% to 2.8% and actions per task from 16.80 to
+      14.28, but added model calls (28.40 to at least 41.52) (Han, Apr 2026); ending stuck runs cut steps
+      per task from 15.00 to 13.08 (Chen, Oct 2026); session execution time -4.3% (not significant) with
+      detection run asynchronously (Nanda, Feb 2026); advisory messages lengthened runs from 13.3 to 15.6
+      steps (9.4 to 9.5 minutes) (Vats, Oct 2026); VeRO's template with query dedup ran about 2x faster,
+      bundled (VeRO, Feb 2026)
     basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: small
+    when: refusing an exact repeat kept repeated calls from running (5.7% of tasks ran one against 46.7%
+      that tried) (Chen, Oct 2026), which matters where a repeated call has side effects (2.b.i); no source
+      measures duplicated effects for this change
+    basis: assessment
   brand:
-    effect: unknown
+    effect: improves
+    size: small
+    when: in a production A/B test an observer that corrected loops and other misbehaviors cut engineer
+      interventions per session 4.2% (Nanda, Feb 2026); no source isolates loops or measures how users
+      perceive the agent
+    basis: assessment
+  primary:
+  - cost
+  - quality
 measure:
-- method: before-after
+- method: experiment
   tier: 2
-  how: loop and turn-cap failure rate on the same cases; time per case
+  how: 'same cases and model at each step budget you run, several runs per arm: no detector, warning only,
+    warning plus stop, and a placebo reminder at random moments when testing a controller; report the
+    share of runs with a loop (same normalized call and result) and of steps spent in loops, stops and
+    cap hits by reason, success overall and on the runs the stop ended (replayed without the stop), tokens,
+    turns and wall-clock'
+- method: monitor
+  how: 'per model in production: share of runs with a loop, warnings issued and whether the repeated call
+    recurred in the following steps, stops by reason, cap hits, tokens per session; re-run the experiment
+    when the model or harness changes'
 evidence:
 - source: paper §A.4
   task: TerminalBench-2
   effect: Part of the Filesystem-B=178 commit; contributed to AgentTimeoutError rising 16 to 23 as crashing
     tasks migrated to timeouts rather than passes.
+  date: 2026-02
 - source: cookbook (master-agent-optimization-cookbook, Infinite Loop Prevention)
   task: library pattern
   effect: Hash recent tool calls, inject a warning on repeat.
+  date: 2026-02
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
   task: Detect identical-call streaks; warn, then terminate
-  effect: Held fixed across all conditions. The reminder texts and thresholds are given.
+  effect: Held fixed across all conditions. A reminder is inserted once per streak at five identical calls
+    (same tool name, byte-identical arguments) of any status or five identical failing calls, and an identical
+    failing streak of eight ends the run with its own stop reason; a call with different arguments ends
+    the streak, and permission denials do not count as failures. The reminder texts are given.
   direction: supports
   measured: false
   locator: §2.4 Stuck detection; §3.1; App 7.4 Fig 20
@@ -105,19 +228,198 @@ evidence:
 - source: paper Figure 14
   task: GAIA
   effect: '"Strengthened anti-loop prompt instructions" took validation 0.26 to 0.30 (best of run).'
+  date: 2026-02
 - source: paper Figure 15
   task: SimpleQA
   effect: '"Loop/entity prompt guidance" flat (0.86 to 0.85).'
+  date: 2026-02
 - source: blog tricks table (Minimal template)
   task: FACTS
   effect: +5.6%; "invented adaptive termination to prevent infinite loops".
+  date: 2026-02
 - source: blog tricks table (Evidence-Based template)
   task: GAIA/FACTS/SimpleQA
   effect: Runtime efficiency; Evidence-Based agents ran about 2x faster than Tool-Centric ones (26.2s
     vs 56.6s per sample for Knight).
+  date: 2026-02
+- source: 'Obada Kraishan, "Loud Failures, Quiet Failures: Fault Detection and Recovery in Tool-Using
+    Language Model Agents", https://arxiv.org/abs/2610.10062'
+  date: '2026-10-07'
+  task: Inject one typed tool fault (timeout, missing tool, renamed parameter, silently corrupted value)
+    into multi-turn function-calling tasks and record whether the agent notices, replans, recovers or
+    repeats itself; count runs of three or more consecutive calls to the same tool after the fault, with
+    and without identical arguments
+  effect: 'After a fault, agents called the same tool three or more times in a row in 12.5% to 22.2% of
+    trials (silent corruption 22.2%, timeout 21.4%, schema drift 17.6%, missing tool 12.5%), but with
+    the same tool and arguments in only 0.8% to 1.8%: ''These are mostly retries with changed arguments
+    rather than loops.'' Trials ended at the 15-call cap in 24.8% to 31.7% of fault trials against 23.2%
+    with no fault. Agents treated an explicit error as a problem in 91.3% of trials and a well-formed
+    wrong value in 58.8%; a system-prompt line asking the agent to check each result moved detection +0.6
+    and +2.5 points (not significant) and left recovery and repetition unchanged.'
+  conditions: Berkeley Function-Calling Leaderboard multi-turn split, 24 tasks, 1,920 trials; six models
+    in matched reasoning and instruct pairs (Claude Haiku 4.5 with and without thinking, DeepSeek R1 and
+    V3, Qwen3 thinking and instruct); two unseeded runs per cell at temperature 1.0; 15-call cap; the
+    prompt-line arm ran on the Claude pair only; single author; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §III-E; §IV-C Table VI, Fig. 3; §IV-D; §VI
+- source: 'Priyam Sahoo, Gaurav Mittal, Xiaomin Li, Shengjie Ma, Benjamin Steenhoek, Pingping Lin, Yu
+    Hu (University of Illinois, Microsoft), "AgentLens: Revealing The Lucky Pass Problem in SWE-Agent
+    Evaluation", https://arxiv.org/abs/2605.12925'
+  date: '2026-05-13'
+  task: Score coding-agent trajectories against task-level references merged from passing runs and count
+    waste patterns (regression loops, blind retries, redundant steps, unnecessary exploration, cyclic
+    patterns) in passing and failing runs
+  effect: 'Prevalence in passing against failing trajectories: regression loops 38.7% vs 39.5%, blind
+    retries 46.0% vs 44.9%, redundant steps 50.7% vs 47.6%, cyclic patterns 33.6% vs 44.5% (failing to
+    passing ratio 1.32), unnecessary exploration 6.1% vs 9.6%; steps wasted per instance: blind retries
+    5.6 vs 7.7, cyclic patterns 4.6 vs 7.8. ''Regression loops, blind retries, and redundant steps are
+    all slightly more common in passing trajectories than failing ones.'' Of 1,136 passing trajectories,
+    10.7% were ''Lucky Passes''; in those, blind retries wasted 11.4 steps per instance against 2.7 in
+    the best-ordered passes, and the category where ''the agent tries multiple approaches through blind
+    retries, cyclic patterns, or regression loops until one attempt works'' cost 25 times the tokens of
+    the cheapest category.'
+  conditions: 2,614 OpenHands trajectories on 60 SWE-bench Verified tasks from eight backends (GPT-4.1,
+    GPT-4o, GPT-5.2-Codex, GPT-5.3-Codex, Claude Sonnet 4.5, Opus 4.5, Opus 4.6, Gemini 2.5 Pro); analysis
+    on the 1,815 trajectories (1,136 passing, 679 failing) of the 47 tasks with references; waste comes
+    from the authors' heuristic detector and is counted only where the behavior is absent from known-good
+    paths; the authors attribute the passing-run prevalence partly to longer, more thorough passing runs;
+    observational, no intervention tested; numbers from v4 (Oct 2026); independent of the practice
+  direction: mixed
+  measured: true
+  locator: Abstract; §5.1; §5.2; App. C.2 Table 8; App. C.3 Table 9; App. F Table 21
+- source: 'Qijun Han, Haoqin Tu, Zijun Wang, Haoyue Dai, Yiyang Zhou, Nancy Lau, Alvaro A. Cardenas, Yuhui
+    Xu, Ran Xu, Caiming Xiong, Zeyu Zheng, Huaxiu Yao, Yuyin Zhou, Cihang Xie (UC Santa Cruz, Salesforce,
+    et al.), "VLAA-GUI: Knowing When to Stop, Recover, and Search, A Modular Framework for GUI Automation",
+    https://arxiv.org/abs/2604.21375'
+  date: '2026-04-23'
+  task: 'Run a mandatory Loop Breaker after every action of a desktop agent: switch interaction mode when
+    the same action on the same target twice produces no visible change, force a strategy change when
+    the same screen state recurs three times, and act on an LLM reflection judge''s ''switch'' signal
+    by blacklisting the repeated action; failing a task needs separate feasibility evidence. Ablate it
+    by backbone and step budget'
+  effect: 'OSWorld success with against without the Loop Breaker: Claude Sonnet 4.6 71.67% vs 71.63% at
+    100 steps, 71.11% vs 69.67% at 50, 64.13% vs 62.70% at 15 (+0.04, +1.44, +1.43 points); Gemini 3 Flash
+    68.77% vs 66.95% at 100, 63.14% vs 58.90% at 50, 43.15% vs 49.30% at 15 (+1.82, +4.24, -6.15; ''the
+    escalation actions crowd out task execution''). At 100 steps, failed tasks involving loops fell 3
+    points from 12.1% (Sonnet 4.6) and from 20.7% to 16.2% (Gemini 3 Flash); steps spent in loops fell
+    from 3.2% to 2.1% and from 4.9% to 2.8%; Gemini 3 Flash looped about twice as often (10.6% vs 5.0%
+    of all tasks). WindowsAgentArena (Gemini 3 Flash): removing it cost 7.8 points at 50 steps (60.4%
+    to 52.6%) and 5.2 at 100 (61.0% to 55.8%). On a 60-task subset (Gemini 3 Flash, 100 steps), adding
+    only the Loop Breaker to the base scaffold moved success from 65.05% to 69.00%, actions per task from
+    16.80 to 14.28, model calls from 28.40 to at least 41.52 and tracked tokens from at least 257,618
+    to at least 422,074.'
+  conditions: OSWorld-Verified (361 tasks) and WindowsAgentArena; component ablations on two backbones;
+    single-pass point estimates without confidence intervals; thresholds fixed (two actions, three screens)
+    and not swept; the tested breaker includes an LLM judge after every action, so the counters' effect
+    alone is not isolated; token and cost figures are lower bounds; the authors' own framework; numbers
+    from v3 (Sep 2026)
+  direction: supports
+  measured: true
+  locator: §3.3; §4.3 Table 2, Fig. 3; App. A.1; App. A.3 Table 6; App. A.8.3 Table 11
+- source: 'Rahul Nanda, Chandra Maddila, Smriti Jha, Euna Mehnaz Khan, Matteo Paltenghi, Satish Chandra
+    (Meta), "Wink: Recovering from Misbehaviors in Coding Agents", https://arxiv.org/abs/2602.17037'
+  date: '2026-02-19'
+  task: Classify production coding-agent trajectories for misbehaviors, including infinite loops ('the
+    same or similar tool calls three or more times in a row', repeated edits to the same file), with LLM
+    classifiers called asynchronously at fixed intervals, and inject course-correction guidance as system
+    reminders; measure prevalence, recovery and a live A/B test
+  effect: 'Loops in 5.21% of a five-week sample of production trajectories (all misbehaviors 29.2%); by
+    model, infinite loops in 2.18% of Claude Sonnet 4.5 and 3.59% of Claude Opus 4.5 trajectories (p <
+    0.00001). With one intervention, 94.29% of reasoning-problem (loop) cases did not recur (963 cases;
+    73.78% of 2,414 with several interventions), as judged by an LLM; where agents did not recover, the
+    commonest reason was that they ignored the guidance (37%). Shadow mode, all misbehaviors: 15.14% misbehavior
+    rate with course correction against 18.61% with detection only. 15-day 50/50 A/B test over all misbehavior
+    classes: tokens per session -5.3% (p = 0.003), tool call failures -4.2%, engineer interventions per
+    session -4.2% (p = 0.014), agent execution time per session -4.3% (p = 0.073).'
+  conditions: 'Meta''s internal coding agent in an IDE, production traffic; classifiers (best: Claude
+    Sonnet 4 with few-shot examples) tuned for at least 80% precision; recovery judged by an LLM whose
+    precision was 85.71% on a few dozen hand-checked trajectories; the A/B result covers all misbehavior
+    classes, not loops alone; the observer''s own cost is not reported; the vendor''s own system and data'
+  direction: supports
+  measured: true
+  locator: §2.1.2; §2.2.3 Tables 1-2; §3.1-3.3; §4.1 Tables 3-4; §4.2; §4.3 Table 5; §4.4 Table 6
+- source: 'Tianle Chen, Pushkar Singh, Ketan Todi, Biswajit Paria, Qijia He, Wenqi Wang, Yuwen Tan, Jike
+    Zhong, Sugato Basu, Deepti Ghadiyaram, Arjun Akula, "DeLoop: Repeated Actions as Self-Supervision
+    for Long-Horizon Agents", https://arxiv.org/abs/2610.19376'
+  date: '2026-10-14'
+  task: Measure loops (a tool call, normalized for whitespace and argument order, that repeats an earlier
+    call in the run and returns a byte-identical observation) and compare training-free controls (an exact-duplicate
+    blocker that refuses a repeat and returns the earlier result with a warning; a reminder, Reflexion
+    or ending the episode when a stuck detector fires; summaries that warn against repeating listed actions)
+    with DPO on the agent's own loop pairs
+  effect: 'Qwen3-8B on CodeGym under summarization at 4,096 tokens: loop rate 57.3%, success 25.1%, 15.00
+    steps and 23.9k tokens per task (29.0% loops with full history). Exact-duplicate blocker: 46.7% of
+    tasks attempted a repeat but only 5.7% ran one; the agent still proposed an already executed call
+    in 71.3% of tasks (69.8% without the blocker), at 14.71 steps, 24.9k tokens and 25.3% success (''the
+    blocker saves no model compute''). Stuck-nudge (reminder): 58.7% loops, 23.7% success, 14.85 steps,
+    23.2k tokens. Stuck-stop (end the episode): 57.3% loops, 21.7% success (-3.4 points), 13.08 steps,
+    21.6k tokens. Reflexion on stuck: 55.3%, 24.3%. Action-warning summary: 54.0%, 24.0%. DPO on self-mined
+    loop pairs: 6.1% loops, 25.9% success, 4.67 steps, 12.7k tokens. Under summarization, looping runs
+    failed more often (Qwen3-8B 85% vs 68%; Gemini 3.1 Pro 48% vs 12%) and ran 10.5 more actions and 11k
+    more tokens. With full history, loop rates over 300 tasks were 21.3% (Gemini 3.1 Pro), 34.0% (Gemini
+    3.5 Flash-Lite) and 40.0% (Gemini 3.1 Flash).'
+  conditions: CodeGym, 300 held-out tasks, 30-round budget, greedy decoding; aggressive 4,096-token summarization
+    threshold; Qwen3 8B to 32B and three Gemini models; the baseline and DeLoop average three runs, while
+    each blocker, stuck and summary control and each Gemini setting is one run; a single repeat counts
+    as a loop, and the loop rate cannot fall for controls that act only after a loop starts; the 46.7%
+    blocker figure in Table 1 counts refused calls; training is the authors' method; the compaction findings
+    (removing the last completed call raised immediate repeats from 3.3% to 48.8%) belong to 5.a.i
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.3; §5.1-5.2 Table 1; App. A; App. D; App. G.9 Table 18; App. G.16 Table 23;
+    App. J.2 Table 30; App. J.3 Table 31
+- source: 'Naman Vats, "Good Judgment, Bad Advice: Decision-Model Controllers Raise Agent Cost Without
+    Improving Success", https://arxiv.org/abs/2610.24649'
+  date: '2026-10-17'
+  task: 'Hold one terminal-agent loop fixed and vary only the controller consulted at deterministic triggers
+    (two consecutive failing commands; a repeated command or output; a finish request; every 10 steps):
+    none, rules (advise recover at failure and repetition triggers, verify at finish, abandon after four
+    consecutive failures past 40% of the step budget), a small LLM, a cheap typed decision model, and
+    a placebo drawing random choices at the same moments'
+  effect: 'Pass rate, USD per attempt and steps: no controller 73.0%, 0.177, 13.3; rules 73.0%, 0.191,
+    15.6; small LLM 76.2%, 0.213, 17.8; decision model 73.0%, 0.206, 16.0; placebo 71.4%, 0.156, 13.2;
+    wall-clock 9.4 minutes per attempt with no controller and 9.5 with rules. Cost ratio against no controller:
+    decision model 1.19 (95% CI 1.02-1.36), rules 1.24 (1.12-1.38), small LLM 1.47 (1.16-1.86), placebo
+    0.98 (0.78-1.16); no pass-rate difference was detectable. ''No controller chose abandon in any of
+    the 315 trials''; 10 of 17 failures without a controller ended at a timeout or cap, and all 15 runs
+    of one hard task ran to the timeout or the $1.00 cap.'
+  conditions: Claude Sonnet 5.5 at high reasoning effort on 21 held-out Terminal-Bench 2.1 tasks (14 easy),
+    three attempts per arm, 315 trials, 60-step and $1.00 caps; pre-specified and placebo-controlled;
+    pass-rate intervals about ±11-13 points; the rules arm's extra cost mixes recover and verify messages;
+    single author; independent
+  direction: contradicts
+  measured: true
+  locator: Abstract; §3 (Decision points, Controllers, Guards); §4.1-4.2 Tables 1-2; §4.4; App. B; §6
+- source: 'Jiarong Liang, Xueguang Ma, Dongfu Jiang, Yuxuan Zhang, Ping Nie, Wenhu Chen (University of
+    Waterloo), "StopLoss: Teaching Agents to Predict Failure and Stop Early", https://arxiv.org/abs/2610.25525'
+  date: '2026-10-18'
+  task: Train a small external monitor (7B-8B, LoRA) on past runs' verifier outcomes to score the last
+    three action-observation pairs every three tool steps from step 5, with a stop threshold calibrated
+    so about 5% of successful calibration runs would be stopped; replay it against LLM-judge monitors,
+    charging monitoring cost and lost successes
+  effect: 'Change in cost per retained solve, successes retained and failing runs stopped: SWE-bench Verified
+    with GPT-5.6 Luna -4.5%, 99.0%, 5.0%; Verified with Claude Sonnet 4.6 +0.2%, 100.0%, 0.0%; SWE-bench
+    Pro subset with Luna -24.2%, 72.2%, 43.5%; Pro with Sonnet -30.6%, 91.6%, 19.8%; a Qwen3-8B monitor
+    on Pro with Sonnet -48.1%, 83.2%. Every LLM-judge policy cost more per retained solve than the monitor
+    in all four settings (e.g. +116.8% for GPT-5.6 Sol on Verified with Luna). The tool-step count alone
+    ranked failures at chance (tier AUC 0.471 to 0.528). Stopping lowers cost per solve only when the
+    share of execution avoided exceeds monitoring cost plus the false-kill rate.'
+  conditions: Trained on GPT-family SWE-rebench runs in the Terminus-2 scaffold; 425 Verified and 213
+    Pro (three repositories) stopping runs per executor; replay, not live; the abstract's 31% and 48%
+    savings kept 91.6% and 83.2% of successes; learned cues transferred only partly to Claude; the authors'
+    method
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.3; §4.1 Table 1; §4.2 Table 2; §5.2; §5.3
 related:
 - 7.b.iii
+- 9.b.i
 - 5.a.i
+- 7.b.iv
+- 2.b.i
+- 7.b.ii
+- 9.a.i
 absorbs:
 - legacy_id: P28
   name: Infinite-loop prevention by hashing recent calls
@@ -183,3 +485,17 @@ provenance:
   sub_type: termination
   harness_role: control_loop
   action: add
+caveats: 'Most of the measured evidence is small, bundled or from single runs: the desktop study reports
+  single point estimates with fixed, unswept thresholds and an LLM judge inside its loop breaker; the
+  production A/B test bundles loops with other misbehaviors and judges recovery with an LLM; the stuck-stop,
+  reminder and blocker controls ran once on one benchmark with an 8B open model under aggressive 4,096-token
+  summarization; and VeRO''s items come from bundled optimizer runs. Stopping is the least supported part:
+  ending stuck runs lost 3.4 points on that small model, a rule-based abandon never fired for a frontier
+  terminal agent across 63 runs, advisory controllers raised cost with no gain on 21 tasks, and a learned
+  stop monitor saved 4.5% for one agent and nothing for another, so treat the stop as a backstop to test.
+  Repetition is not failure: identical repeats were rare after tool faults while retries with changed
+  arguments were common, blind retries were as frequent in passing coding runs as in failing ones, and
+  the one fix that removed most loops in the summarization study was training on the agent''s own loops
+  (57.3% to 6.1%), not a harness rule. Gains depend on model and budget, and newer is not safer: a loop-prone
+  model gained up to 4.24 points from forced changes where a strong one gained 0.04 at 100 steps, and
+  in production Claude Opus 4.5 looped more often than Claude Sonnet 4.5 (3.59% against 2.18%).'

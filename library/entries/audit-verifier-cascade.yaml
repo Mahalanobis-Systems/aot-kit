@@ -16,47 +16,110 @@ domains:
 - general
 evidence_domains:
 - reasoning
+- judging
+- data-analysis
 categories:
 - verification.spend
 - topologies.escalate
-summary: 'When a cheap model''s outputs are accepted or escalated by a verifier, measure true error on
-  a small gold-labeled sample outside the verifier: metrics measured through the verifier showed about
-  3% error while true error was 14-32%. A frontier verifier cuts misses but escalates more than the true
-  error rate, erasing the saving. Never train the cheap model on verifier rejects or accepted outputs.'
-how: 1. Label a rolling sample (e.g. 100 cases a week) by hand or by the environment. 2. Score the cascade's
-  delivered answers on it, separately from the verifier's own accept rate. 3. Alert when true error diverges
-  from verifier-measured error.
+summary: 'Check a verifier-gated cascade against a small human-labeled sample the verifier never sees:
+  the verifier''s own numbers can hide most of the error. In one study the error measured through the
+  verifier stayed near 3% while true error swung 14-32%, and in a production text-to-SQL pipeline a judge
+  nobody had checked agreed with human labels at kappa 0.04 on the cases it flagged (0.42 on a random
+  sample). A frontier verifier cuts misses but escalates more than the true error rate, erasing the saving;
+  never train the cheap model on verifier rejects or accepted outputs. The verifier''s labels cannot replace
+  the gold sample (when it is no more accurate than the model it checks, they can at most halve the gold
+  labels needed), and the verifier itself drifts with silent version and prompt changes, so keep a frozen
+  human-labeled anchor set as well.'
+how: '1. Start from the baseline: record the cascade''s error as measured through the verifier (accept
+  and escalation rates, error on accepted items as the verifier sees it) and its cost per item, and run
+  the single strong model on the same traffic as the comparison arm. 2. Label a rolling sample (e.g. 100
+  cases a week) of delivered answers by hand or by the environment, drawn at random from live traffic
+  and stratified by the verifier''s verdict (accepted, escalated) or its confidence, with each stratum''s
+  share set in proportion to its size: in one study 200 labels gave an RMSE of 2.46 points with proportional
+  allocation against 4.56 with equal labels per stratum. Never build the gold set only from cases the
+  verifier flagged: a production judge''s agreement with humans was kappa 0.04 on such a set and 0.42
+  on a uniform-random one. Have two people label at least part of it and adjudicate, since gold is noisy
+  too (pre-consensus kappa 0.87 on 200 cases in that audit, and 21.7-25.5% of one public benchmark''s
+  expert-written gold SQL were flagged as candidate errors). 3. Score the cascade''s delivered answers
+  on that sample separately from the verifier''s own accept rate: true error per stratum and overall (weighted
+  by stratum size) with a 95% interval, plus the verifier''s miss rate (wrong answers it accepted) and
+  false-reject rate. In one study the verifier-measured error stayed near 3% while gold error on 300 items
+  swung 14-32%; in the production audit even the repaired judge''s raw faithful rate (84.3%) moved to
+  about 90.6% once reweighted with a 200-case random sample. 4. Use the verifier''s labels only through
+  a bias-corrected estimator (prediction-powered inference, or a correction by the miss and false-reject
+  rates measured on the gold sample), and do not count on them to shrink the gold sample: when the verifier
+  is no more accurate than the model it checks, no unbiased method can cut the gold labels needed by more
+  than half, and in one study a sensitivity and false-positive correction needed fewer human labels than
+  a plain random audit for only 6 of 56 model-verifier pairs on MMLU-Pro and none on MMMU-Pro. 5. Keep
+  the gold sample out of everything it audits: no verifier prompt or threshold tuning, judge fine-tuning
+  or student training on it, and never train the cheap model on verifier rejects or accepted outputs (naive
+  fine-tuning on rejects collapsed the student in every tested setting). 6. Refresh and alert. Re-draw
+  the sample after every student, verifier, prompt or schema change, since the verifier''s blind spot
+  grows as the student gets stronger, and pin the verifier to a dated model snapshot. Keep a frozen human-labeled
+  anchor set that the current verifier re-scores on a schedule, to tell verifier drift from cascade drift:
+  a silent judge version bump was detected in 60 of 60 runs with 200 anchors re-scored every 5th item,
+  but in 4 of 60 with 50 anchors every 20th. Alert when true error diverges from verifier-measured error
+  using a sequential (anytime-valid) test, not a rolling z-test re-run on every new label, which false-alarmed
+  on 75% of drift-free streams; monitor per stratum, because one pooled monitor never detected a drift
+  confined to one stratum. 7. Measure with an A/B of the cascade against the single strong model, both
+  scored on the same gold sample: true error with its interval, cost per item, and escalation rate against
+  the true error rate (a frontier verifier escalated 46% of hard MATH queries against a 39% true error
+  rate in one study).'
 detect:
   static: a cheap model whose outputs are accepted or escalated by a verifier model, with error measured
-    only through the verifier
-  traces: escalation rate against the eval's true error rate
-  evals: no gold-labeled sample scored independently of the verifier
+    only through the verifier; a verifier called by a floating model alias, or its prompt changed with
+    no re-audit
+  traces: escalation rate against the eval's true error rate; verifier accept rate shifting after a verifier
+    model or prompt change while the generator is unchanged
+  evals: no gold-labeled sample drawn at random from live traffic and scored independently of the verifier,
+    or a gold set drawn only from cases the verifier flagged
 impact:
   quality:
     effect: improves
     size: medium
-    when: 'reveals hidden error: ~3% through the verifier against 14-32% true (Sep 2026)'
+    when: 'reveals hidden error: ~3% through the verifier against 14-32% gold (Rajput, Sep 2026); a production
+      judge never checked against humans agreed at kappa 0.04 on flagged cases and 0.42 on a random sample,
+      and the audit replaced it with one at 0.72 and 0.94 (Liu, Sep 2026)'
     basis: evidence
   cost:
     effect: degrades
     size: small
-    when: labeling the audit sample
+    when: 'labeling the audit sample: 200 gold labels gave an RMSE of 2.46 points with proportional allocation,
+      and verifier labels saved human labels for only 6 of 56 model-verifier pairs (Choi, Oct 2026); at
+      most a factor-two saving when the verifier is no more accurate than the model it checks (Dorner,
+      Oct 2024); a drift monitor with 200 human anchors ran at about 0.64 of the cost of strong-judging
+      every item (Li, Jun 2026)'
     basis: evidence
   performance:
     effect: none
-    basis: evidence
+    when: the audit labels a sample off the serving path; no source measures serving latency
+    basis: assessment
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: 'an independent record of true error that can say whether the cascade or the verifier changed:
+      a frozen human anchor set attributed a silent judge version bump in 60 of 60 runs and a stricter
+      judge prompt in 110 of 120 (Li, Jun 2026); re-audit against fresh gold on each schema or model-snapshot
+      change (Liu, Sep 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
+  - governance
 measure:
 - method: monitor
-  how: true error on a rolling gold-labeled sample
+  how: true error of delivered answers on a rolling gold sample drawn at random from live traffic and
+    stratified by verifier verdict, with its 95% interval, next to the verifier-measured error; the verifier's
+    miss and false-reject rates on that sample; a frozen human-labeled anchor set re-scored by the verifier
+    on a schedule, alerting with a sequential test, per stratum
 - method: production-test
   tier: 4
-  how: A/B of the cascade against the single strong model
+  how: 'A/B of the cascade against the single strong model, both scored on the same gold sample: true
+    error, cost per item, and escalation rate against true error rate; repeat after each student, verifier
+    or prompt change'
 evidence:
 - source: 'Rajput et al., "Cheap Verifiers, Large Blind Spots: Measuring the Reliability Cost of Cost-Saving
     Cascades", https://arxiv.org/abs/2609.01345'
@@ -195,9 +258,105 @@ evidence:
   direction: supports
   measured: true
   locator: §5.2 (2) Table 3; Appendix Table 20
+- source: 'Harine Choi, Chenchen Kuai, Zihao Li et al., "From Self-Confidence to Statistical Accuracy:
+    Scaling Human-in-the-Loop Evaluation with Direct and LLM-Assisted Auditing", https://arxiv.org/abs/2610.35698'
+  date: '2026-10-26'
+  task: 'Estimate a model''s true accuracy from a partial human audit: sample outputs stratified by the
+    model''s self-reported confidence (equal, proportional or Neyman allocation), or calibrate an LLM
+    verifier''s sensitivity and false-positive rate on human labels and correct its accept rate; compare
+    the human labels each route needs at equal precision, and its cost'
+  effect: 'Stratified audit of GPT-5.5 on MMLU-Pro (true accuracy 80.54%): bias near zero at every budget;
+    with 200 labels, RMSE 4.56 points with equal allocation per stratum against 2.46 proportional and
+    2.41 oracle Neyman. Verifier-assisted estimation: only 6 of 56 MMLU-Pro target-verifier pairs need
+    fewer human labels than direct random auditing (label-efficiency ratio above 1), and none on MMMU-Pro.
+    Claude Sonnet 5 verifying GPT-5.5: judgment accuracy 0.84 but label efficiency 0.25; GPT-5.5 verifying
+    Llama-3.1-8B: 0.89 and 1.45, the best pair. GPT-5.5 as verifier on MMMU-Pro: accuracy 0.700, sensitivity
+    0.844, false-positive rate 0.402. Break-even human-label cost for the six efficient pairs about $0.09
+    to $21.55 per question.'
+  conditions: 8,000 MMLU-Pro and 1,000 MMMU-Pro questions with exact answer keys used to simulate partial
+    human audits, 5,000 replications per budget (200 to 3,200 labels); 8 models as targets and cross-verifiers
+    (56 directed pairs; 413,562 and 55,971 judgments); idealized asymptotic comparison for a sensitivity
+    and false-positive-rate correction with class-conditional calibration allocation; human-label noise
+    and drift not modeled; API prices of Oct 10, 2026
+  direction: supports
+  measured: true
+  locator: §3.4-3.5; §4.3 Figure 3; §4.4 Figures 4-5; Appendices A-B
+- source: Haowei Liu, Hsin-Tai Wu, Yi Fang, "Auditing and Repairing LLM-as-Judge Failures in a Production
+    Text-to-SQL Pipeline", https://arxiv.org/abs/2609.30290
+  date: '2026-09-09'
+  task: Audit the final LLM judge of a production pipeline that gates generated question-SQL pairs (feeding
+    an analyst tool and a fine-tuning corpus) against two-author human gold, on a disagreement-enriched
+    set and a uniform-random spot-check; test replacement judges, prompt fixes and judge ensembles
+  effect: 'Deployed gpt-4o-mini judge: Cohen''s kappa 0.04 [-0.02, 0.09] on 234 cases drawn mostly from
+    its flagged set and 0.42 [0.24, 0.58] on a 200-question uniform-random spot-check; it over-flagged
+    77.1% of human-faithful cases in the enriched set. Replacements (enriched / random): gpt-5.4-mini
+    0.63 / 0.67, Qwen3.6-27B 0.72 / 0.94, Claude Opus 4.7 0.71 / 0.93; the best prompt variant for gpt-4o-mini
+    reached 0.37. Pairing the weak judge with a stronger one lowered kappa (AND 0.572 against 0.631 alone;
+    OR 0.067); three strong judges with unanimity routing reached 0.788 at 89.7% auto-coverage. The replacement
+    Qwen3.6-27B judge''s raw faithful rate on the 1,482 accepted records was 84.3%, about 90.6% after
+    stratified reweighting with the random spot-check. Gold quality: pre-consensus annotator kappa 0.87
+    (7 of 200 disagreements); an independent annotator agreed with the consensus at 0.85 on the 234 cases;
+    the audit flagged 23-27 of 106 (21.7-25.5%) of BIRD-financial''s expert gold SQL as candidate gold
+    issues. The team re-audits each judge against fresh gold whenever the schema or a model snapshot changes.'
+  conditions: One English telecom deployment over a 604,146-row table, 1,482 accepted pairs; gold by two
+    authors (234 + 200 + 96 cases); Qwen-vs-Opus head-to-head inconclusive at n=96 (McNemar p=0.082);
+    cross-domain checks on BIRD-financial (106 questions) and four Spider databases
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §4; §5 Tables 2-3; §6 Table 4; §7 Table 5; §8; §9
+- source: 'Yitao Li, "Who Drifted: the System or the Judge? Anytime-Valid Attribution in LLM Evaluation
+    Pipelines", https://arxiv.org/abs/2606.15474'
+  date: '2026-06-13'
+  task: Monitor an LLM product with a cheap judge on every item and a budgeted strong judge, and detect
+    drift in the judge itself with a fixed human-labeled anchor set re-scored by the current judge at
+    a steady interleave and watched by an anytime-valid e-process; compare with a rolling z-test and calibrated
+    Page-Hinkley on the same anchor stream
+  effect: 'Real silent version bump (gemini-3.1-pro to 3.5-flash, mean shift up to +0.072): detected as
+    judge drift in 4/60 runs with 50 anchors at 1 in 20 items, 37/60 with 150 at 1 in 8 and 60/60 with
+    200 at 1 in 5 on HelpSteer2 (4, 23 and 50 of 60 on TL;DR), never charged to the system. Real stricter
+    scoring prompt: correctly attributed on 110 of 120 contaminated runs at guard width 300 on HelpSteer2
+    and 240/240 on TL;DR. On the same anchor stream a rolling z-test re-run on every observation false-alarmed
+    on 75% (HelpSteer2) and 67% (TL;DR) of drift-free streams, with 16/60 and 10/60 alarms before the
+    change; calibrated Page-Hinkley held false alarms at 0.08 / 0.03 but caught the version bump in 8%
+    / 40% of runs; the e-process false-alarmed at 0.03 and detected 97% (HelpSteer2) and 83-100% (TL;DR)
+    of the three judge drifts. A single pooled prediction-powered monitor never detected a mild drift
+    confined to one stratum (censoring 1.00 at strong-judge sampling rates 0.1-0.3), where the per-stratum
+    monitor did. The featured monitor cost about 0.64 of strong-judging every item; a cheap configuration
+    at 0.21 missed most system regressions.'
+  conditions: HelpSteer2 (1,498 items, 5 rubrics, 6 topics) and TL;DR (1,498 items, 4 axes, 5 subreddits);
+    human ratings as anchor labels; Gemini judges; streams of 1,200 items with the change at 300, 60 seeds;
+    synthetic system drift and one synthetic judge drift besides the two real ones; one author
+  direction: supports
+  measured: true
+  locator: Abstract; §3.2; §4.2; §5.1-5.5 Tables 1-5; §6
+- source: 'Florian E. Dorner, Vivian Y. Nastl, Moritz Hardt, "Limits to scalable evaluation at the frontier:
+    LLM as Judge won''t beat twice the data", https://arxiv.org/abs/2410.13341'
+  date: '2024-10-17'
+  task: Bound how many ground-truth labels any debiasing method (prediction-powered inference or any other
+    unbiased estimator) can save by combining a small gold sample with many LLM-judge labels, and measure
+    the best achievable saving on MMLU and MT-Bench
+  effect: 'When the judge''s agreement with ground truth is no higher than the evaluated model''s score
+    (both at least 0.5), no unbiased estimator using the judge''s labels is worth more than twice the
+    ground-truth labels (sample-efficiency factor at most 2). Empirically the best possible factor stayed
+    below 2 on MMLU and on MT-Bench (GPT-4 as judge), and was often substantially smaller, except when
+    flagship models judged the much weaker Llama-2-7b on MMLU; with Llama-3.1-405b''s answer probabilities
+    as a soft judge it stayed below 2 for stronger models and slightly exceeded 2 for Llama-3-70b. Per
+    MMLU subtask, factors above 2 occurred in 6 of 57 subtasks (Claude judging GPT-4) and 1 of 57 (Llama-3.1-405b
+    judging GPT-4). High agreement does not bound bias: GPT-4 (84% accurate) and Llama-3-70b (79%) as
+    judges strongly perturbed MMLU model rankings, and models a few points apart would need agreement
+    above 99% to be ranked reliably from judge labels alone.'
+  conditions: Binary scores; IID gold and judge samples; non-adaptive estimators; MMLU predictions from
+    the HELM leaderboard; MT-Bench expert labels with GPT-4 judgments; TruthfulQA in the appendix; mostly
+    theory with upper bounds computed from empirical correlations
+  direction: supports
+  measured: true
+  locator: Abstract; §2.1-2.2; §3.2-3.7 (Theorems 5-6, Corollary 7, Figures 1-3); §4 Figure 4; Appendix
+    B.3 Figure 8
 related:
 - 6.a.i
 - 9.c.ii
+- 9.b.ii
+- 7.c.ii
 provenance:
   layer: target
   origin: observed
@@ -205,3 +364,13 @@ provenance:
   sub_type: other
   harness_role: other
   action: add
+caveats: The audit practice still rests mainly on one study on GSM8K and MATH (Rajput et al.) and one
+  production text-to-SQL audit whose gold came from two of its authors (234 enriched and 200 random cases);
+  neither compares a cascade run with an audit against one without. The label-count results come from
+  multiple-choice benchmarks with exact answer keys (simulated audits on MMLU-Pro and MMMU-Pro; MMLU and
+  MT-Bench for the factor-two bound) and assume clean, IID gold, while real gold is noisy (annotator kappa
+  0.87; 21.7-25.5% candidate errors in one expert-written benchmark) and rare failures need far larger
+  samples. The 6-of-56 result is an idealized comparison for one correction method; prediction-powered
+  estimators with a tuned weight are never worse than the gold labels alone, so verifier labels can still
+  tighten an interval, just not by much. The drift-monitor results come from one author, two datasets
+  and one model family as judge, with a strong LLM judge rather than humans scoring the main stream.

@@ -23,28 +23,51 @@ evidence_domains:
 - incident-response
 categories:
 - orchestration.route
-summary: 'Split a task that decomposes cleanly into fixed steps into a chain of model calls, one goal
-  per call, with a gate between steps: a schema check, an assertion, or a run against the real system,
-  and an LLM check only for subjective criteria. On a gate failure, rerun only the failed step with its
-  output and the error. The trade is latency and tokens for accuracy and inspectable intermediate outputs;
-  it pays on tasks beyond what one call does reliably, and less as models improve.'
-how: '1. Start from a single call tuned with the same effort; chain only if the task splits cleanly into
-  fixed steps. 2. Give each step one goal and a handoff the next step can validate against a schema. 3.
-  Gate in code first: schema validation or assertions; where you can, run the output against the real
-  system (execute the query) instead of asking the model whether it is valid; use an LLM check with hard
-  thresholds only for subjective criteria. 4. On a failure, rerun only the failed step with its previous
-  output and the error message; cap retries, then stop or continue with a warning; keep outputs that already
-  passed. 5. Run new gates in warn-only mode first and review each halt for false alarms. 6. Log each
-  step''s output and gate result; compare the chain with the single call on success, tokens and latency,
-  per model.'
+summary: 'Split a cleanly decomposable task into a fixed chain of model calls with a code check between
+  steps, and rerun only the step that fails. Give each call one goal; gate with a schema check, an assertion
+  or a run against the real system, and use an LLM check only for subjective criteria. The trade is latency
+  and tokens for accuracy and inspectable intermediate outputs, and it pays only on tasks beyond what
+  one call does reliably: on coding tasks a current strong model mostly solved alone, a three-call chain
+  cost 3.2 times as much and took 3.2 times as long for no gain, while on recurring tasks a fixed program
+  was far cheaper and more consistent than an agent loop. Where a chain beat one call, the gain came mostly
+  from the split and its focused prompts rather than from the gate (one study, small models), and gates
+  misfire: 37% of halts were false alarms in one study, and about half of the failures on markdown-fenced
+  JSON in another were valid once the fence was stripped.'
+how: '1. Start from a single call tuned with the same effort on the same model, and for a recurring task
+  also from the agent loop; chain only if the task splits cleanly into fixed steps and the single call
+  fails on it. On coding tasks a current strong model mostly solved alone, a planner, coder and reviewer
+  chain cost 3.2 times as much, took 3.2 times as long and solved no more; a cheap model in the planner
+  and reviewer roles left it dearer, slower and 8.1 points less accurate than the single call, so to save
+  cost choose the model per task first (1.b.i). Against an agent loop on recurring analytics tasks, a
+  fixed program with model calls only at judgment points used about 70 times fewer input tokens and a
+  third of the runtime, and was correct on every run. 2. Give each step one goal and a typed handoff the
+  next step can validate against a schema, and validate it right after the call that produced it, before
+  the next call: in one study an unvalidated intermediate failed only at final assembly, after the next
+  call had already run. 3. Gate in code first: schema validation or assertions; where you can, run the
+  output against the real system (execute the query) instead of asking the model whether it is valid;
+  use an LLM check with hard thresholds only for subjective criteria. Strip format wrappers before validating
+  and record what remains: in one study 48.0% of failures on markdown-fenced JSON validated once the fence
+  was removed. 4. On a failure, rerun only the failed step with its previous output and the specific violation,
+  not a generic parse error: in that study all 24 of Claude Haiku 4.5''s steps that exhausted their retries
+  ended on a length cap, and the parse error returned for their fenced attempts never named it. Cap retries (up to three further attempts completed 948 of
+  973 runs there), and never rerun the whole chain on a deterministic validation error (six calls per
+  injected fault, then a silently dropped item, in another study). 5. When retries run out, stop or continue
+  with a warning, keep outputs that already passed, and record the failure. 6. Run new gates in warn-only
+  mode first and review each halt for false alarms. 7. Log each step''s output, gate result and attempts;
+  compare the chain with the single call (and with the agent loop where it is the alternative) on success,
+  tokens, cost per solved task and latency, per model.'
 detect:
   static: A fixed sequence of model calls with checks between them rather than one prompt.
-  traces: Stage outputs; gate failures; retries per stage; the whole chain rerun when one step fails.
+  traces: Stage outputs; gate failures by category (format-only, such as valid JSON inside a markdown
+    fence, against schema or value violations); retries per stage; the whole chain rerun when one step
+    fails; intermediates validated only at the end of the chain.
   evals: Per-stage and end-to-end quality.
   judge: Rate each stage's output.
   probes:
     what: Inputs that should fail at each gate.
-    construct: One adversarial input per gate condition.
+    construct: 'One adversarial input per gate condition, plus faults injected at each step''s output
+      with a scripted model (out-of-range values, wrong types, truncated or fenced JSON): check which
+      step flags each one and how many calls it costs.'
   primary:
   - static
   - traces
@@ -53,20 +76,27 @@ impact:
     effect: improves
     size: medium
     when: 'tasks beyond what one call does reliably: well-formatted JSON 37.6% to 98.8% with assertions
-      and retry (DSPy Assertions, 2023); over a tuned single call, orchestration gained at most 4.6 points
-      (Leins, Aug 2026); 37% of gate halts were false alarms in one study (Elina, Sep 2026)'
+      and retry (DSPy Assertions, 2023); a fixed program 1.00 accuracy against 0.97 for a skill-guided
+      agent loop (Sabouri, Oct 2026); none where a strong reasoning model already succeeds: -0.5 points
+      pass@1 for a three-call chain (Zettl, Oct 2026); over a tuned single call, orchestration gained
+      at most 4.6 points (Leins, Aug 2026); the split gave up to +0.075 F1 and the typed gate -0.003 to
+      +0.013 (Zuppardo, Oct 2026); 37% of gate halts were false alarms in one study (Elina, Sep 2026)'
     basis: evidence
   cost:
-    effect: degrades
+    effect: mixed
     size: medium
-    when: 'more calls: orchestration took about 2 to 4 times the tokens of a single call (Leins, Aug 2026);
-      a fixed chain that reran downstream steps cost 1,632 tokens per retry against 904 for one prompt,
-      and 436 when only the failed step reran (Asthana, May 2026)'
+    when: 'against one call, more calls: a three-call chain 3.20 times the cost (Zettl, Oct 2026), orchestration
+      about 2 to 4 times the tokens (Leins, Aug 2026); a fixed chain that reran downstream steps cost
+      1,632 tokens per retry against 904 for one prompt, and 436 when only the failed step reran (Asthana,
+      May 2026); against an agent loop on recurring tasks, 321 input tokens per run against 23,138 (Sabouri,
+      Oct 2026)'
     basis: evidence
   performance:
-    effect: degrades
+    effect: mixed
     size: medium
-    when: serial calls; with gates, one model got faster and the other markedly slower (Dhage, Aug 2026)
+    when: 'against one call, serial calls: 3.20 times the wall time for a three-call chain (Zettl, Oct
+      2026); with gates, one model got faster and the other markedly slower (Dhage, Aug 2026); against
+      an agent loop on recurring tasks, 1.5 s against 4.4 s per run (Sabouri, Oct 2026)'
     basis: evidence
   security:
     effect: improves
@@ -88,11 +118,13 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired eval of the chain against a single call tuned with the same effort, per model: success,
-    tokens, latency'
+  how: 'paired eval of the chain against a single call tuned with the same effort (and against the agent
+    loop for recurring tasks), per model and reasoning effort, several runs per arm: success, tokens,
+    cost per solved task, latency'
 - method: monitor
-  how: gate failure and retry rate per step; false-alarm rate on reviewed halts; each error traced to
-    the step that caused it
+  how: 'per step: first-attempt gate pass rate, attempts per completed step, retry and halt rate, and
+    failure category (format-only, schema, value range); false-alarm rate on reviewed halts; each error
+    traced to the step that caused it'
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -215,6 +247,83 @@ evidence:
   direction: mixed
   measured: true
   locator: Abstract; §6
+- source: 'Andreas Zettl, Diego Gosmar, "The Coordination Tax and the Heterogeneity Dividend: Break-Even
+    Conditions for Multi-Agent LLM Pipelines", https://arxiv.org/abs/2610.37700'
+  date: '2026-10-25'
+  task: A planner, coder and reviewer chain of three model calls (as direct API calls, or over an agent
+    protocol) against one call to the same strong model, one call to a cheap model, a router, and the
+    chain with the cheap model as planner and reviewer
+  effect: 'Plain chain against one strong call: 3.20 times the cost and 3.20 times the wall time per task,
+    pass@1 -0.5 points (95% CI -3.2 to +2.5, p=0.31); over the protocol 3.22 and 3.24 times, -1.5 points.
+    Class-level tasks: single call 90.2%, plain chain 89.4%. With the cheap model as planner and reviewer:
+    0.39 times the uniform chain''s cost and -6.7 points; against the single strong call 1.27 times the
+    cost, 2.60 times the wall time and -8.1 points. Decomposition inflated output tokens 2.95 times and
+    input tokens 4.89 times. "The saving lies in choosing a model per task instead": an oracle choice
+    between the two single calls solved 94.3% of runs.'
+  conditions: Claude Opus 5.5 and Claude Haiku 5.5 at medium reasoning effort; 135 tasks (50 HumanEval,
+    85 ClassEval), 3 runs per task and condition, 2,430 runs; the reviewer's code is graded and there
+    is no code gate between steps; hypotheses fixed before data collection
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.1; Tables 2-3; §5.2-5.3
+- source: 'Sadra Sabouri, Hosein Hasanbeig, Adam Sage, Shreya Sinha, Cale Darling, Ashish Tiwari, Katie
+    Garms, Souti Chattopadhyay, Sumit Gulwani, "FlashScript: Compiling Recurring Agent Workflows into
+    Reusable Neuro-Symbolic Programs", https://arxiv.org/abs/2610.33876'
+  date: '2026-10-24'
+  task: 'Compile a successful agent run into a fixed program: actions and data transformations as code,
+    instance values as parameters, model calls only for decisions that need judgment (guarded by cached
+    values and rules); compared with a vanilla agent loop and a skill-guided agent on the same tasks'
+  effect: Accuracy 1.00 for the program against 0.97 for the skill-guided agent and 0.89 for the vanilla
+    agent; same tool calls as the first run in every run (agents 0.97 and 0.72); 321 input tokens per
+    run against 23,138 and 21,986; runtime 1.5 s against 4.4 s and 4.3 s. On composite tasks of up to
+    ten independent subtasks the program was correct in every run against about 23% for the skill-guided
+    agent, and it solved all 108 unseen instances. Programs written from the authors' first, simpler instructions
+    reached 0.96 and 0.88.
+  conditions: Claude Haiku 4.5 at temperature 1 for the agents and the program's calls; programs written
+    by Claude Code (Opus 5.5); WorkBench Analytics, 120 tasks from 12 templates, three runs each; preliminary
+    results
+  direction: supports
+  measured: true
+  locator: Abstract; §IV, Tables I-II
+- source: Amit Verma, "Why Does Structured Output Fail? An Empirical Study of Prompt-Enforced Pydantic
+    Schemas Across Nine LLMs", https://arxiv.org/abs/2610.33949
+  date: '2026-10-24'
+  task: Three-step chain (identify, gather, answer) with a Pydantic schema gate after each call; on a
+    failure, retry that step with the validation error appended, up to 3 further attempts; failures classified
+    by a deterministic taxonomy
+  effect: 'Attempt failure rate 28.2% overall, from 3.5% (gpt-5.6-sol) to 66.1% (Claude Haiku 4.5); 75.7%
+    of first attempts validated; under the retry loop 948 of 973 runs completed all three steps, Haiku
+    4.5 at 9.36 attempts per completed run. Markdown-fenced JSON was the most common failure: of 681 fenced
+    failures, 48.0% validated once the fence was stripped, the rest hid mostly length violations. For
+    Haiku 4.5, all 24 steps that exhausted their retries ended on a length cap; the parse error returned
+    for their fenced attempts never mentioned the cap.'
+  conditions: nine OpenAI and Anthropic model configurations (gpt-4o, gpt-4o-mini, GPT-5.6 Luna, Sol and
+    Terra, Claude Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus 4.8); HotpotQA and FinanceBench; 3,997 attempts;
+    prompt-enforced schemas only; every retry carries the error, so feedback and a further attempt are
+    not separated
+  direction: supports
+  measured: true
+  locator: Abstract; Table 2; §4.1; §4.4, Table 4; §6
+- source: 'Maria Gabriela Alves Zuppardo, Vinicius Cardoso Garcia, "Beyond Accuracy: Disentangling Decomposition
+    from Typed-State Quality Assurance in Multi-Agent LLM Pipelines", https://arxiv.org/abs/2610.31280'
+  date: '2026-10-22'
+  task: 'Requirements classification then MoSCoW prioritization: one call, against a two-call chain passing
+    an unvalidated intermediate, against the same chain with a Pydantic-validated typed state between
+    the calls; plus a fault-injection campaign through each architecture'
+  effect: Macro F1 gain of the two-call chain over one call +0.020 to +0.075 in 4 of 6 conditions (-0.023
+    in one); the typed gate added -0.003 to +0.013, significant in one of six. No out-of-range value occurred
+    in any of the 18 runs. Of 13 injected faults, the gated chain flagged the six value-range faults at
+    the step that produced them (2 calls per item); the unvalidated chain failed only at final assembly
+    and, because the shared retry wrapper retried the whole chain on a deterministic validation error,
+    used 6 calls and dropped the item without a failure record. On gpt-4.1-mini the chain beat one call
+    by +0.019 (PT, p=0.043) and +0.034 accuracy (EN, p<10^-4), again from the split (typed-gate difference
+    +0.006 and -0.003).
+  conditions: qwen2.5:7b, llama3.1:8b, mistral:7b (Q4, temperature 0), English and Portuguese, PROMISE
+    NFR+ (625 requirements), 18 conditions; a supplementary gpt-4.1-mini run, one execution per condition;
+    associative design (prompts, call count and staged context are confounded)
+  direction: mixed
+  measured: true
+  locator: Abstract; Tables 4, 5 and 9; §6.5; §6.6, Table 10
 assessment:
   qa:
     unit: Each stage in isolation with fixtures; gate logic.
@@ -256,6 +365,8 @@ related:
 - 9.a.i
 - 7.c.iii
 - 5.c.i
+- 1.b.i
+- 7.d.iii
 provenance:
   layer: target
   origin: observed
@@ -263,9 +374,12 @@ provenance:
   sub_type: orchestration
   library_group: Workflow Patterns
   library_source: master
-caveats: 'Chains cost latency and tokens, and a fixed chain that reruns downstream steps on a failure
-  can cost more per retry than one prompt; rerun only the failed step. Gates misfire: in one study 37%
-  of halts were false alarms, enough to turn a gain into a loss. The benefit depends on the model and
-  shrinks as models improve: Anthropic dropped a step-by-step breakdown when a stronger model arrived,
-  and tuned single calls came within a few points of orchestration. Several studies are small (one app,
-  one run).'
+caveats: 'Chains cost latency and tokens: on tasks a current strong model already solved, a three-call
+  chain cost 3.2 times as much and took 3.2 times as long for no gain, and a chain that reruns downstream
+  steps on a failure can cost more per retry than one prompt. Gates misfire and can mislead retries: in
+  one study 37% of halts were false alarms, enough to turn a gain into a loss; in another, a markdown
+  fence hid the real violation from the retry message. The benefit depends on the model and shrinks as
+  models improve: Anthropic dropped a step-by-step breakdown when a stronger model arrived, tuned single
+  calls came within a few points of orchestration, and where a chain did win, the typed gate added at
+  most 0.013 F1 over the split alone (7-8B models, one dataset). Several studies are small (one app, one
+  run, one benchmark category), and the agent-loop comparison is a single preliminary study on one model.'

@@ -71,6 +71,8 @@ How a result is bounded decides whether bounding helps: a cut by character posit
 - `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 - `aot-kit:multi-window-task-state` (4.b.iii, Keep plan, progress and results in files when work outlives one context window)
+- `aot-kit:choose-retriever` (8.a.i, Choose the retriever by corpus size and question type)
+- `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
 - `aot-kit:link-large-schemas` (8.b.ii, Link large schemas by exploration: start broad, grow the linked set with probing queries, favor recall)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 

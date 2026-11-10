@@ -18,40 +18,110 @@ evidence_domains:
 - web-research
 - code-generation
 - data-analysis
+- planning
+- tool-use
+- conversation
 categories:
 - topologies.parallel
 - context.isolate
-summary: 'Spawn parallel sub-agents when the work splits into independent, breadth-first parts with little
-  shared context; expect about 15x the tokens of a chat and up to 90% less wall-clock. Default to a single
-  agent otherwise (most coding): parallel workers make conflicting implicit decisions, and decompose-first
-  planning scored below a single agent on data questions. When delegating, share full traces, give each
-  sub-agent an objective, output format, tools and boundaries, have it write outputs to storage and return
-  references, and re-verify what it reports.'
-how: '1. Check the task shape: independent parts, little shared context. 2. If so, prototype a lead plus
-  3-5 parallel sub-agents with the delegation rules above. 3. Production A/B against the single agent
-  on cost, latency and quality.'
+summary: 'Fan work out to parallel sub-agents only when it splits into independent parts, and check that
+  one agent given the same budget doesn''t do as well. In a matched-budget study across six benchmarks,
+  multi-agent setups gained 80.8% on decomposable financial analysis but lost 39-70% on sequential planning
+  and 2-15% on SWE-bench Verified (mean change -0.3%), a role-split customer-service team lost to one
+  agent in 12 of 13 settings, and teams cost more (about 15x a chat''s tokens in one vendor''s research
+  system; 1.7-4.3x one agent''s cost on coding tasks) without always being faster (up to 90% less research
+  time, but 1.2-2.5x longer for a coordinated coding team). For code, split only with a lead that sees
+  every requirement and with explicit ownership and isolation: two parallel agents with conflicting requirements
+  passed jointly 16% of the time against 62% for one agent holding both, while a manager that split a
+  repository by its dependencies, gave each worker its own git worktree and merged through tests gained
+  about 6 points for Claude Sonnet 4.5. When delegating, give each sub-agent an objective, output format,
+  tools, boundaries and the files it owns, have it write outputs to storage and return references, and
+  re-verify what it reports.'
+how: '1. Start from one agent and check the task shape before splitting. Split only when the work has
+  many parts that are independent (no part needs another''s result or must follow another''s decisions),
+  share little context and can be checked separately: breadth-first research, one item per entity or file,
+  independent reviews, code modules with clear interfaces. Keep one agent for sequential work, conversations
+  with a single user and tasks it already does well: at a matched budget, multi-agent setups gained 80.8%
+  on decomposable financial analysis but lost 39-70% on sequential planning and 2-15% on SWE-bench Verified,
+  with gains shrinking once the single agent passed about 45%; a role-split customer-service team lost
+  in 12 of 13 settings, including the two where that 45% rule predicted a gain; and decomposing a text-to-SQL
+  question before looking at the data scored below a single agent. Run the single agent first at the budget
+  the team would get, and treat a threshold from a paper as a hint, not a rule. 2. Let one lead that sees
+  the whole task make the split, and give each sub-agent an objective, an output format, its tools and
+  boundaries, and the context it needs (the relevant trace, not a one-line task: vague tasks led research
+  sub-agents to duplicate work). For code, split along the dependency graph: group files with strong or
+  circular dependencies under one worker, list for each task the files it owns and the interfaces it consumes
+  and produces, mark shared files (package init files, configs) off-limits, and settle shared conventions
+  before workers start. Parallel coding agents that each saw only their own requirement passed jointly
+  16% of the time against 62% for one agent holding both; when agents agreed on an owner for the contested
+  code, conflicts fell from 67% to 18% of runs (61% pass against 29%). 3. Isolate writers and integrate
+  through checks. Give each coding worker its own branch and git worktree, merge into the main branch
+  only after the worker''s relevant tests pass, and have the worker that caused a merge conflict resolve
+  it: on paper reproduction, one shared workspace with files assigned by instruction scored 55.5% (single
+  agent 57.2%), separate worktrees 63.3%. Prefer read-only sub-agents (search, review, investigation)
+  wherever the task allows; they cannot make conflicting edits. 4. Have sub-agents write outputs (code,
+  reports, data) to storage and return references, and have the lead check each report against the artifact
+  before building on it (the stop-time check is 9.b.iii). Making delegation required raised the share
+  of planted issues that reviews reported (49.9% to 69.6%) but did not make their coverage claims honest:
+  50.3% of incomplete delegating reviews still explicitly overclaimed. 5. Cap the number of workers and
+  the team''s total budget, and log spend per worker. Start with a few workers (one research system runs
+  3-5 in parallel; one harness defaults to three concurrent children at depth 1): going from 4 to 8 coding
+  workers lowered the pass rate, turns grew from 7.2 for one agent to 27.7 for an orchestrated team, and
+  under a token ceiling 74% of one team''s loss came from runs that exhausted the budget. 6. Measure the
+  team against one agent at the same token or cost budget (and, where you can, one agent running the same
+  plan-and-review steps in one context), with several runs per arm on your own task mix split by task
+  shape: success, tokens and cost, wall-clock, conflict and rework rate (merge conflicts, overwritten
+  or redone work, parts that pass alone but fail together) and sub-agent reports later found wrong. Do
+  not assume parallel means faster: parallel sub-agents with parallel tool calls cut research time by
+  up to 90%, but a coordinated coding team ran 1.2-2.5x longer than one agent because its merges were
+  sequential and test-gated. Do not run one agent first and fall back to the team after it fails: in one
+  study that nearly added the two runtimes and costs.'
 detect:
-  static: a multi-agent design whose sub-tasks share context or depend on each other; or a single agent
-    on a breadth-first task with many independent parts
-  traces: sub-agents duplicating work or making conflicting decisions; failure rows labeled delegation-failure-subagent
-    or communication-failure-subagent; token use per task far above a single agent's
-  evals: single-agent against multi-agent on the same tasks
+  static: a multi-agent design whose sub-tasks share context or depend on each other, or whose planner
+    lacks the tools or context its workers hold; parallel coding workers sharing one working tree or without
+    stated file and interface ownership; or a single agent on a breadth-first task with many independent
+    parts
+  traces: sub-agents duplicating work or making conflicting decisions; merge conflicts, overwritten or
+    redone work, parts that pass their own tests but fail together; runs ending on budget exhaustion;
+    turns and tokens per task far above a single agent's; failure rows labeled delegation-failure-subagent
+    or communication-failure-subagent
+  evals: single agent against the team on the same tasks at the same token or cost budget, split by task
+    shape (independent breadth vs sequential), with wall-clock and conflict rate
+  probes:
+    what: 'Paired tasks at the same budget: one that splits into independent parts and one whose steps
+      depend on each other'
+    construct: Gather the same facts for N independent entities (breadth) and solve an N-step task where
+      each step needs the last (sequential); for code, give two requirements that touch the same function
+      or must share an interface; compare one agent with the team on success, tokens, wall-clock and conflicts
 impact:
   quality:
     effect: mixed
     size: large
-    when: +90.2% on breadth-first research (Jun 2025); below a single agent when sub-tasks depend on each
-      other (GATE, Jun 2026)
+    when: +90.2% on breadth-first research, not compute-matched (Hadfield, Jun 2025); at a matched budget
+      an orchestrated team +80.8% on decomposable financial analysis, -39% to -70% on sequential planning,
+      -2% to -15% on SWE-bench Verified, mean -0.3% over six benchmarks (Kim, Dec 2025); a role-split
+      customer-service team worse in 12 of 13 settings, weighted mean -28 points, under a matched token
+      ledger (Yang, Oct 2026); a worktree-isolated coding team +6.0 and +6.1 points for Claude Sonnet
+      4.5 (Geng, Mar 2026); parallel coding agents with conflicting requirements 16% joint pass against
+      62% for one agent, a lead delegating to sub-agents 58% (Mediratta, Oct 2026); decomposition-first
+      text-to-SQL below a single agent (GATE, Jun 2026)
     basis: evidence
   cost:
     effect: degrades
     size: large
-    when: about 15x the tokens of chat
+    when: about 15x the tokens of a chat (Hadfield, Jun 2025); 21.5 successes per 1,000 tokens for an
+      orchestrated team against 67.7 for one agent (Kim, Dec 2025); 1.7x to 4.3x one agent's cost on coding
+      tasks (Geng, Mar 2026); 1.4x to 3.1x the dollars per setting, level with one agent only at 5.5x
+      its tokens without a ceiling (Yang, Oct 2026); 1.18x to 1.58x one agent's tokens for a lead delegating
+      to sub-agents (Mediratta, Oct 2026)
     basis: evidence
   performance:
-    effect: improves
+    effect: mixed
     size: large
-    when: up to 90% less time with parallelism
+    when: up to 90% less research time with parallel sub-agents and parallel tool calls (Hadfield, Jun
+      2025); 25% less wall-clock on one coding build, three-run means, against a workflow that dispatched
+      sub-agents one at a time (Wogu, Oct 2026); a worktree-isolated coding team took 1.2x to 2.5x one
+      agent's runtime because merges are sequential and test-gated (Geng, Mar 2026)
     basis: evidence
   security:
     effect: unknown
@@ -59,10 +129,20 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: production-test
   tier: 4
-  how: A/B, single agent against multi-agent
+  how: 'A/B the team against one agent at the same token or cost budget (and one agent running the same
+    plan-and-review steps where feasible), several runs per arm, split by task shape (independent breadth
+    vs sequential): success, tokens and cost, wall-clock, conflict and rework rate (merge conflicts, overwritten
+    or redone work, parts that pass alone but fail together) and sub-agent reports later found wrong'
+- method: monitor
+  how: 'per production run: workers spawned, tokens per worker and in total against the team ceiling,
+    runs ending on budget exhaustion, wall-clock, merge conflicts and redone work, duplicated sub-tasks,
+    and lead corrections of sub-agent reports; re-run the A/B after a model change'
 evidence:
 - source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
     "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
@@ -72,7 +152,10 @@ evidence:
     single-agent Claude Opus 4 by 90.2% on our internal research eval" (n not given; "excel especially
     for breadth-first queries"). Cost: "agents typically use about 4x more tokens than chat interactions,
     and multi-agent systems use about 15x more tokens than chats". Poor fit: "domains that require all
-    agents to share the same context or involve many dependencies between agents ... most coding tasks".'
+    agents to share the same context or involve many dependencies between agents ... most coding tasks".
+    Why it works: "Multi-agent systems work mainly because they help spend enough tokens to solve the
+    problem"; on BrowseComp "token usage by itself explains 80% of the variance" (with the number of tool
+    calls and model choice, three factors explain 95%).'
   direction: supports
   measured: true
   locator: Benefits of a multi-agent system; Architecture overview for Research
@@ -91,8 +174,9 @@ evidence:
     "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
   date: '2025-06-13'
   task: Spawn subagents in parallel, not serially
-  effect: 'Together with parallel tool calls in subagents: "These changes cut research time by up to 90%
-    for complex queries". Joint figure for both changes.'
+  effect: '"the lead agent spins up 3-5 subagents in parallel rather than serially"; together with parallel
+    tool calls in subagents: "These changes cut research time by up to 90% for complex queries". Joint
+    figure for both changes.'
   direction: supports
   measured: true
   locator: 'Prompt engineering: Parallel tool calling transforms speed and performance'
@@ -278,10 +362,161 @@ evidence:
   direction: supports
   measured: false
   locator: Isolate Context
+- source: Yubin Kim, Ken Gu, Chanwoo Park, Chunjong Park, Samuel Schmidgall, A. Ali Heydari, Yao Yan,
+    Zhihan Zhang, Yuchen Zhuang, Yun Liu, Mark Malhotra, Paul Pu Liang, Hae Won Park, Yuzhe Yang, Xuhai
+    Xu, Yilun Du, Shwetak Patel, Tim Althoff, Daniel McDuff, Xin Liu (Google Research, Google DeepMind,
+    MIT), "Towards a Science of Scaling Agent Systems", https://arxiv.org/abs/2512.08296
+  date: '2025-12-09'
+  task: Compare one agent with four multi-agent topologies (independent agents with a concatenating aggregator,
+    an orchestrator with sub-agents, peer debate, and a hybrid) on six agentic benchmarks, with identical
+    prompts and tools and a matched budget (matched maximum iterations; reasoning tokens matched at a
+    mean of 4,800 per trial)
+  effect: 'Relative change against the single agent: Finance Agent orchestrator +80.8% (0.631 vs 0.349),
+    all multi-agent variants +57% to +80.8%; BrowseComp-Plus peer debate +9.2% (0.347 vs 0.318), orchestrator
+    +0.2%, independent -35%; Workbench -11% to +6%; PlanCraft -39.1% to -70.0% (orchestrator 0.282 vs
+    0.568); SWE-bench Verified -2.1% to -14.9% (single agent 0.522); Terminal-Bench independent +1.7%,
+    orchestrator -19.2%. Mean over all benchmarks and topologies -0.3% (95% CI -58.7% to +77.2%). Gains
+    shrink once the single agent passes about 45%, the one predictor that survives cluster-robust inference.
+    Turns 7.2 for one agent, 27.7 orchestrator, 44.3 hybrid; successes per 1,000 tokens 67.7, 21.5 and
+    13.6; trace-level error amplification 17.2x for independent agents, 4.4x with an orchestrator. Authors:
+    "beyond 3-4 agents, per-agent reasoning quality degrades sharply under fixed budgets."'
+  conditions: 260 configurations; GPT-5 nano, GPT-5 mini, GPT-5, Gemini 2.0 Flash, 2.5 Flash, 2.5 Pro,
+    Claude Sonnet 3.7, 4, 4.5 (Sonnet 3.7 not on the two coding benchmarks); BrowseComp-Plus, Finance
+    Agent, PlanCraft and Workbench with 50-100 instances, SWE-bench Verified and Terminal-Bench with 20-instance
+    subsets (intervals about 20 points per cell); numbers from v3 (Apr 2026; v1 had four benchmarks and
+    180 configurations); the budget is matched as a mean per trial, not enforced per episode, and teams
+    still used more tokens per success; prompts not tuned per architecture; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.2 Main Results and Fig. 2; §4.3; Table 5; §4.4; §4.5; §5 Limitations (v3)
+- source: Jiayi Geng, Graham Neubig (Carnegie Mellon University), "Effective Strategies for Asynchronous
+    Software Engineering Agents", https://arxiv.org/abs/2603.21489
+  date: '2026-03-23'
+  task: Have a manager build a dependency graph of the repository or paper and delegate ready units to
+    up to N engineer agents (files with strong or circular dependencies grouped under one engineer, shared
+    files such as __init__.py off-limits), give each engineer its own git worktree, and merge each engineer's
+    commit into main only after it runs the relevant tests, the engineer resolving its own merge conflicts
+    (CAID); compare with a single agent on the same framework
+  effect: 'Score / runtime (s) / API cost, single agent vs CAID: PaperBench (2 engineers) Claude Sonnet
+    4.5 57.2 / 1803.5 / 3.3 vs 63.3 / 2080.4 / 6.5; MiniMax 2.5 10.5 / 2525.3 / 1.1 vs 36.1 / 3042.4 /
+    2.6; GLM 4.7 38.0 / 1177.6 / 2.8 vs 45.4 / 1449.4 / 4.7. Commit0-Lite (4 engineers) Claude Sonnet
+    4.5 53.1 / 692.6 / 1.9 vs 59.1 / 1583.2 / 8.1; MiniMax 2.5 42.3 / 752.1 / 1.6 vs 57.0 / 1908.7 / 4.5;
+    GLM 4.7 42.9 / 871.0 / 2.5 vs 46.5 / 1387.8 / 7.3 (p=0.095, the one gain not significant). Claude
+    Sonnet 4.5 with one shared workspace and files assigned by instruction instead of worktrees: 56.1
+    on Commit0-Lite and 55.5 on PaperBench (single agent 57.2). 8 engineers scored lower than 4 on Commit0-Lite.
+    CAID used 168.3 and 313.3 iterations against the single agent''s 66.8 and 84.5; doubling the single
+    agent''s limit to 200 changed little or lowered scores. A single agent first and CAID after it: PaperBench
+    66.8 at 3883.9 s and cost 9.7 (Claude Sonnet 4.5). Authors: "wall-clock runtime is not substantially
+    reduced despite parallel execution"; integration stays sequential and test-gated.'
+  conditions: OpenHands agent SDK v1.11.0; Claude Sonnet 4.5, MiniMax 2.5, GLM 4.7; Commit0-Lite (16 repositories,
+    success only if all tests pass) and PaperBench Code-Dev (judged by gpt-5-mini); single agent 100 iterations,
+    manager 50 and each engineer 80, two rounds; one run per configuration, one-sided paired t-tests across
+    repositories or papers; isolation ablation on Claude Sonnet 4.5 only; not budget-matched; the authors'
+    own method, independent of any vendor
+  direction: mixed
+  measured: true
+  locator: §2.1-2.5; §3.4 Table 2; §3.5 Fig. 2; §4.1 Table 3; §4.2 Fig. 3; §6 Limitations; App. C Table
+    10 (v2)
+- source: Rishabh Mediratta, Lingyun Xiao, Peter Stone, Joydeep Biswas, Elias Stengel-Eskin (UT Austin),
+    "Decentralized Multi-Agent Coordination and Communication in Shared Codebases", https://arxiv.org/abs/2611.00314
+  date: '2026-10-30'
+  task: Give two coding agents separate requirements on one repository (contradictory pairs that must
+    edit the same code incompatibly, complementary pairs that must share an interface) and compare one
+    agent holding both requirements, one agent delegating each requirement to a sub-agent, serial hand-offs,
+    and parallel agents unaware or aware of each other, with or without a message channel; parallel edits
+    merged by concatenation, git merge or a model reconciler, best of the three counted
+  effect: 'Claude Code with Claude Opus 4.8, joint pass rate (cost relative to the single agent), contradictory
+    / complementary: single agent 62% (1.00) / 86% (1.00); lead delegating to two sub-agents 58% (1.58)
+    / 77% (1.18); one hand-off A then B 54% (1.18) / 77% (1.12); parallel unaware 16% (1.17) / 57% (1.14);
+    parallel aware 26% (1.14) / 60% (1.21); parallel with messages 20% (1.42) / 63% (1.43); parallel with
+    sync points 22% (1.63) / 71% (1.43). Six open-weight configurations, mean: single agent 60% / 72%,
+    parallel unaware 19% / 53%. In 58% of contradictory parallel failures each half passed its own tests
+    but no combination passed; 53% of complementary failures merged but diverged on a name, signature
+    or data shape; 92% of single-agent failures were competence failures. About a third of messages were
+    never read and 21-23% were read before the recipient''s first edit. When agents were given each other''s
+    requirement, 85% of contradictory conversations assigned an owner to the contested code, conflicts
+    fell from 67% to 18% of runs, and runs with an owner passed 61% against 29%.'
+  conditions: 'ParallACT: 155 instances from 11 repositories built on SWE-Bench Pro (85 contradictory,
+    70 complementary; part model-generated); Claude Opus 4.8 (high effort) on the 85 built on v1 (50 contradictory,
+    35 complementary); Claude Code and Codex with Qwen3.8 Flash Next, DeepSeek V4 Flash and GLM 5.3 Flash
+    on all 155; requirements from separate principals, built to conflict or interlock; cost = input +
+    cache-write + 0.1 x cache-read + 5 x output; the ownership result is associational, on 48 conversations
+    (Appendix M gives 65% to 15% for the same conflict drop); independent'
+  direction: supports
+  measured: true
+  locator: §3.2-3.3; §4.1 Tables 1-2; §4.2; App. M
+- source: Ethan Yang, Xiangcheng Shi, "Does Multi-Agent Collaboration Pay When Agents Serve Users? Testing
+    Agent Scaling in Dual-Control Settings", https://arxiv.org/abs/2610.27655
+  date: '2026-10-20'
+  task: Compare the stock single agent on τ²-bench with a centralized team built from the same model (an
+    orchestrator that plans and talks to the customer, a database agent that alone calls tools, a policy
+    advisor) under one completion-token ledger per episode capped at 4x the single agent's 75th-percentile
+    spend, pre-registered; plus an uncapped team arm and one agent running the team's plan-and-review
+    cycle in one context under the same cap
+  effect: Team worse than the single agent in 12 of 13 valid cells (gain interval excluding zero in each)
+    and tied in the 13th; weighted mean gain -28 points (95% CI -44 to -12) over the 12 cells of the primary
+    fit. On the two cells below 45% single-agent accuracy, where the 45% rule predicts a team gain, it
+    lost 13 and 22 points, and without a ceiling at best drew level at 5.5x the single agent's median
+    token spend. Exhausted episodes carried 74% of the mean loss (-22.4 of -30.5 points); the team did
+    not detectably reduce wrongful database writes. Dollar cost 1.4x to 3.1x the single agent per cell;
+    the single agent was more accurate and cheaper in 11 of 12 priced cells. One agent running the plan-and-review
+    steps in one context at the same ceiling did not differ detectably from the stock agent, and the team
+    lost to it on both cells below 45% (e.g. 12.0% vs 36.0%).
+  conditions: τ²-bench airline, retail and telecom (50 tasks each, three seeds); gpt-5-nano, gpt-5-mini,
+    gemini-3.1-flash-lite, gemini-3-flash, qwen3.5-4b, qwen3.5-9b; gpt-5.2 user simulator; about 7,950
+    simulated conversations; the team failed the pre-registered fidelity bar (its orchestrator planned
+    without the tool schemas; 680 of 2,744 write orders, 25%, ran exactly as issued), so a team that shares
+    schemas may do better; one user-facing thread, not breadth-first work; independent
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1-3.2; §4.1 Table 6; §4.2 Tables 5 and 7; §4.3 Table 8; §4.5 Table 10; §4.6 Table
+    12; §4.7
+- source: 'Iheatu Chris Wogu (First Context blog), "Superlite: hand an agent a spec, come back to tested
+    work", https://contextfirst.blog/superlite-hand-an-agent-a-spec/'
+  date: '2026-10-18'
+  task: Build one project from one spec with a plan written as a task graph (each task lists the files
+    it owns, the interfaces it consumes and produces, and the tests it must pass), run tasks that share
+    no files and no dependencies at the same time, and enforce rules with hooks (the coordinator cannot
+    edit project code; tests run in the background)
+  effect: 'Static site generator plus spreadsheet engine, 177 hidden tests: an earlier build averaged
+    25.1 min over three runs (21.4 / 23.2 / 30.5) against 33.6 min for the stock superpowers workflow
+    (21.2 / 31.9 / 47.6), 25% less, 177/177 every run. The latest build ran once in 16.1 min with 21 agents,
+    up to 18 at once, 177/177; the author''s "52% less time" compares this one run with the stock three-run
+    mean. On a smaller project (89 tests): 8.8 vs 34.4 min, dispatching 10 agents up to five at once against
+    21 dispatched one after another.'
+  conditions: Opus in Claude Code; one project; headless harness with hidden tests; the baseline is itself
+    a sub-agent workflow that dispatches agents one at a time, not a single agent; no token or cost comparison;
+    the author's own plugin; practitioner blog
+  direction: supports
+  measured: true
+  locator: 'Benchmarks: The latest run; How it got there'
+- source: Alexander Sun, Joshua J. Park, David DeTomaso, Seoyeon Kim, Amelia Liu, Suyash Shringarpure,
+    Kenny Kim, Patrick C. Thompson, Tuo Shi, Yunyun Wang, Eran A. Mukamel, Grace X. Y. Zheng, Y. Joy Jiao,
+    Xin Jin (Scripps Research, OpenAI, PerturbAI), "Distributed AI agents enable comprehensive discovery
+    of biological insights at scale" (bioRxiv), https://doi.org/10.64898/2026.10.15.759436
+  date: '2026-10-16'
+  task: Assign one agent per perturbation of a Perturb-seq atlas (1,946 agents run independently and in
+    parallel), each writing a structured report from the data, tools and literature, then synthesize the
+    stored reports; compare with one agent given many perturbations
+  effect: 'With the same model, prompt, tools and data access, one agent given 1 to 893 perturbations
+    plateaued in steps and tool calls; at 893 it cited 11 references, the distributed agents 711x more.
+    Across 20 matched report pairs, each rated by three blinded experts, distributed-agent interpretations
+    were preferred in 45 of 60 judgments (75%), the single agent''s in 10 (16.7%), 5 ties. Median recall
+    at rank 50 for predicting depleted perturbations: 0.36 distributed vs 0.18 single agent. Authors:
+    "matched comparisons are needed to determine how much of this scaling advantage generalizes."'
+  conditions: GPT-Rosalind-5.5; one whole-brain Perturb-seq atlas (1,946 perturbations, 893 with detectable
+    responses); 30 doctoral-level experts; not compute-matched (one agent against one per perturbation);
+    OpenAI and PerturbAI employees and co-founders among the authors; preprint
+  direction: supports
+  measured: true
+  locator: Results (Fig. 2E, Fig. 3K, Fig. 4K); Discussion
 related:
 - 5.c.ii
 - 6.b.ii
+- 6.b.i
 - 9.b.iii
+- 7.c.vi
+- 6.c.ii
 absorbs:
 - legacy_id: P15
   name: Parallelization by sectioning or voting
@@ -403,3 +638,14 @@ provenance:
   sub_type: orchestration
   harness_role: control_loop
   action: restructure
+caveats: 'Most gains are not compute-matched: the +90.2% research result came at about 15x a chat''s tokens,
+  and the same vendor found token usage alone explained 80% of the variance on a browsing eval; at a matched
+  budget the gain held mainly on decomposable tasks, in one study whose coding cells had 20 tasks (intervals
+  of about 20 points) and whose 45% capability rule did not transfer to customer-service conversations.
+  That contradicting study''s team planned without seeing the tool schemas (a deviation its authors label),
+  and the coding evidence comes from purpose-built benchmarks (conflicting requirements from separate
+  principals; 16 library repositories and a set of papers, one run each) and one practitioner''s own plugin
+  on one project, so effect sizes will differ on your tasks. Speed gains need the parts to run truly in
+  parallel: sequential, test-gated merges made a coordinated coding team slower than one agent, and the
+  25% faster coding build was measured against a workflow that dispatched sub-agents one at a time, not
+  against a single agent.'

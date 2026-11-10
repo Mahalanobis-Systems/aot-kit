@@ -74,6 +74,7 @@ Most attack-success numbers here come from static template attacks: the one inde
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:multi-agent-for-breadth` (6.b.iii, Use multi-agent orchestration only for breadth-first, independent sub-tasks)
 - `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
 - `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
 - `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)

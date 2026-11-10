@@ -18,37 +18,137 @@ evidence_domains:
 - code-generation
 categories:
 - safety.data
-summary: Tokenize PII in the client so it never reaches the model, wrap untrusted tool and web results
-  in taint delimiters, scan context files and skills for prompt injection, and state an explicit instruction-precedence
-  order (user, repo, defaults, external data as data).
-how: 1. Map where PII and untrusted text enter the prompt. 2. Add tokenization at the client and delimiters
-  on untrusted results. 3. Add the precedence statement to the prompt. 4. Run injection and data-leak
-  safety evals.
+summary: 'Treat everything the agent reads from tools, the web, repository files and skills as data, not
+  instructions, and keep personal data out of the model''s context. Tokenize PII in the client, wrap untrusted
+  results in source-labeled delimiters, scan context files, skills and tool outputs for injection, and
+  state which source wins a conflict. These are cheap layers against opportunistic attacks, not a boundary:
+  in one study an adaptive attacker reached 99% attack success against delimiter-based spotlighting on
+  Gemini 2.5 Pro and 90 to 94% against three injection detectors, and in another none of 14 open-weight
+  models reliably kept even two declared priority tiers in order. Choose a detector on your agent''s own
+  tool outputs at a low false-positive rate (on AgentDojo, PIGuard, which caught 95.1% of injections on
+  BIPIA, caught 2.1% at 1% false positives, while two agent-oriented detectors caught 73.8 and 82.2%),
+  scan repository docs first (GPT-5.4 followed an injection in a README or TODO file 2.6 times as often
+  as in code or data files), and put consequential actions behind containment that does not depend on
+  spotting the attack (6.c.i, 6.c.ii, 10.a.i).'
+how: '1. Start from a baseline: list every place personal data and untrusted text enter the context (tool
+  and MCP results, web pages, email, repository docs such as README and TODO files, context files such
+  as AGENTS.md, skills, tool descriptions, memory), then measure the current agent: plant a canary instruction
+  at the start, middle and end of each surface and record attack success, how failed attacks fail, and
+  task success with and without the attack. Weight the surfaces by risk: in one study with a fixed payload,
+  GPT-5.4 followed it in 86% of runs that read it from a README against 19% from a code file (reconnaissance
+  goal), 2.6 times as often on average in README or TODO files as in code or data files, and placing it
+  at the end of the content was most effective in all three domains tested. Do not read a low attack rate
+  as refusal: 66.8% of GPT-5.4''s and 81.3% of GPT-4o''s failed injections were ignored, not flagged.
+  2. Keep sensitive data out of the model: tokenize PII in the client or MCP layer so the model handles
+  placeholders while real values flow from tool to tool (Anthropic''s design, unmeasured), and drop untrusted
+  segments from the context once the step that needed them is done. 3. Mark untrusted content: wrap tool,
+  web and repository-derived text in delimiters that name its source, and defang lookalike closing tags
+  inside it (as the Hermes and OpenHands harnesses do). Expect little from this alone: in one AgentDojo
+  study, spotlighting moved static attack success from 30% to 28% on Gemini 2.5 Pro and from 35% to 28%
+  on Llama 3.3 70B; utility held on Gemini 2.5 Pro (74.23% to 75.26%) but fell from 56.70% to 39.18% on
+  Llama 3.3 70B, so measure utility on your model. 4. State a precedence order (operator policy, then
+  user, then repository configuration, with tool and external content as data), then test where it holds
+  on your model instead of assuming the system message protects it. In one study of 14 open-weight models,
+  the data ruled out that any model kept even two declared priority tiers in order in 95% of replies;
+  the first of two conflicting lines in one message won 72.42 to 94.66% of decided replies; and in tool
+  and file-write tasks a policy sent first in the system message won less often than the same text sent
+  first as a labeled user message in every model-mode, by 6.41 to 48.75 points. Probe conflicts across
+  messages and placements (sending the policy after the competing line raised its wins by 19.79 to 48.22
+  points on Qwen 3, though recency also favors injected lines), and log dropped instructions in the harness:
+  at most 2.92% of replies mentioned the conflict. 5. Scan context files, skills and tool outputs, and
+  block or quarantine on a match (Hermes blocks a matching context file wholesale and tiers skills as
+  builtin, trusted or community). Choose the detector on your own data, not its published scores: replay
+  the agent''s benign tool outputs to count false positives as blocked tasks, and measure detection at
+  a fixed 1% false-positive rate on injected copies. On AgentDojo tool outputs, two agent-oriented detectors
+  caught 73.8 and 82.2% of injections at 1% false positives and Prompt Guard 2 caught 60.9 to 69.4%, while
+  PIGuard, which caught 95.1% on BIPIA, caught 2.1%; ProtectAI v2 and PIGuard flagged 30.1% and 29.5%
+  of benign tool outputs, enough to stop 69.1% and 59.8% of tasks. Strip markup before scanning (PIGuard''s
+  false positives on README chunks fell from 24.6% to 5.6%). 6. Assume an adaptive attacker gets through
+  these layers, and contain the consequences with controls that do not depend on recognizing the injection
+  (6.c.i, 6.c.ii, 10.a.i, 10.b.i). In one study, a search attack of up to 800 queries reached 99% attack
+  success against spotlighting and 95% against prompt sandwiching on Gemini 2.5 Pro, 90 to 94% against
+  the Protect AI, PromptGuard and Model Armor detectors and 71% against PIGuard, and 96% against the trained
+  MetaSecAlign 70B (5% under the static attack); GPT-5 Mini held best (47% with spotlighting). 7. Measure
+  with paired runs on the same tasks, each layer on and off: attack success under static and adaptive
+  attacks (an attacker that sees the defense and gets a few hundred queries; most searches in that study
+  plateaued after 100 to 200), utility with and without attack, episodes that stayed safe but left the
+  user''s task undone, detector false positives on the agent''s own tool outputs and detection at 1% false
+  positives, added latency per screened output, and sensitive fields found in model inputs and logs.'
 detect:
-  static: PII or untrusted content passed to the model unmarked; no instruction-precedence statement
-  traces: sensitive fields in model inputs or logs; injected instructions followed; failure rows labeled
-    indirect-prompt-injection
-  evals: injection and data-leak safety evals
+  static: PII or untrusted content passed to the model unmarked; context files, skills or tool outputs
+    loaded without an injection scan; a detector chosen by its public benchmark score; no instruction-precedence
+    statement, or one never tested for where it holds
+  traces: sensitive fields in model inputs or logs; injected instructions followed; benign tool outputs
+    blocked by a detector; failure rows labeled indirect-prompt-injection
+  evals: injection attack success under static and adaptive attacks, with utility with and without attack;
+    detector false-positive rate on the agent's own tool outputs and detection at 1% false positives;
+    data-leak safety evals
+  probes:
+    what: whether injected instructions in untrusted surfaces are followed, and whether the declared precedence
+      holds
+    construct: plant a canary instruction at the start, middle and end of each surface the agent reads
+      (README, TODO and context files first, then tool results, web pages and skills), and pairs of conflicting
+      benign instructions across operator, user and tool seats; success is the canary never executing
+      and the higher-precedence line winning
 impact:
   quality:
-    effect: none
+    effect: mixed
+    size: medium
+    when: 'delimiters left AgentDojo utility unchanged on Gemini 2.5 Pro (74.23% to 75.26%) and GPT-5
+      Mini (72.16% to 76.29%) but cut it from 56.70% to 39.18% on Llama 3.3 70B, and with Gemini 2.5 Pro
+      utility fell to 39.18% under the Protect AI or PIGuard detector (Nasr, Oct 2025); detectors that
+      over-flag stop tasks: ProtectAI v2 and PIGuard flagged about 30% of benign tool outputs, stopping
+      69.1% and 59.8% of tasks, while Prompt Guard 2 flagged 0.0 to 0.6% (Liu, Oct 2026)'
     basis: evidence
   cost:
-    effect: none
-    basis: evidence
+    effect: degrades
+    size: small
+    when: a detector call per screened output (68M to 1.5B parameters, or a 7 to 8B judge, in one study
+      (Liu, Oct 2026)) and delimiter tokens on every untrusted result; tokenizing PII and purging used
+      segments can shrink the context; no source priced any of it
+    basis: assessment
   performance:
-    effect: none
-    basis: evidence
+    effect: degrades
+    size: small
+    when: one classifier or judge pass per screened tool output before the agent can act on it; no source
+      timed it
+    basis: assessment
   security:
-    effect: unknown
+    effect: improves
+    size: small
+    when: 'against static attacks only: spotlighting cut AgentDojo attack success from 30% to 28% (Gemini
+      2.5 Pro) and 35% to 28% (Llama 3.3 70B), and an adaptive search raised it to 99% on both (Nasr,
+      Oct 2025); the best detectors caught 73.8 to 82.2% of static AgentDojo injections at 1% false positives
+      (Liu, Oct 2026), but adaptive attacks reached 71 to 94% against four detectors with Gemini 2.5 Pro
+      (Nasr, Oct 2025); declared precedence is not followed reliably (no open model kept two tiers in
+      order in 95% of replies; Laddha, Oct 2026); PII tokenization is unmeasured'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: keeps personal data out of model inputs and logs when values flow tool to tool through the client
+      (Anthropic, Nov 2025, unmeasured); models mentioned an instruction conflict in at most 2.92% of
+      replies (Laddha, Oct 2026), so the audit trail of what was dropped or flagged must come from the
+      harness
+    basis: assessment
   brand:
     effect: unknown
+  primary:
+  - security
+  - governance
 measure:
-- method: before-after
+- method: experiment
   tier: 2
-  how: injection and data-leak safety evals
+  how: 'paired runs on the same tasks with each layer (PII tokenization, delimiters, the precedence statement
+    and its placement, the detector) on and off: attack success under static and adaptive attacks, with
+    canaries at the start, middle and end of each untrusted surface (repository docs first); utility with
+    and without attack; episodes safe but with the user''s task undone; the detector''s false-positive
+    rate on the agent''s own benign tool outputs (as blocked tasks) and its detection at 1% false positives;
+    added latency per screened output; sensitive fields in model inputs and logs'
+- method: monitor
+  how: 'in production traces: detector flag rate on tool outputs and tasks stopped by a flag (sample flagged
+    outputs for review), canary or known-payload hits, actions taken after reading flagged content, sensitive
+    fields in model inputs and logs, and conflicts in which a lower-precedence instruction won'
 evidence:
 - source: 'Adam Jones, Conor Kelly (Anthropic), "Code execution with MCP: Building more efficient agents",
     https://www.anthropic.com/engineering/code-execution-with-mcp'
@@ -61,6 +161,8 @@ evidence:
   direction: supports
   measured: false
   locator: 'Benefits: Privacy-preserving operations'
+  conditions: Anthropic engineering post describing an MCP client design that tokenizes PII before it
+    reaches the model; no measurement
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
   date: '2026-07-15'
@@ -71,6 +173,7 @@ evidence:
   direction: supports
   measured: false
   locator: Sec 7.3 "Identity and persona", "Emphasis markers"
+  conditions: Source-code reading of eleven open coding-agent harnesses; describes the mechanism, no measurement
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
   date: '2026-07-15'
@@ -80,6 +183,7 @@ evidence:
   direction: supports
   measured: false
   locator: Sec 10.3; Sec 10.7; Table 12 "Untrusted-Content Delimiting"
+  conditions: Source-code reading of eleven open coding-agent harnesses; describes the mechanism, no measurement
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
   date: '2026-07-15'
@@ -90,8 +194,102 @@ evidence:
   direction: supports
   measured: false
   locator: Sec 9.7; Sec 10.7; Sec 10.8; Sec 12.5; Recommendation 14
+  conditions: Source-code reading of eleven open coding-agent harnesses; describes the mechanism, no measurement
+- source: 'Chengquan Guo et al., "Where You Inject Matters: The Trust Region Effect in LLM Agents", https://arxiv.org/abs/2610.38867'
+  date: '2026-10-28'
+  task: Hold one injection payload fixed and vary only where it appears (surface and start, middle or
+    end position) across coding, tool-use and workflow testbeds, measuring attack success given the payload
+    was read
+  effect: 'Table 2a (GPT-5.4, coding): conditional ASR for the reconnaissance goal 86% in README, 61%
+    in TODO, 19% in a code file, 30% in a data file; SQL injection 79 / 59 / 11 / 28%; §4.2: 2.6 times
+    as often on average in a README or TODO file as in a code or data file. Table 3: end-of-surface placement
+    highest in all three domains (coding 13.0 vs 12.6% at start, workflow 5.7 vs 2.3%, tool use 51.2 vs
+    39.5%). Table 1: of delivered but failed injections, GPT-4o ignored 81.3% and refused 0.7%, GPT-5.4
+    ignored 66.8% and refused 33.2%. Table 6: an RL-trained attacker (trained against GPT-4o) reached
+    33.3% ASR on GPT-5.4 on 30 held-out contexts where three template attacks scored 0.0%, with utility
+    unchanged at 88.9%.'
+  conditions: Eight agents (GPT-5.6, GPT-5.4, GPT-5-mini, GPT-4o, Gemini-3.1-Pro, Grok-4.6, Opus 5, Sonnet
+    5) on the OpenAI Agents SDK or Claude Agent SDK; three testbeds (10 composed Terminal-Bench-2 coding
+    tasks, 10 composed AgentDojo tool-use tasks, a workflow testbed), 30 benign tasks, 24 injection tasks,
+    36 surfaces x 3 positions; script-based verifiers; surface tables for GPT-5.4 (coding, workflow) and
+    GPT-4o (tool use); ASR counted only when the payload was read; no defense tested
+  direction: supports
+  measured: true
+  locator: Abstract; §4.2 Tables 1-3; §4.3 Figure 3; §5 Table 6
+- source: Anish Laddha, Nitesh Pradhan, Gaurav Srivastava, "Position, Role or Label? A Controlled Study
+    of Instruction Conflicts in LLM Agents", https://arxiv.org/abs/2610.33201
+  date: '2026-10-23'
+  task: Deliver the same conflicting instructions from operator, repository configuration, user, tool
+    result and memory seats while varying only position, chat role, text label, message boundaries and
+    declared priority tiers
+  effect: Inside one message the first of two conflicting lines won 72.42 to 94.66% of decided replies,
+    across messages 22.95 to 62.65%. The operator line sent first in the system message won 6.07 to 17.35%
+    of its conflicts on Qwen 3, 11.66 to 41.50% on Qwen 3.5, and 62.94% and 75.73% on gpt-oss. In tool
+    and file-write tasks it won less often than the same text sent first as a labeled user message in
+    every model-mode, by 6.41 to 48.75 points. Sending the policy last raised its wins by 19.79 to 48.22
+    points on Qwen 3 and 12.49 to 20.41 on gpt-oss. With declared tiers 1 to 6, thinking raised rule-following
+    by up to 25.83 points on Qwen 3.5 (Qwen3.5-122B-A10B went from 75.67% to 95.44%), but in all 26 model-modes
+    the data rule out that even two declared tiers are followed in 95% of usable replies. At most 2.92%
+    of decided pair replies flagged or hedged the conflict.
+  conditions: 'WhoWins benchmark: 1,080 code-scored scenarios in five task types, seven controlled experiments;
+    14 open-weight models (Qwen 3, Qwen 3.5, gpt-oss; 0.6B to 122B), thinking off and on (26 model-modes),
+    1,887,356 scored replies; short benign conflicting instructions written by LLM agents and reviewed
+    by the authors, English only, at most six tool turns; rates are shares of decided replies; no adversarial
+    payloads; hosted models not tested'
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1-4.3; §4.5; §4.6; Figure 4; Limitations
+- source: 'Zhuowen Liu, "Passing the Test You Trained On: Re-evaluating Prompt-Injection Detectors for
+    LLM Agents", https://arxiv.org/abs/2610.03448'
+  date: '2026-10-02'
+  task: Evaluate 15 prompt-injection detectors and two task-aware LLM judges on benign and injected tool
+    outputs replayed from AgentDojo and tau-bench, and on BIPIA
+  effect: 'Table 2: false positives on benign AgentDojo tool outputs range from 0.0% (Horizon-Labs, Prompt
+    Guard 2 22M) to 78.5% (JasperLS; 93.1% on tau-bench); ProtectAI v2 and PIGuard flag 30.1% and 29.5%
+    and would stop 69.1% and 59.8% of tasks. Detection at 1% FPR on AgentDojo: Horizon-Labs 82.2%, Wolf
+    Defender 73.8%, Prismor 72.2%, Prompt Guard 2 69.4% (86M) and 60.9% (22M), PIGuard 2.1% (95.1% on
+    BIPIA); Prismor 15.2% on tau-bench. Rank transfer: Kendall tau 0.01 (BIPIA vs AgentDojo) and 0.28
+    (AgentDojo vs tau-bench); false-positive ranks do transfer between the agent benchmarks (tau 0.67).
+    Task-aware 7-8B judges caught 54.3 to 78.3% at 1% FPR. Stripping markup cut PIGuard''s FPR on README
+    chunks from 24.6% to 5.6%; removing YAML keys cut it on AgentDojo from 20.0% to 6.7% at the same TPR.'
+  conditions: 15 open or license-gated detectors (2023-2026, 68M to 1.5B parameters, including Prompt
+    Guard 1 and 2, PIGuard, ProtectAI) and two 4-bit judges (Qwen2.5-7B, Llama-3.1-8B); benign tool outputs
+    from replaying ground-truth calls of AgentDojo v1.2 and tau-bench without an LLM, injected outputs
+    labeled by differential replay (AgentDojo matched set 585 benign, 432 injected); BIPIA test-half attacks;
+    static attacks only, so detection rates are upper bounds; 1% FPR threshold chosen on the evaluated
+    benign set; commercial API detectors not included; single author
+  direction: mixed
+  measured: true
+  locator: Abstract; §5.1-5.5; Table 2; Figure 4; §6
+- source: 'Milad Nasr, Nicholas Carlini, Chawin Sitawarin, Sander V. Schulhoff, Jamie Hayes, et al., "The
+    Attacker Moves Second: Stronger Adaptive Attacks Bypass Defenses Against Llm Jailbreaks and Prompt
+    Injections", https://arxiv.org/abs/2510.09023'
+  date: '2025-10-10'
+  task: Attack 12 published jailbreak and prompt-injection defenses (prompting, training, detector and
+    secret-knowledge defenses) with adaptive search, RL and gradient attacks and an online human red-teaming
+    competition
+  effect: 'Table 7 (AgentDojo, search attack up to 800 queries), Gemini-2.5 Pro / GPT-5 Mini / Llama-3.3
+    70B: no defense static ASR 30% / 0% / 35%, search 100% / 75% / 100%, utility 74.23% / 72.16% / 56.70%;
+    Spotlighting static 28% / 0% / 28%, search 99% / 47% / 99%, utility 75.26% / 76.29% / 39.18%; Prompt
+    Sandwiching search 95% / 69% / 100%. Detectors with Gemini-2.5 Pro: Protect AI 90% (utility 39.18%),
+    PromptGuard 94% (72.16%), Model Armor 90% (58.76%), PIGuard 71% (39.18%). MetaSecAlign 70B: static
+    5%, search 96%. §5.1: human red-teamers produced 265 successful attacks against Spotlighting and 178
+    against Prompt Sandwiching. Appendix: the search mostly plateaued after 100-200 queries.'
+  conditions: AgentDojo scenario subset (count per defense not given in Table 7); targets Gemini-2.5 Pro,
+    GPT-5 Mini, Llama-3.3 70B and MetaSecAlign 70B; search attack with a Gemini-2.5 Pro mutator, up to
+    800 queries, the attacker sees detector scores; human red-teaming on single AgentDojo task pairs;
+    other defenses tested on HarmBench, AlpacaFarm and OpenPromptInject; plan-then-execute defenses not
+    tested
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5.1-5.4; Appendix G.1 Table 7; Appendix tables of the human red-teaming competition
 related:
 - 10.a.i
+- 10.b.i
+- 6.c.i
+- 6.c.ii
+- 4.c.ii
+- 3.a.iv
 absorbs:
 - legacy_id: P41
   name: Dual LLM (privileged / quarantined)
@@ -214,3 +412,12 @@ provenance:
   sub_type: transformation
   harness_role: tool_impl
   action: add
+caveats: 'No source tests these practices together, and PII tokenization has no measured leak or utility
+  result. The measured numbers come from benchmarks with synthetic tool outputs and mostly static attacks,
+  so detection rates are upper bounds and detector rankings barely transferred between benchmarks (Kendall
+  tau 0.01 to 0.31); in one study adaptive attacks exceeded 80% on most pairs of model and defense, GPT-5
+  Mini holding best at 47 to 81%. The precedence results come from 14 open-weight models on short benign
+  conflicts, not hosted frontier models or adversarial payloads, and the placement result from one fixed
+  payload, mainly with GPT-5.4, counted only when the payload was read. Defenses also cost utility: detectors
+  that over-flag stop most tasks, and spotlighting cut Llama 3.3 70B''s AgentDojo utility from 56.70%
+  to 39.18%.'

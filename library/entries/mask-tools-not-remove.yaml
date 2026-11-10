@@ -22,16 +22,19 @@ evidence_domains:
 categories:
 - prompts.caching
 - tools.misuse
-summary: 'When the tools an agent may use change mid-task (by mode, phase or permission), declare every
-  tool once, keep the definitions byte-stable, and restrict the choice another way: OpenAI''s allowed_tools
-  or tool_choice "none", Anthropic''s appended tool_removal and tool_addition blocks, a decode-time logit
-  mask or grammar on self-hosted models, and a harness check that rejects calls outside the allowed set.
-  It pays in long sessions with cached prefixes, because editing the tool list invalidates everything
-  after it; on the newest Claude models an edited tool list also makes replayed thinking blocks fail with
-  an error. The evidence is vendor guidance plus indirect measurements: caching cut agent cost 41-80%
-  against a prefix broken on every call, and schema-enforced tool calling nearly eliminated calls to nonexistent
-  tools (3 against 34). No study compares masking with removal directly, and keeping disallowed tools
-  in view has its own measured cost (one unneeded tool cut answer rates from 98.2% to 63.5%).'
+summary: 'Keep every tool defined for the whole session and change only which ones the agent may call.
+  When availability changes by mode, phase or permission, declare every tool once, keep the definitions
+  byte-stable, and restrict the choice another way: OpenAI''s allowed_tools or tool_choice "none", Anthropic''s
+  appended tool_removal and tool_addition blocks (inside a Claude message thread, tools and tool_choice
+  cannot change at all), a grammar or logit mask on self-hosted models, and a harness check that rejects
+  calls outside the allowed set. It pays in long sessions, because an edited tool list re-reads the whole
+  cached conversation and, on Claude Fable 5.2, makes replayed thinking blocks fail on every account;
+  caching cut agent cost 41-80% against a prefix broken on every call, and in one small coding study a
+  visible-but-disallowed interface behind the same check ran no forbidden actions, as removal did. No
+  study measures masking against removal on cost within a session, and visibility has measured costs:
+  one unneeded tool cut answer rates from 98.2% to 63.5%, and on single requests over about 450 tools,
+  pruning to 10 per request cost about the same as a cached full list while scoring higher (0.840 against
+  0.787).'
 how: '1. Start from the baseline: find where the harness rebuilds the tool list per turn (by mode, phase,
   permission or connected MCP servers) and log a hash of the tools array on every request with the cache
   read and write tokens, so each mid-session change and the cache miss after it is visible. 2. Declare
@@ -39,31 +42,49 @@ how: '1. Start from the baseline: find where the harness rebuilds the tool list 
   tools that switch on and off together a shared name prefix (browser_, shell_) so a group can be allowed
   or blocked as one. Add tools unknown at the start by appending them (tool search with defer_loading,
   OpenAI''s additional_tools input item, Anthropic''s tool_addition block), never by editing the array.
-  3. Write availability as a state machine in the harness (state to allowed set) and enforce it without
-  touching the definitions: on OpenAI, tool_choice {"type": "allowed_tools", ...} or "none"; on Claude,
-  an appended system message with tool_removal or tool_addition blocks (beta), because a tool_choice change
-  there re-reads the message history and forced tool choice and prefill are rejected on recent models;
-  on self-hosted models, a logit mask or grammar over the allowed names, or a prefill up to the shared
-  name prefix. 4. Keep a harness-side check whatever the provider: validate every call against the current
-  allowed set and the full registry, return an error result that names what is allowed instead of executing
-  or silently dropping the call, and leave earlier calls to now-unavailable tools in the history. 5. Keep
-  the model able to stop and to decline: do not force a tool call on every turn, and keep a final-answer
-  or no-tool path inside any mask. 6. If tools stay visible but disallowed for long stretches, check accuracy,
-  since a visible unneeded tool can lower answer rates: add a one-sentence note that tools are optional
-  and narrow in scope, and move groups that are rarely allowed behind deferred loading (see the tool-surface
-  entry, 2.a.i). 7. Measure with paired runs on sessions that change availability midway, the list rebuilt
-  per state against the stable list plus a restriction: cache read share, cost per task, time to first
-  token, calls to unavailable or undefined tools, task success and turns to finish, per model and provider.'
+  On Claude, keep at least one declared tool not deferred (if every tool is deferred, the first tool defined
+  in a message costs one full cache miss) and pin an MCP connector server''s tool list, since a server
+  that returns a different list edits the prefix. 3. Write availability as a state machine in the harness
+  (state to allowed set) and enforce it without touching the definitions: on OpenAI, tool_choice {"type":
+  "allowed_tools", ...} or "none"; on Claude, an appended system message with tool_removal or tool_addition
+  blocks (beta), because changing tool_choice re-reads the message history and is not allowed inside a
+  message thread (it returns a 400), and forced tool choice and prefill are rejected on recent models;
+  on self-hosted models, a grammar or logit mask over the allowed names, or a prefill up to the shared
+  name prefix, compiled once per state and reused: in one engine a grammar rebuilt per request around
+  a different 100-tool subset lost all whole-grammar reuse and took 219.50 ms to compile against 4.18
+  ms, while constrained tool calling itself added 0.8% to 6.2% end-to-end latency. 4. Keep a harness-side
+  check whatever the provider: validate every call against the current allowed set (not the set in force
+  when a permission was granted) and the full registry, return an error result that names what is allowed
+  instead of executing or silently dropping the call, and leave earlier calls to now-unavailable tools
+  in the history. In one coding-agent study the check decided the outcome: behind it, a visible-but-disallowed
+  interface executed 0 of 20 forbidden actions, as removal did, while a design that never revoked a temporary
+  capability let it be reused 10 of 10 times. 5. Keep the model able to stop and to decline: do not force
+  a tool call on every turn, and keep a final-answer or no-tool path inside any mask. 6. Check what visibility
+  costs. If tools stay visible but disallowed for long stretches, check accuracy, since a visible unneeded
+  tool can lower answer rates: add a one-sentence note that tools are optional and narrow in scope, and
+  move groups that are rarely allowed behind deferred loading (see 2.a.i). Where the tool list itself
+  is most of the prompt (hundreds of tools, short sessions), also test pruning per request: on single
+  requests over about 450 tools, a cached full list (98.9% cache hits) cost about the same per request
+  as retrieving 10 tools per request, and the pruned list was more accurate (0.840 against 0.787) and
+  1.43 s faster, so the cache case for masking is strongest in long sessions, where an edit re-reads the
+  whole conversation. 7. Measure with paired runs on sessions that change availability midway, the list
+  rebuilt per state against the stable list plus a restriction (and a per-request pruned list where the
+  catalog is large): cache read share, cost per task, time to first token, calls to unavailable or undefined
+  tools (blocked and executed), task success and turns to finish, per model and provider.'
 detect:
   static: Tool list rebuilt per turn from mode, phase, permissions or connected servers (a tools array
     filtered by state, or prompt text that co-varies with the active toolset); no allowed-tools or tool_choice
     restriction, appended tool_removal or tool_addition blocks, decode-time mask, or harness check of
-    each call against the allowed set.
+    each call against the allowed set; an MCP connector server whose tool list is not pinned; on Claude,
+    every declared tool deferred; on self-hosted models, a grammar or mask rebuilt per request from the
+    allowed subset.
   traces: A different tools-array hash between turns of one session, followed by cache reads near zero
     (provider cache diagnostics name the tools as the point of divergence); on Claude, tool_choice changing
-    between turns; calls to tools no longer defined or not allowed; on recent Claude models, 400 errors
-    on replayed thinking blocks after a tool edit.
-  evals: Cache hit rate; invalid tool call rate.
+    between turns, thread_fingerprint_mismatch errors when it changes inside a message thread, and on
+    recent models (every account on Claude Fable 5.2) 400 errors saying a thinking block is bound to a
+    different conversation, or dropped thinking blocks, after a tool edit; calls to tools no longer defined
+    or not allowed, rejected or executed.
+  evals: Cache hit rate; invalid tool call rate; blocked and executed calls to disallowed tools.
   probes:
     what: Sessions where a tool becomes unavailable midway.
     construct: State transitions that disable a tool the model used earlier.
@@ -75,31 +96,42 @@ impact:
     effect: mixed
     size: medium
     when: schema-enforced calling cut calls to nonexistent tools from 34 to 3 across ten models (Iyer,
-      Sep 2026); but forcing a call on every turn made weak local models loop for 600-900 turns (Tang,
-      Sep 2026), one visible unneeded tool cut answer rates from 98.2% to 63.5% (Paturi, Sep 2026), and
-      per-step pruning beat a full list with the retrieved tools emphasized on small models (Patel, Dec
-      2025); no study compares masking with removal
+      Sep 2026); behind the same execution check, a visible-but-disallowed interface matched removal on
+      task success, 5 of 20 each, in one small coding study (Santos-Grueiro, Jun 2026); but forcing a
+      call on every turn made weak local models loop for 600-900 turns (Tang, Sep 2026), one visible unneeded
+      tool cut answer rates from 98.2% to 63.5% (Paturi, Sep 2026), per-step pruning beat a full list
+      with the retrieved tools emphasized on small models (Patel, Dec 2025), and on single requests over
+      about 450 tools a pruned top-10 list scored 0.840 against 0.787 for the full list (Tian, Sep 2026)
     basis: evidence
   cost:
     effect: improves
     size: medium
-    when: avoids a full-prefix recompute at each tool-set change; caching cut agent cost 41.4-79.6% against
+    when: 'avoids a full-prefix recompute at each tool-set change; caching cut agent cost 41.4-79.6% against
       a prefix broken on every call (Lumer, Jan 2026); cached reads cost 0.1x input on most GPT-5.6+ models
       (OpenAI docs, Oct 2026); on Claude a tool_choice change still re-reads the message history (Anthropic
-      docs, Oct 2026); the saving scales with how often the tool set changes
+      docs, Oct 2026); the saving scales with how often the tool set changes and how long the cached history
+      is: on single requests over about 450 tools, a stable full list at 98.9% cache hits cost $0.000749
+      per request against $0.037879 with caching suppressed, but no less than a pruned top-10 list ($0.000819)
+      (Tian, Sep 2026)'
     basis: evidence
   performance:
-    effect: improves
+    effect: mixed
     size: small
     when: time to first token 6.1-30.9% better with caching than with a prefix broken on every call (Lumer,
-      Jan 2026); a mask that forces a call every turn can stop a weak model from finishing (Tang, Sep
-      2026)
+      Jan 2026); but a cached full list of about 450 tools answered in 3.76 s against 2.33 s for a pruned
+      top-10 list (Tian, Sep 2026); a grammar mask added 0.8-6.2% end-to-end latency, and rebuilding it
+      per request around a different 100-tool subset raised compile time from 4.18 to 219.50 ms (Li, Jan
+      2026); a mask that forces a call every turn can stop a weak model from finishing (Tang, Sep 2026)
     basis: evidence
   security:
-    effect: improves
+    effect: mixed
     size: small
-    when: Constraints enforced at decode time.
-    basis: assessment
+    when: 'the execution-time check, not visibility, decided it in one coding-agent study: behind the
+      same check a visible-but-disallowed interface executed 0 of 20 forbidden actions, as removal did,
+      with more blocked attempts in one task family (84 against 67) and fewer in another (39 against 48);
+      a design that never revoked a temporary capability let it be reused 10 of 10 times, and a coarser
+      check let 10 forbidden effects through (Santos-Grueiro, Jun 2026)'
+    basis: evidence
   governance:
     effect: improves
     size: small
@@ -115,13 +147,16 @@ measure:
   how: 'paired runs on probe sessions where the allowed tool set changes midway (a mode or phase switch,
     a revoked permission, a tool the model used earlier becoming unavailable): the tool list rebuilt per
     state against stable definitions with the provider''s restriction (allowed_tools or tool_choice, tool_removal
-    blocks, or a decode-time mask) plus a harness check; compare cache read share and cost per task, time
-    to first token, calls to unavailable or undefined tools, task success and turns to finish, per model
-    and provider'
+    blocks, or a decode-time mask compiled once per state) plus a harness check, and, where the catalog
+    runs to hundreds of tools, a per-request pruned list; compare cache read share and cost per task,
+    time to first token, calls to unavailable or undefined tools (blocked and executed), task success
+    and turns to finish, per model and provider'
 - method: monitor
   how: 'per session: a hash of the tools array on every request, with cache read and write tokens on the
     turn after any change (or the provider''s cache diagnostics); calls rejected for naming an unavailable
-    or undefined tool; sessions that hit the turn cap while a tool call was forced on every turn'
+    or undefined tool, and any disallowed call that executed; on Claude, prefix-check 400s, dropped thinking
+    blocks and thread_fingerprint_mismatch errors after a tool change; sessions that hit the turn cap
+    while a tool call was forced on every turn'
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -290,6 +325,101 @@ evidence:
   direction: contradicts
   measured: true
   locator: Abstract; §5 ICL methods; §6 "How to encode tools in prompt?", Figure 3
+- source: Anthropic, "What's new in Claude Fable 5.2", "Message threads" and "Preserved thinking" (Claude
+    API docs), https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2 ; https://platform.claude.com/docs/en/build-with-claude/message-threads
+    ; https://platform.claude.com/docs/en/build-with-claude/preserved-thinking
+  date: '2026-11-09'
+  task: Which ways of changing tool availability mid-conversation still work on the newest Claude models
+    and in server-side message threads
+  effect: 'Fable 5.2: "On Claude Fable 5.2 and Claude Mythos 5.2, a request that sends back an invalid
+    thinking block and leaves `prefix_mismatch_behavior` unset gets a 400 error, whatever the account''s
+    age"; the check covers "the `system` prompt, the `tools`, or an earlier message", and changing the
+    advisor tool''s model "is an edit to `tools`". Message threads (beta): `system` and `tools` are create-only
+    ("Sending either one on a continue request, even as `null`, returns a 400 error") and `tool_choice`
+    is a fixed field: "A different value returns a 400 error with the code `thread_fingerprint_mismatch`";
+    to change them, "start a new thread from the params, or fork the thread". Preserved thinking: a `tool_choice`
+    change leaves later thinking blocks valid, adding a tool with `defer_loading: true` "that nothing
+    has referenced yet" is valid, "Add, remove, rename, or edit a tool in `tools`" is invalid, and an
+    MCP connector server that "returns a different tool list on the next request" without a pinned toolset
+    invalidates thinking blocks from Sonnet 5.5, Haiku 5.5, Fable 5.2 and Mythos 5.2; tools should change
+    through `tool_addition` and `tool_removal` blocks, and if every tool in `tools` is deferred, "the
+    first tool you define this way costs one full prompt cache miss." No numbers.'
+  conditions: Living docs, accessed Nov 10, 2026; date is the Claude Fable 5.2 launch in the API release
+    notes (message threads launched Nov 2, 2026, beta header message-threads-2026-08-12); vendor documentation,
+    no measurements; the docs still do not say whether a call to a withdrawn tool is blocked
+  direction: supports
+  measured: false
+  locator: 'What''s new in Claude Fable 5.2: Breaking changes (Editing earlier turns invalidates thinking
+    blocks on every account; advisor tool); Message threads: What to send on each request (table), Changing
+    fields; Preserved thinking: What counts as an edit (table), Add or remove tools with tool_addition
+    and tool_removal; API release notes Nov 2 and Nov 9, 2026'
+- source: 'Xiangxi Tian, Ran Guan, "Toollery: Scaling LLM Agents to Thousands of Skills and Tools", https://arxiv.org/abs/2609.22218'
+  date: '2026-09-02'
+  task: Replay BFCL-V4 requests against the full tool library (443 to 457 tools, the same on every request,
+    so the provider cache can hold it) and against a top-10 list retrieved per request, under natural
+    caching, with caching suppressed, and with forced-warm prompts
+  effect: 'Natural replay (600 calls each): full library 0.787 AST accuracy, 3.76 s, $0.000749 billed
+    input per request, 87,074 input tokens, 0.989 cache hit rate; top-10 list 0.840, 2.33 s, $0.000819,
+    2,196 tokens, 0.144 hit rate: "we find no billed-input-cost advantage in this regime" (difference
+    $0.000070 per request, 95% CI -$0.000524 to $0.000462). Caching suppressed (300 calls each): full
+    library 0.797, 9.03 s, $0.037879; top-10 0.817, 2.15 s, $0.000951. Forced-warm (priming call excluded):
+    $0.000328 against $0.000036. "Cost savings therefore depend on cache state and traffic reuse; visible-token
+    reduction alone does not imply proportional monetary savings."'
+  conditions: BFCL-V4 live and non-live multiple-function requests, one request per task (no multi-turn
+    session and no mid-session tool change); billed on the DeepSeek API (the paper's top-10 runs use DeepSeek-V4-Pro;
+    the replay table does not restate the model); two authors; the paper's main result, retrieval quality,
+    belongs to the tool-surface entry (2.a.i)
+  direction: mixed
+  measured: true
+  locator: Appendix B.2, Table 15; §4 Table 4
+- source: 'Igor Santos-Grueiro, "Lingering Authority: Revocable Resource-and-Effect Capabilities for Coding
+    Agents", https://arxiv.org/abs/2606.22504'
+  date: '2026-06-21'
+  task: Under the same execution-time policy, compare a planner interface that removes capabilities once
+    they are no longer allowed (Portico) with an all-visible interface that keeps them in view and rejects
+    them only at execution, and with a comparator that never revokes a temporary grant, on controlled
+    coding-agent tasks
+  effect: 'All-visible against removal, same check (post-closure family): executed forbidden effects 0/20
+    each, scope 20/20, success 5/20, but more blocked forbidden proposals (mean 4.20 against 3.35; 84
+    against 67 over four episodes, Portico fewer in three and tied in one); in a boundary-extension check
+    the direction reversed (39 blocked for all-visible against 48 for Portico, 0/8 forbidden effects each).
+    Without revocation: "Portico then rejects 10/10 post-closure reuses, while the comparator permits
+    10/10"; stale-write audit 0/6 against 6/6 executed forbidden writes; model-live follow-ups 0/6 stale
+    effects for Portico and for all-visible against 6/6 for the non-revoking comparator. A coarse all-visible
+    action filter kept 15/20 runs in scope, with ten executed forbidden effects. The author reads visibility
+    as "planner interface cost" and keeps it "as a diagnostic of one family rather than a general trajectory
+    claim."'
+  conditions: Qwen3-Coder-30B-A3B-Instruct through a hosted router for the main runs; controlled fixture
+    suites plus 14 pinned real-repository contracts (all conditions 14/14, no forbidden effects); a three-run
+    frontier slice (GPT-5.5, Gemini 3.5 Flash, Claude Opus 4.8) compared only Portico and the non-revoking
+    comparator and found no violations in either; single author; the interface is the agent's mediated
+    tool catalog and resource scopes, not a provider tools array; no cache or cost measurement; the revocation
+    result belongs to the agent-reach entry (10.a.i)
+  direction: mixed
+  measured: true
+  locator: Abstract; §7.3 Tables 6-10; Appendix B Table 13
+- source: 'Linzhang Li, Yixin Dong, Guanjie Wang, Ziyi Xu, Alexander Jiang, Tianqi Chen, "XGrammar-2:
+    Dynamic and Efficient Structured Generation Engine for Agentic LLMs", https://arxiv.org/abs/2601.04426'
+  date: '2026-01-07'
+  task: Measure grammar-constrained tool calling in a serving engine when the tools in the grammar are
+    the same on every request or change per request, and its end-to-end latency and call accuracy on BFCL-v3
+  effect: 'With 100 requests drawing 10, 100 or 500 tools from a 1,908-tool BFCL pool, whole-grammar reuse
+    was 99.0% when every request used the same tools and 0% when each drew its own (substructure reuse
+    25.2%, 79.9% and 95.6%); average compile time per request rose from 4.18 to 219.50 ms at 100 tools
+    and from 84.48 to 4,733.00 ms at 500 tools (XGrammar: 63.50 to 6,697.0 ms and 682.80 to 60,308.0 ms).
+    End-to-end function-calling latency with XGrammar-2 was 249.88, 297.48, 466.83 and 1,296.36 ms against
+    235.31, 286.01, 463.08 and 1,276.29 ms unconstrained (0.8% to 6.2% slower; the text says "no more
+    than 6%"), about 7x faster than XGrammar. BFCL-v3 correct call rate rose from 6.07% to 32.84% (Llama-3.2-1B),
+    33.12% to 77.75% (3B), 59.48% to 80.93% (8B) and 45.60% to 86.41% (70B), "primarily by eliminating
+    malformed tool calls".'
+  conditions: SGLang with Qwen3-0.6B and Llama 3.1/3.2 1B to 70B; compile timings single-threaded on one
+    CPU, read from Figure 6 labels; the dynamic workload samples tools at random per request, not a few
+    fixed availability states; the 10-to-500-tool compile experiment is in v3 onward (May 2026; v2 tested
+    5 to 50 tools) and the accuracy table in v2 onward (Mar 2026), while v1 gave latency and accuracy
+    only as charts; the engine authors' own evaluation
+  direction: supports
+  measured: true
+  locator: §4.1 Table 1 and Figure 6; §4.3 Figure 10; Appendix I Table 6
 assessment:
   qa:
     unit: Masked tools are never called.
@@ -328,6 +458,7 @@ assessment:
 related:
 - 3.b.i
 - 2.a.i
+- 10.a.i
 - 10.b.i
 - 2.b.i
 - 2.a.ii
@@ -339,12 +470,15 @@ provenance:
   sub_type: api
   library_group: Production
   library_source: master
-caveats: 'No study measures masking against removing tools on the same agent: the cache case rests on
-  vendor documentation and on measurements of caching in general, and the saving scales with how often
-  the tool set changes and how long the prefix is. Masking keeps disallowed tools in view, and visibility
-  has a measured cost: one unneeded tool cut answer rates from 98.2% to 63.5% across six models, and per-step
-  pruning beat a full list with the retrieved tools emphasized on small on-device models. Mechanisms differ
-  by provider: on Claude a tool_choice change still re-reads the message history, and forced tool choice
-  and prefill are rejected on recent models, so Manus''s prefill recipe now applies mainly to self-hosted
-  models, where forcing a call every turn made weak models loop. The constrained-decoding results come
-  from small open models, adversarial probes and single-step runs.'
+caveats: 'No study measures masking against removal on cache cost within one multi-turn session: the cache
+  case rests on vendor documentation and on measurements of caching in general, and the saving scales
+  with how often the tool set changes and how long the cached history is. Removal has measured advantages
+  where the tool list dominates the prompt: on single requests over about 450 tools, pruning to 10 per
+  request matched a cached full list on billed cost and won on accuracy and latency (one study, one provider),
+  one unneeded visible tool cut answer rates from 98.2% to 63.5%, and per-step pruning beat a full list
+  on small models. The security comparison is one small coding-agent study on one open model, where the
+  execution-time check, not visibility, decided whether forbidden actions ran. Mechanisms differ by provider
+  and keep changing: on Claude a tool_choice change re-reads the message history and is not allowed inside
+  a message thread, forced tool choice and prefill are rejected on recent models, so Manus''s prefill
+  recipe now applies mainly to self-hosted models, where the grammar and constrained-decoding numbers
+  come from small open models.'

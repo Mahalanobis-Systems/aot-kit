@@ -38,12 +38,12 @@ below are generated from it (`make render`), and so is the public library at
 [mahalsystems.ai/aot/optimizations](https://mahalsystems.ai/aot/optimizations/). New
 optimizations and new evidence go into an entry, never into a skill's generated part.
 
-The library holds 60 optimizations: 32 techniques and 28 patterns from VeRO's pattern library
+The library holds two kinds of optimization: techniques, and patterns from VeRO's pattern library
 (Scale AI, [arXiv 2602.22480](https://arxiv.org/abs/2602.22480)), kept where no technique already
-makes the same change. Another 31 patterns are folded into the entry that makes the same change
-(shown under *Covers*), and a few ids are left out as optimizer-side practices rather than changes
-to an agent. `catalog.yaml` records every id, its skill, tier and categories, what each skill
-absorbs, and what was left out and why.
+makes the same change. Other patterns are folded into the entry that makes the same change (shown
+under *Covers*), and a few ids are left out as optimizer-side practices rather than changes to an
+agent. `catalog.yaml` counts each kind and records every id, its skill, tier and categories, what
+each skill absorbs, and what was left out and why.
 
 A tier says what evidence a change needs before it can be recommended; `library/vocabulary.yaml`
 defines the four. An optimization that can sit in more than one tier is listed under the lowest;
@@ -114,6 +114,7 @@ Real trade-offs within the existing design; needs the calibrated quality eval an
 | `reflection-loop` | 7.c.i ¹ | Reflection loop |  |
 | `self-critique-evaluator` | 7.c.ii ¹ | Self-critique evaluator loop |  |
 | `parallel-read-only-tools` | 6.b.i ¹ | Parallel tool execution for read-only calls |  |
+| `test-first-fail-to-pass` | 9.c.iv ¹ | Write a fail-to-pass test before the fix, and harden it against wrong fixes |  |
 
 ### Tier 4: Restructuring
 

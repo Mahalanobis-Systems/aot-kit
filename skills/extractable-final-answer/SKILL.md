@@ -72,6 +72,7 @@ Most of the evidence comes from single-call benchmarks, not agent loops: no outs
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:few-shot-examples` (3.a.i, Add worked examples to the prompt (few-shot), or curated example queries for data agents)
 - `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
+- `aot-kit:detect-loops-and-stalls` (7.b.i, Detect stalls and loops: warn, then stop early)
 - `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
 
 <!-- End of the generated part. Everything below is written by hand. -->

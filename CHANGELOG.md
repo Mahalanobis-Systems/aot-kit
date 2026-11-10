@@ -7,6 +7,24 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+- New technique: write a fail-to-pass test before the fix, and harden it against wrong fixes
+  (9.c.iv, Tier 3, proposed), with 7 sources. A coding agent writes its reproduction test before
+  any source edit; the test is kept only if it fails on the current code, then test and fix are
+  hardened against wrong candidate fixes. Contributed by the Mahalanobis Systems maintainers.
+- 28 cards are revised from the Nov 10 review, with 134 new sources (each dated, quoted and
+  located in its entry): model and effort per call site (1.b.i, 7 new sources), reduce the tool
+  surface (2.a.i, 4), rewrite the tool surface (2.a.ii, 4), choose the action interface (2.a.iii,
+  5), tool-use guidance (2.b.ii, 4), avoid few-shot ruts (3.a.ii, 4), dynamic context injection
+  (3.a.iii, 4), cache-stable prefix (3.b.i, 5), mask tools instead of removing them (3.b.ii, 4),
+  multi-window task state (4.b.iii, 5), staged compaction (5.a.i, 7), ground queries in the schema
+  (5.b.i, 4), isolated sub-agent contexts (5.c.ii, 4), multi-agent only for breadth (6.b.iii, 6),
+  prompt chaining with gates (7.a.ii, 4), detect loops and stalls (7.b.i, 7), keep errors in
+  context (7.b.ii, 4), track task progress (7.b.iv, 4), evaluator-optimizer loop (7.c.iii, 6),
+  ReAct loop (7.d.iii, 5), choose the retriever (8.a.i, 5), external verifier feedback (9.a.i, 5),
+  verify completion (9.b.iii, 6), samples before verification (9.c.ii, 5), audit a verifier-gated
+  cascade (9.c.iii, 4), constrain agent reach (10.a.i, 4), gate risky actions (10.b.i, 4) and
+  contain untrusted input (10.c.i, 4). Contributed by the Mahalanobis Systems maintainers.
+
 ## 0.3.0 — 2026-11-03
 
 - 11 cards are rewritten, with a sharper summary and how-to and 53 new sources (each dated, quoted

@@ -17,56 +17,185 @@ domains:
 - general
 evidence_domains:
 - code-generation
+- tool-use
+- computer-use
+- web-research
 categories:
 - context.lean-window
-summary: Manage the history before it overflows. Past a soft threshold (about 60% of the window) replace
-  old tool outputs with short stubs; only past a hard threshold (about 85%) summarize the oldest turns
-  into a summary with fixed sections (goal, files touched, done, pending, errors, next step) that is updated
-  incrementally, not regenerated. Keep the recent tail verbatim. The value is large at small windows and
-  near zero at 128k; compaction alone does not carry multi-window work (see 4.b.iii for state kept in files).
-how: 1. Measure peak context against the window on the longest runs. 2. Implement the two thresholds and
-  the fixed-section summary. 3. Evaluate with post-compaction probes (recall, artifacts, next step) and
-  tokens per task, not compression ratio.
+summary: 'Clear old tool outputs, then summarize, only when the context window binds, and carry the task''s
+  rules and the last completed call forward verbatim, because summaries drop them. It pays most at small
+  windows (+35.7 points at 32k against +2.7 at 128k on coding tasks; +12.3 points on long sessions of
+  a reasoning model in a 49K window), while two 1M-window frontier models scored the same with the trigger
+  anywhere from 160K to 380K tokens and no strategy beat their default self-summarization. Do it in stages
+  and in batches: past about 60% of the usable window replace old tool outputs with stubs, past about
+  85% summarize the oldest turns into fixed sections updated in place, keep the recent tail verbatim,
+  and avoid edits every turn (each one forces a re-prefill; trimming every turn cost 1.85 times the full
+  context). The losses are ones benchmarks rarely score: the first summary dropped about one of a task''s
+  three rules, rules kept in the summary were still broken 2.6 times as often as with the full history,
+  and harnesses that flatten roles into text let forged user turns into the summary in 87% to 100% of
+  trials; work that outlives one window needs its state in files (4.b.iii).'
+how: '1. Start from the baseline, per model: on the longest runs, measure peak context against the usable
+  window (the window minus the reply and reasoning reserve), overflow and turn-cap endings, runs that
+  end when one reasoning turn fills the room the history left, success, and tokens and cost per task.
+  Compaction pays where the window binds: managed history added 35.7 points at 32k but 2.7 at 128k on
+  SWE-bench Verified, and for two 1M-window frontier models moving the trigger between 160K and 380K tokens
+  (16% to 38% of the window) did not change scores and no strategy beat the scaffold''s default self-summarization.
+  If runs rarely approach the window, keep the default compaction and spend the effort on what it must
+  not lose (steps 5 and 6) instead. 2. Set two thresholds on the usable window and leave room for a full
+  turn. Past a soft threshold (about 60%) replace old tool outputs with a stub that keeps the tool name,
+  the arguments and a handle to get the content back (a file path, a command to re-run, an ID); re-reading
+  or re-running is the recovery path, since a dedicated recall tool went unused in more than half of the
+  settings tested and did not raise success. Past a hard threshold (about 85%) summarize the oldest turns
+  and keep a verbatim recent tail (about 30% of the window, at least two turns). For reasoning models
+  in tight windows trigger earlier: in a 49K window most uncompacted failures (102 of 200 sessions) were
+  one reasoning turn exhausting the room left, compacting at about half the input budget raised the long-session
+  resolve rate from 41.2% to 52.9%, and a trigger at 48K of a 51.7K budget fired in 4 of 50 sessions and
+  behaved like no compaction. Do not compact earlier than needed to save tokens: a 400K-window model scored
+  0.38 with a 160K trigger against about 0.60 at 260K and above, and summarizing at 48K instead of the
+  standard 96K or 192K threshold lowered the average score of two of three open models (51.0 to 48.3 and
+  44.1 to 37.1). 3. Elide in batches at the threshold, not every turn. Every edit to earlier history rewrites
+  the cached prefix and forces a re-prefill of everything after it: trimming tool outputs to the latest
+  12 rounds on every turn cost 1.85 times as much as keeping the full context. Fire elision only when
+  it frees a large block (OpenCode prunes only when more than 20K tokens are reclaimable and protects
+  the newest 40K; with that rule elision stayed close to self-summarization on PaperBench for every model
+  tested), keep the rest of the prefix byte-stable (3.b.i), and expect each summary to cost one turn of
+  cache reuse (96% against 98% of prompt tokens reusable). On a self-hosted engine, dropping old tool-output
+  KV cache instead of editing the text avoids the re-prefill (27.7% lower pooled cost and +1.7 points
+  against threshold summarization); hosted APIs do not offer it. 4. Summarize into fixed sections and
+  update them in place. Keep sections for the goal, files and other artifacts touched, done, pending,
+  errors and decisions, and the next step; give the summarizer the previous summary plus the newly folded
+  turns and merge, instead of regenerating from the whole history. Task records revised in place scored
+  55.93 (OSWorld partial score) against 50.93 for a summary following the same principles, 44.94 for a
+  generic summary and 50.32 for no compaction on 40 tasks, and anchored iterative summaries beat full
+  regeneration 3.70 to 3.44 on one vendor''s 0-5 probe scale. Write summaries with the agent''s own model
+  or a tested equal: Claude Haiku 4.5 summaries kept Claude Opus 4.6 within its baseline interval but
+  cost GPT-5.4 16 points and GPT-5.3-Codex 20, and removing old reasoning blocks before summarizing cost
+  GPT-5.4 16. Check paths, identifiers, error lines and numbers in the summary against the source and
+  drop any that occur nowhere. Where sessions are time-bound, write the summary in the background and
+  apply it on the next turn: a 27B reasoning writer took a median 161 s per summary, and under a 45-minute
+  session cap the success gain vanished. 5. Carry forward verbatim what a summary cannot be trusted with:
+  the task statement, every operating rule (prohibitions, scope exclusions, approval requirements, process
+  instructions) and the most recent completed call with its result. Summaries drop rules even when the
+  prompt asks to keep them: the first summary dropped on average 0.92 of a task''s three anti-cheating
+  rules and 1.93 by the tenth compaction, because later summaries are written from earlier ones that already
+  lost them, and on real coding sessions process instructions and scope exclusions were dropped 35.9%
+  and 36.8% of the time against 6.2% for feature requirements. Re-inject the original task and rule messages
+  after each compaction (one published harness re-injects prior user messages for this) or keep them in
+  a file the agent re-reads (4.b.iii), and tell the summarizer to preserve rules with their scope, exceptions
+  and negation: in one benchmark that instruction was the only compaction strategy below the full-history
+  violation rate (9.0% against 11.9%). Never compact by dropping whole turns (first-in-first-out lost
+  the rule in every run) or into a summary budget of a few hundred tokens (at 300 and 200 tokens at least
+  95.1% of runs lost it). Keeping the rule is not enough: runs whose summary kept it still broke it 2.6
+  times as often as full-history runs, so enforce rules that matter outside the model (10.b.i). Removing
+  the last completed call raised immediate repeats of it from 3.3% to 48.8%, and an explicit trace or
+  ledger of past actions in the summary did not stop loops (52.0% to 62.7% of runs against 57.3%), so
+  keep the call itself in the tail (7.b.i). 6. Treat the summarizer''s input as a trust boundary and keep
+  the raw history. Pass the history role-typed, or escape role labels inside tool output, rather than
+  flattening it into text such as ''[User]:'': forged user turns planted in tool output became user instructions
+  in the summary in 87% to 100% of trials in five harnesses that flatten roles, against 0% in four that
+  keep messages typed, and a laundered approval led an agent to run an attacker''s command in 3 of 6 live
+  sessions (0 of 5 clean). A prompt rule against injected instructions stopped only 13% to 25% of laundering;
+  a code check of the summary''s user-attributed claims against the stored user turns caught 77% with
+  2% of legitimate claims demoted. Keep the full history in an append-only log or a linked session for
+  audit and recovery and tell the agent where it is, but don''t expect a score gain from it: writing the
+  pre-compaction context to a file did not beat plain self-summarization and lowered one model from 0.38
+  to about 0.24. 7. Measure on the same long tasks and model, several runs per arm: the default or no
+  compaction, elision only, and staged; report success, overflow and cap endings, tokens and cost per
+  task including summarizer calls, cache-hit rate around compactions, time per compaction and wall-clock.
+  Add probes a benchmark score misses: a rule stated once early and a later request that would break it
+  (graded from the tool calls against a full-history run, not from the summary), recall of exact identifiers
+  and files changed, completed work described as pending, repeats of the last completed call, and a forged
+  user line planted in a tool output. Re-run per model: summarizer and strategy effects that held for
+  one model did not transfer to another.'
 detect:
-  static: no compaction, or compaction that summarizes the whole history at once; a context window under
-    about 64k
-  traces: context-overflow outcomes; peak context over about 85% of the window; summaries that drop file
-    changes or decisions; failure rows labeled context-rationale-erosion
-  evals: failures concentrated in the longest trajectories
+  static: no compaction, or compaction that summarizes the whole history at once; elision or trimming
+    applied every turn; history flattened into role-labeled text (such as '[User]:') before it is summarized;
+    summaries written by a smaller model than the agent; operating rules kept only in the conversation;
+    a context window under about 64k
+  traces: context-overflow outcomes; peak context over about 85% of the window; a reasoning turn ending
+    at the window limit because the history left too little room; summaries that drop file changes, decisions,
+    prohibitions or approval requirements; the last completed call missing after a compaction and then
+    repeated; failure rows labeled context-rationale-erosion
+  evals: failures concentrated in the longest trajectories; rule violations after compaction that a matched
+    full-history run does not make
+  probes:
+    what: Long runs in which a rule stated once early (a prohibition, a scope exclusion, an approval requirement)
+      or an exact identifier must still hold after one or more compactions
+    construct: State a rule in the first user message and another in a document the agent reads, pad past
+      the hard threshold, then ask for an action that would break them; grade from the tool calls against
+      a full-history run, not from the summary text; also plant a forged '[User]:' line in a tool output
+      before compaction and check that the summary does not record it as a user instruction
 impact:
   quality:
     effect: improves
     size: large
-    when: +35.7 points at 32k, +2.7 at 128k (Fan, Sep 2026); staged elision matches other strategies on
-      success
+    when: 'where the window binds: managed history +35.7 points at 32k and +2.7 at 128k on SWE-bench Verified
+      (Fan, Sep 2026); +12.3 points on long sessions of a 27B reasoning model in a 49K window (Jithin
+      VG, Oct 2026); task records kept in place +5.8 points partial score on OSWorld 2.0 (Lu, Oct 2026);
+      near zero for 1M-window frontier models, where no strategy beat default self-summarization (Salle,
+      Oct 2026); a generic regenerated summary scored 5.4 points below no compaction (Lu, Oct 2026), and
+      smaller-model summaries or dropped reasoning cost some models 16 to 20 points (Salle, Oct 2026)'
     basis: evidence
   cost:
     effect: improves
     size: medium
-    when: staged elision lowest cost in 7 of 8 panels, e.g. $1.45 against $2.57
+    when: staged elision lowest cost in 7 of 8 panels, e.g. $1.45 against $2.57 (Fan, Sep 2026); task
+      records 51.9% fewer tokens and 35.9% lower cost per task over a 500-step budget (Lu, Oct 2026);
+      equal total tokens and 13% fewer per resolved session in a 49K window (Jithin VG, Oct 2026); but
+      trimming tool outputs every turn cost 1.85 times the full context because each edit forces a re-prefill
+      (Fu, Oct 2026)
     basis: evidence
   performance:
-    effect: unknown
+    effect: mixed
+    size: medium
+    when: each summary took a median 161 s with a 27B reasoning writer, model time rose 14%, and under
+      a 45-minute session cap the success gain vanished (Jithin VG, Oct 2026); dropping old tool-output
+      KV cache in a self-hosted engine gave 1.51 times faster P95 request latency than threshold summarization
+      (Fu, Oct 2026)
+    basis: evidence
   security:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: 'the summary is an injection channel: forged user turns in tool output were laundered into it
+      as user instructions in 87% to 100% of trials in harnesses that flatten roles to text, 0% in role-typed
+      ones (Dabirsiaghi, Oct 2026); a compactor-targeted injection raised rule violations from 37.8% to
+      46.3%, and from 23.5% to 58.8% at its strongest (Zha, Nov 2026)'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: 'operating rules are lost or ignored after compaction: violation@3 rose from 9.6% to 37.8% with
+      most rules still in the summary, and organizational rules never broken with the full history were
+      broken after it (Zha, Nov 2026); summaries dropped process instructions and scope exclusions 35.9%
+      and 36.8% of the time against 6.2% for feature requirements (Salle, Oct 2026); an instruction to
+      preserve rules brought violations to 9.0% against 11.9% with full history (Zha, Nov 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
-- method: before-after
-  tier: 2
-  how: context-overflow rate on the same cases
 - method: experiment
   tier: 3
-  how: paired eval, tokens per task, post-compaction probes
+  how: 'same long tasks and model, several runs per arm: default or no compaction, elision only, staged;
+    success, overflow and cap endings, tokens and cost per task including summarizer calls, cache-hit
+    rate, time per compaction; plus rule-compliance probes graded from tool calls against a full-history
+    run, exact-identifier recall, and a forged user line planted in a tool output'
+- method: monitor
+  how: 'per model in production: peak context against the usable window, overflow errors, compactions
+    per session and time per compaction, cache-hit rate on the turn after a compaction, a sampled judge
+    check of rules and identifiers missing from summaries, and repeats of the last completed call after
+    a compaction; re-run the experiment when the model or summarizer changes'
 evidence:
 - source: repo figure_04
   task: five follow-up benchmarks
   effect: MAX_HISTORY_CHARS lowered twice, never raised.
+  date: 2026-02
 - source: repo figure_01
   task: five follow-up benchmarks
   effect: Context-management edits in 6 to 10 of 20 runs per benchmark.
+  date: 2026-02
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
   task: Add context management when the window is tight
@@ -186,11 +315,12 @@ evidence:
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
   task: Elide stale tool outputs to stubs before summarizing
-  effect: 'T4 (staged elision, then summarization) matches T1-T3 on success and has the lowest cost in
-    7 of 8 model-benchmark panels. It has the lowest mean cost per task and the lowest average peak-context/budget
-    ratio at every budget, and it calls summarization less than T3 at every budget. At 32k, T1/T2 (elision
-    only) still reach about the full window. Example SWE 32k, Nemotron-3 550B: T4 55.6% at $1.45 vs T1
-    51.4% at $2.57.'
+  effect: 'Soft and hard thresholds at 0.6 and 0.85 of the usable window, with the verbatim recent window
+    budgeted at 0.3 and floored at two turns. T4 (staged elision, then summarization) matches T1-T3 on
+    success and has the lowest cost in 7 of 8 model-benchmark panels. It has the lowest mean cost per
+    task and the lowest average peak-context/budget ratio at every budget, and it calls summarization
+    less than T3 at every budget. At 32k, T1/T2 (elision only) still reach about the full window. Example
+    SWE 32k, Nemotron-3 550B: T4 55.6% at $1.45 vs T1 51.4% at $2.57.'
   direction: supports
   measured: true
   locator: §2.3 Algorithm 1; §3.1 Implementation Details (thresholds); §3.2 'T4 offers the best accuracy-cost
@@ -235,10 +365,192 @@ evidence:
   direction: supports
   measured: false
   locator: Sec 9.5 (OpenCode, Pi); Recommendation 7
+- source: Jeanne Salle, Hardik Bhatnagar, Matthias Bethge, Sahar Abdelnabi, Maksym Andriushchenko (ELLIS
+    Institute Tübingen, Tübingen AI Center), "Benchmarks Are Surprisingly Compaction-Friendly", https://arxiv.org/abs/2610.31778
+  date: '2026-10-22'
+  task: 'Fix one scaffold (OpenCode) and vary only compaction on long-horizon agent tasks with frontier
+    models: the trigger (160K to 380K tokens) and five strategies (default self-summarization; tool-output
+    pruning that replaces old outputs with a placeholder, keeps the newest 40K and runs only when it frees
+    20K, alongside summarization; writing the full pre-compaction context to a file; dropping old reasoning
+    blocks before summarizing; summaries by a smaller model); judge which task rules survive each summary,
+    and which user constraints survive compaction in real coding sessions'
+  effect: 'Claude Opus 4.6 and GPT-5.4 (1M windows) scored about the same at every threshold from 160K
+    to 380K (16% to 38% of their windows); GPT-5.3-Codex (400K) scored 0.38 on PaperBench at 160K against
+    about 0.60 at 260K and above. ''No compaction strategy consistently beats default self summarization'':
+    tool-output pruning stayed close to it on PaperBench for every model; writing the context to a file
+    lowered GPT-5.3-Codex from 0.38 to about 0.24; dropping reasoning blocks lowered GPT-5.4 from 0.59
+    to 0.43; Claude Haiku 4.5 summaries kept Opus 4.6 within the baseline interval but lowered GPT-5.4
+    from 0.59 to 0.43 and GPT-5.3-Codex from 0.38 to 0.18. On ProgramBench the summaries dropped on average
+    0.92 of the task''s three anti-cheating rules at the first compaction, 1.93 by the 10th and 2.65 by
+    the 30th, although the summary prompt asks for constraints that should persist (per compaction: GPT-5.3-Codex
+    2.73, GPT-5.4 1.76, Claude Opus 4.6 0.51). In 44 real Claude Code sessions (269 user constraints)
+    the next summary dropped 19% (24.5% under a second judge): feature requirements 6.2%, process instructions
+    35.9%, scope exclusions 36.8%.'
+  conditions: OpenCode; Claude Opus 4.6 (max effort), GPT-5.4 and GPT-5.3-Codex (medium), Gemini 3.1 Pro
+    Preview (rarely compacted, uninformative); PaperBench (3 papers), ProgramBench (2 tasks, more for
+    the rule analysis), PostTrainBench (6 model-benchmark pairs, too variable to conclude); two runs per
+    task and configuration; scores conditional on a valid submission, bootstrap 95% intervals; strategies
+    compared at a 160K threshold; rules and constraints judged by LLMs (Claude Sonnet 5; second judge
+    GPT-5.6 Sol, Cohen's kappa 0.681); SWE-chat sessions come from another scaffold; no cost reported;
+    independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3; §4.1 Q1-Q2, Figs 2-3; §4.2 Q3-Q4, Fig 4; §5; App 6.9 Table 3; App 6.11
+- source: Yiwei Zha, Qingyu Meng, Herbert Bos, Min Chen (Vrije Universiteit Amsterdam), "Do Agents Still
+    Follow the Rules? Benchmarking Rule Compliance under Agent Context Compaction", https://arxiv.org/abs/2611.03223
+  date: '2026-11-02'
+  task: 'Inside the pi coding-agent harness, give an operating rule (in the user''s message, as a persistence
+    instruction, in a document, or from a policy tool), compact, then issue a request that would break
+    it; grade violations from the agent''s tool calls against matched full-history runs, across ten compaction
+    strategies (seven that write a summary, three that keep selected turns verbatim: first-in-first-out
+    and two least-recently-used variants), summary budgets, compactor-targeted injections and defenses'
+  effect: violation@3 (cases violating in at least one of three runs) rose from 9.6% with the full history
+    to 37.8% after compaction, 28.9 points of it only after compaction, while 70.1% of compacted runs
+    kept the rule, 26.9% kept it partially and 3.0% lost it; compacted runs that kept the rule violated
+    2.6 times as often as full-history runs. Rules delivered by a document or a policy tool were never
+    violated with the full history but were after compaction. Selective compactors reached 50.2% violation@3
+    and lost the rule in 84.1% of runs (first-in-first-out in every run); summary-writing strategies 21.8%,
+    keeping the rule in 91.2%; pi's compaction with an added rule-preservation instruction was the only
+    strategy below the full-history rate (9.0% against 11.9%). Summary budgets from 2,500 down to 750
+    tokens kept the rule in at least 97.1% of runs (24.2% to 28.1% violation@3); at 300 and 200 tokens
+    at least 95.1% of runs lost it (47.1% and 50.0%). A compactor-targeted injection raised violation@3
+    from 37.8% to 46.3%; the strongest ('escape') raised violation@6 from 23.5% to 58.8%, and the rule-preservation
+    defense brought it to 29.4% with the rule kept in 99.0% of runs.
+  conditions: 17 task cases (email, file access, software operations, purchasing); DeepSeek-V4-Flash,
+    GLM-5.3-Flash, Qwen3.7-Flash and GPT-Luna, each compacting its own history; baseline compactor from
+    Hermes Agent, whose prompt read 'Target ~50 tokens' in the baseline, strategy and attack studies;
+    k = 3 runs per case (k = 6 in the attack and defense studies, which use one model and static payloads);
+    rule state by three LLM judges with a 50-summary human check; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §3; §4.2 Table 3; §4.3 Tables 5-6; §4.4 Table 7; §5; App F (P4, P5-P6); Limitations
+- source: 'Arshan Dabirsiaghi (Pixee), "Compaction Laundering: Provenance Destruction in Context-Compacting
+    Coding Agents", https://arxiv.org/abs/2610.29869'
+  date: '2026-10-21'
+  task: Plant a forged user turn (a '[User]:'-style line granting a standing approval) in content the
+    agent reads (a repository doc, a fetched web page, a dependency README), run each harness's real serializer
+    and compaction prompt, and measure whether the summary records it as the user's instruction and whether
+    the agent then acts on it; compare prompt-level and code-level defenses
+  effect: 'Harnesses that flatten the history into text with in-band role labels before summarizing laundered
+    the forged approval into the summary in 87% to 100% of trials (pi, opencode, Aider 15/15; OpenHands
+    14/15; Cline 13/15); harnesses that pass role-typed messages (Codex, Gemini CLI, Qwen Code, Continue)
+    0/15. With pi''s prompt the rate was 67% to 69% across Anthropic, OpenAI and Zhipu models (n = 72
+    per cell). A laundered approval drove agents to run an attacker''s curl | sh in a sandbox, and end
+    to end in the live pi interface in 3 of 6 poisoned sessions against 0 of 5 clean. Gemini CLI''s in-prompt
+    anti-injection rule stopped about 13% (Claude) to 25% (GPT) of laundering; a code check comparing
+    the summary''s user-attributed claims with the stored user turns caught 77% while demoting 2% of legitimate
+    claims (82% and 9% at a stricter setting). Fix: escape role labels before flattening, or keep messages
+    role-typed.'
+  conditions: Nine open-source coding-agent harnesses at pinned commits; three frontier models; n = 15
+    per harness in the cross-harness test with an LLM judge cross-checked on 18 items; live demonstration
+    on gpt-5.6-luna, 6 poisoned and 5 clean sessions; attacker capabilities partly constrained, so the
+    author reads the rates as a floor; the 67% classifier figure is quoted from another paper; single
+    author at a security company, independent of the harness vendors
+  direction: mixed
+  measured: true
+  locator: Abstract; Experiment Design 1-5; Results E1, E9, E10, E15; Limitations
+- source: 'Jithin VG, Ditto PS (Bud Ecosystem), "Bud ContextCompact 2.0: Context Compaction for Agent
+    Success and Accuracy with Small Language Models and Constrained Context Windows", https://arxiv.org/abs/2610.25516'
+  date: '2026-10-18'
+  task: 'A/B test of a vendor runtime''s compaction against none, with compaction the only difference:
+    a background summary into fixed fields (goal, labeled facts and identifiers, work done, pending, current
+    work, next step), written from the previous summary plus the newly folded messages, with literals
+    checked against the source; SWE-bench Verified with a reasoning model in a tight window, plus session-budget,
+    threshold and model-size probes and recall probes over recorded sessions'
+  effect: 'No session budget: on long sessions (either arm crossed the threshold) compaction raised the
+    resolve rate from 41.2% to 52.9% (+12.3 points, 95% CI +1.6 to +23.0, McNemar p = 0.043; discordant
+    pairs 21 to 9); short sessions +1.7 (p = 1.0); all pairs +6.5 (p = 0.053). 102 of 200 uncompacted
+    sessions ended when one reasoning turn used up the room the history left (85 compacted); 2 overflowed
+    from history. Tokens including the summarizer were equal (108.4M against 108.7M), 13% fewer per resolved
+    session (1.26M against 1.10M), and model time rose from 73.8 h to 84.2 h. Each summary took a median
+    161 s (p90 263 s) with the agent''s own reasoning model as writer; under a 60-turn or 45-minute session
+    budget the gain vanished (63/120 against 59/120, -3.3 points, p = 0.48) and compacted sessions hit
+    the time limit more often (51 against 39). Threshold probe on a 51.7K-token input budget: compacting
+    at 24K won long pairs 7 to 2 (+13.9 points, n.s.); at 48K it fired in 4 of 50 sessions and behaved
+    like no compaction. Modeled prefix-cache reuse: 96% of prompt tokens with compaction against 98% without.
+    Qwen3-8B stopped after about ten turns at 5-8K tokens and never needed compaction. Recall probes:
+    a 1.2B model compacted to 16K scored 0.335 against 0.247 truncated and 0.176 with its full 32K history.'
+  conditions: Qwen3.8-27B with thinking, 49,429-token window, vLLM on H100s with prefix caching disabled;
+    100 SWE-bench Verified tasks oversampling long and hard ones, two runs per arm (556 graded sessions),
+    threshold at half the input budget; 40 tasks added after the first result as a replication (+10.4,
+    not significant alone); threshold study on 25 tasks, not significant; small-model recall probes are
+    single runs; vendor evaluating its own runtime
+  direction: supports
+  measured: true
+  locator: Abstract; §3; §4.1 Table 1; §5.2 Table 2; §5.3-5.7 Tables 3-4, Fig 4; §6
+- source: Tianyu Fu, Ruoxi Wang, Zihan Min, Zhongqi Ren, Zhihao Li, Tengxuan Liu, Shengxu Mu, Hanling
+    Zhang, Yu Wang (Tsinghua University, CUHK), "Cache Engineering for Agents", https://arxiv.org/abs/2610.28577
+  date: '2026-10-20'
+  task: Compare text-level compaction (summarization at a standard 96K or 192K threshold, summarization
+    at 48K, trimming to the latest 12 tool responses) with dropping old tool-response KV cache inside
+    a serving engine (AKV on SGLang) that reuses the retained cache without re-prefill
+  effect: 'Editing earlier history ''invalidates subsequent KV states, and triggers re-prefill''. Trimming
+    to the latest 12 rounds of tool responses cost 1.85 times as much as the full context, and summarizing
+    at 48K cut cost about 7% but lowered accuracy 5 points (GPT-OSS-120B, 100 BrowseComp-Plus tasks, four
+    trials each). Across three models and four benchmarks, a rolling KV drop of all but the latest 12
+    tool responses scored 1.7 points higher on average than standard threshold summarization (+1.3, +2.1,
+    +1.7 per model) and cost 27.7% less pooled over the 12 model-benchmark cells (per-cell mean 21.7%;
+    it cost more in 2 cells). Summarizing at 48K instead of the standard threshold lowered the average
+    score for two of three models (51.0 to 48.3, 44.1 to 37.1) and raised it slightly for one (52.4 to
+    52.8). Serving: 1.18 times the output throughput and 1.51 times faster P95 request latency (GPT-OSS-120B,
+    SWE-bench Verified subset).'
+  conditions: MiniMax-M2.7, GPT-OSS-120B, MiroThinker-1.7-Mini, self-hosted on SGLang (A800 GPUs); BrowseComp-Plus,
+    GAIA-Text, SWE-bench Verified, xbench-DeepSearch; summarization baselines use pi's compaction prompt;
+    costs priced at Groq and MiniMax list rates, not billed; KV-level dropping is not available through
+    a hosted API; authors' own method
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §3.2 'Why modify the cache directly'; §5.1-5.3, Tables 1-2
+- source: 'Yuchen Lu, Julian McAuley, Lei Zhang (UC San Diego), "Pack Light, CarryOn: Building Object-Oriented
+    Context for Long-Horizon Agents", https://arxiv.org/abs/2610.18784'
+  date: '2026-10-13'
+  task: Fold old history into maintained task records (references to work products and findings with their
+    conditions of use, plus an execution context of goals, constraints and open issues) revised in place
+    across folds, with a verbatim live tail; compare with no compaction, a sliding window, a generic regenerated
+    summary, and a summary following the same principles
+  effect: 'Claude Opus 4.7 on OSWorld 2.0: partial score 43.9 to 49.7 (+5.8 points) and binary score 15.7
+    to 19.4 (+3.7), with 51.9% fewer tokens and 35.9% lower cost per task; the cumulative cost curves
+    cross before turn 200 and the saving reaches 34.1% by turn 500, context-management calls included.
+    BrowseComp-Plus (100 questions): 49% to 56%, 22.9% fewer tokens, 7.1% lower cost. Shared 40-task OSWorld
+    subset (partial / binary): no compaction 50.32 / 22.50, sliding window 37.41 / 15.00, generic summary
+    44.94 / 15.00, CarryOn-guided summary 50.93 / 20.00, CarryOn 55.93 / 22.50. Hiding the execution context
+    (goals, constraints, unresolved issues) cut the partial score to 44.00.'
+  conditions: Claude Opus 4.7 as agent and as the runtime's tracker and compiler; OSWorld 2.0 with a 500-step
+    budget, BrowseComp-Plus 100-question subset with BM25; strategy comparison on 40 tasks with the same
+    trigger and step budget; scores in points, not percent; no repeated runs reported; authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §4.2 Tables 1-2; §4.3 Fig 3; §4.4 Table 4; §4.5 Table 5; App A.3 Table 7
+- source: 'Tianle Chen, Pushkar Singh, Ketan Todi, Biswajit Paria, Qijia He, Wenqi Wang, Yuwen Tan, Jike
+    Zhong, Sugato Basu, Deepti Ghadiyaram, Arjun Akula, "DeLoop: Repeated Actions as Self-Supervision
+    for Long-Horizon Agents", https://arxiv.org/abs/2610.19376'
+  date: '2026-10-14'
+  task: Measure how history summarization changes looping, and whether keeping the most recent completed
+    tool call and its observation in the compacted history prevents an immediate repeat (only the compaction
+    finding is used here; the loop controls belong to 7.b.i)
+  effect: 'Qwen3-8B on CodeGym: loop rate (share of tasks with a repeated call returning an identical
+    observation) 29.0% with the full history and 57.3% under summarization at 4,096 tokens. In 300 reconstructed
+    post-compression histories from 253 tasks, sampled eight times each, the agent repeated the last completed
+    call in 3.3% of samples with its record present and 48.8% with it removed. Summaries with an explicit
+    record of past actions (a trace of every executed call or a ledger of tried actions) still looped
+    in 52.0% to 62.7% of runs. On the tasks where compression fired, Gemini 3.1 Pro looped in 61.9% with
+    summarization at 1,400 tokens against 33.1% without.'
+  conditions: Aggressive thresholds (4,096 tokens for Qwen, 1,400 for Gemini); the harness keeps the system
+    prompt, the task and the six most recent messages and summarizes the rest; Qwen3 8B to 32B and four
+    Gemini models; 300 held-out tasks; one run per model for the Gemini comparison and the controls; the
+    paper's main subject is the authors' training method
+  direction: mixed
+  measured: true
+  locator: §1; §3 (Appendix F); Appendix Table 4; App J.3 Table 31
 related:
-- 10.c.i
+- 4.b.iii
+- 3.b.i
 - 2.c.i
+- 7.b.i
 - 7.b.iv
+- 10.c.i
+- 10.b.i
+- 5.c.ii
 absorbs:
 - legacy_id: P18
   name: Context compaction
@@ -306,3 +618,14 @@ provenance:
   sub_type: state_management
   harness_role: context_mgmt
   action: tune
+caveats: 'Most measured evidence is narrow: the frontier-model strategy study ran two runs per configuration
+  on two or three tasks per benchmark, the comparison with task records ran once on 40 tasks, rule compliance
+  was measured on 17 cases with flash-tier models and an aggressive default summary target, and the loop
+  and last-call results come from small open models at 1,400- to 4,096-token thresholds. Effects depend
+  on the model and on what is scored: a cheaper summarizer or dropped reasoning cost one model 16 to 20
+  points and left another unchanged, the 60% and 85% thresholds come from one study and were not swept,
+  and benchmarks with a fixed goal and progress on disk hide the loss of rules that exist only in the
+  conversation, which is where summaries fail most. Compaction also costs time (a median 161 s per summary
+  with a reasoning writer, enough to erase the gain under a 45-minute cap), the cheapest measured option
+  (KV-level dropping) needs a self-hosted engine, and the strongest security result is one author''s test
+  of nine harnesses at 15 trials each.'

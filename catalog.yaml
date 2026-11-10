@@ -5,8 +5,8 @@
 # are not optimizations of an agent, or were dropped in review.
 
 counts:
-  skills: 60
-  techniques: 32
+  skills: 61
+  techniques: 33
   patterns: 28
   patterns_folded: 31
   patterns_optimizer_side: 2
@@ -634,6 +634,15 @@ optimizations:
   tier_proposed: true
   categories:
   - memory.reuse
+  absorbs: []
+- id: 9.c.iv
+  skill: test-first-fail-to-pass
+  name: Write a fail-to-pass test before the fix, and harden it against wrong fixes
+  kind: technique
+  tier: 3
+  tier_proposed: true
+  categories:
+  - verification.spend
   absorbs: []
 folded_patterns:
 - legacy_id: P01

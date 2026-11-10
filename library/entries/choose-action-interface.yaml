@@ -21,57 +21,134 @@ evidence_domains:
 - web-research
 - reasoning
 - retrieval
+- planning
 categories:
 - tools.refactor
 - models.workload-fit
-summary: 'Decide the action interface deliberately, by model and by task, and provision what it needs.
-  The rule the evidence supports: (1) weaker models get typed tools (read, write, edit, grep, a narrow
-  calculator); a general code interpreter made a weak agent write boilerplate and fail until it was replaced
-  with typed functions. (2) Structured data gets a typed query tool, whatever the model: SQL scored 100%
-  against 52.7% for bash at a seventh of the tokens, and SQL plus bash also reached 100%. (3) Strong models
-  on shell-heavy or general office work get bash: on enterprise digital-worker tasks bash-only beat typed
-  tools by 21.8-24.5 points with fewer tokens, and typed tools on top of bash added nothing. (4) Work
-  that chains many calls or processes bulk data gets code execution, because intermediate results never
-  pass through the model; calling tools from code matched or beat JSON calling for 11 of 14 models on
-  BFCL v4, and a narrow calculator did as well as full code execution on maths. Whichever you choose:
-  start minimal and add tools per observed failure; for code or shell, provision the packages and fixtures
-  the agent expects, allow concurrent commands, and sandbox it (10.a.i).'
-how: '1. Classify the model''s shell and coding ability from a probe run (typed tools against bash-only
-  on 20 cases). 2. Pick the interface by the table in the summary; for code execution, install the packages
-  the tasks need and set up fixtures. 3. Add tools only when a trace shows a failure a tool would have
-  prevented. 4. Paired eval per model: success, cost, steps.'
+summary: 'Choose the agent''s action interface per model and task: typed tools, a shell, or code that
+  calls tools. Weaker models do better with typed tools (read, write, edit, grep, a narrow calculator):
+  a general code interpreter made a weak agent write boilerplate and fail until it was replaced with typed
+  functions, and structured data gets a typed query tool whatever the model (SQL scored 100% against 52.7%
+  for bash at a seventh of the tokens; SQL plus bash also reached 100%). Strong models on shell-heavy
+  or general office work get bash (on enterprise digital-worker tasks bash-only beat typed tools by 21.8-24.5
+  points with fewer tokens, and typed tools on top of bash added nothing), and work that chains many calls
+  or processes bulk data gets code that calls the tools, because intermediate results never pass through
+  the model: it matched or beat JSON calling for 11 of 14 models on BFCL v4, beat one-at-a-time calls
+  on a many-call benchmark for all ten models tested and for small open models from 4B parameters up,
+  but not at 2B or below, and a narrow calculator did as well as full code execution on math. The best
+  choice is specific to the model and task (two frontier coding agents'' pass rates moved under 3 points
+  across interfaces while cost moved by up to 24.6%, and the same actions offered as typed calls or as
+  command text moved small models'' scores by up to 36.6 points in either direction), so start minimal,
+  add tools per observed failure, provision packages, interpreter state and concurrent commands for code
+  and shell, sandbox it (10.a.i), and decide by a paired eval per model.'
+how: '1. Start from the baseline: the current interface and model. Log per task success, consistency over
+  repeated runs (pass^k), cost, steps, wall-clock time, errors by kind (tools that do not exist, malformed
+  commands, broken edits, import or command-not-found errors) and which tools were actually called. Enforce
+  the interface in configuration where you can and audit the calls: in one study a restriction set only
+  in the prompt still let 7 and 4 explicit edit-tool calls through in 110 runs, and could not rule out
+  the same edits made through bash. 2. Probe each model on 20 or more representative cases under each
+  candidate interface (typed tools only, bash only, typed tools plus bash, code that calls the tools),
+  with the same prompt and budget and several repeats. Do not assume the direction: the same actions offered
+  as typed calls or as command text moved small models'' scores by up to 36.6 points, and typed calls
+  won in only 8 of 18 model-environment pairs. Signs that a model needs typed tools: frequent environment
+  errors under bash (3.11 per trajectory for a weak coding model against 0.35-0.54 for stronger ones;
+  typed tools cut its malformed commands from 0.96 to 0.01 per trajectory), bash-only runs that end after
+  emitting tools that do not exist (66% of one weak model''s runs), or a model of 2B parameters or fewer,
+  where code that calls tools scored slightly below typed calls. 3. Pick the interface per task type.
+  Structured data: a typed query tool (SQL 100% against 52.7% for bash), with bash beside it if the agent
+  should check its own answers. Shell-heavy coding or office work with a strong model: bash (typed tools
+  on top of bash gave no gain on enterprise tasks and raised input tokens 20% for two strong coding models).
+  Many dependent calls, loops, filters, joins or bulk data: code that calls the tools as typed functions
+  and returns only the result (GPT-5.4 went from 18.6% to 71.5% on one many-call benchmark; 37% fewer
+  tokens in Anthropic''s test). Repository edits: measure before dropping native edit tools (code-only
+  cost 14.4% more with Claude Code, not significant, with 39.9% more output tokens, but 19.9% less with
+  Codex). Where success ties, as it did for two frontier coding agents (pass rates within 3 points across
+  default tools, bash only and code only), choose on cost (code-only cost 24.6% less on computation tasks
+  with Claude Code). 4. Start minimal (bash, read, write, edit, grep, or one code-execution tool) and
+  add a tool only when a trace shows a failure it would have prevented. 5. Provision code and shell: install
+  the packages and fixtures the tasks expect; keep interpreter state between code calls (persistent cells
+  raised pass rate in all eight matched comparisons by 0.6-5.7 points, several within run-to-run variation,
+  and cut follow-up API calls from about 27-30 to 4-8); let the code load tool schemas on demand rather
+  than all up front (most of the token savings in that study); allow concurrent commands; and sandbox
+  it (10.a.i). 6. Measure: a paired eval per model and task type, interface A against B with the same
+  model, prompt and budget and several repeats, comparing success and pass^k, cost, steps, wall-clock
+  time and the share of calls made through the assigned interface; re-run it when the model changes.'
 detect:
   static: the interface in use (typed tools, code interpreter, bash), the model it serves, and whether
     the environment has the packages and fixtures the tasks need
   traces: bash-only runs emitting tools that do not exist; typed-tool runs re-patching the same file;
-    code errors in routine operations (reading a file, searching); import-error or command-not-found spans
-    at the start of runs; calculations done in the model's own text; independent commands serialized
-  evals: success and cost by model under each interface
+    malformed shell commands and broken edits per run (a weak coding model averaged 3.11 environment errors
+    per bash-only trajectory against 0.35-0.54 for stronger ones); code errors in routine operations (reading
+    a file, searching); import-error or command-not-found spans at the start of runs; calculations done
+    in the model's own text; independent commands serialized; long chains of single tool calls that pass
+    large intermediate results through the model; calls outside the assigned interface
+  evals: success, consistency over repeated runs (pass^k), cost and steps by model under each interface
 impact:
   quality:
     effect: mixed
     size: large
-    when: typed tools +15.0 points for a weak model; bash-only +3.6 for a strong one (Fan, Sep 2026);
-      typed functions in place of an interpreter took GAIA from 0.07 to 0.24 (VeRO)
+    when: typed tools +15.0 points on SWE tasks for a weak model and bash-only +3.6 for a strong one (Fan,
+      Sep 2026); typed tools on bash raised a weak model's pass^9 from 0.020 to 0.094 (Xu, Aug 2026);
+      typed functions in place of an interpreter took GAIA from 0.07 to 0.24 (VeRO, Feb 2026); bash beat
+      typed tools by 21.8-24.5 points on enterprise tasks (Mak, Sep 2026); code that calls tools beat
+      one-at-a-time calls for all ten models on a many-call benchmark (GPT-5.4 18.6% to 71.5%) but not
+      at 2B parameters or fewer (Mao, Nov 2026); the same actions as typed calls or command text differed
+      by up to 36.6 points in either direction (Shi, Oct 2026); two frontier coding agents moved under
+      3 points across interfaces (Yang, Jul 2026)
     basis: evidence
   cost:
     effect: improves
     size: large
-    when: bash-only -53% cost for a bash-capable model; chaining tools in code 150k to 2k tokens in one
-      example
+    when: 'bash-only cut cost 53% for a bash-capable model (Fan, Sep 2026) and used 19-72% fewer tokens
+      than typed tools on enterprise tasks (Mak, Sep 2026); calling tools from code cut tokens 37% (Wu,
+      Nov 2025), and code-only cut cost 24.6% on computation tasks with Claude and 19.9% on repository
+      edits with Codex (Yang, Jul 2026); the wrong choice costs more: bash used 7x the tokens of a SQL
+      tool on structured data (Goyal, Jan 2026), typed tools on top of bash raised input tokens 20% for
+      two strong models (Xu, Aug 2026), and code-only cost 14.4% more (not significant) on repository
+      edits with Claude (Yang, Jul 2026)'
     basis: evidence
   performance:
-    effect: unknown
+    effect: mixed
+    size: medium
+    when: calling tools from code finished chained calls faster for 13 of 14 models (0.32 to 0.96 of the
+      JSON time; GPT-5 2.8x slower) (Patel, Aug 2026), Vercel's bash-and-SQL agent went from 274.8 s to
+      77.4 s (Qu, Dec 2025) and code actions cut mean steps from 77 to 46, 65 to 47 and 80 to 55 (Xu,
+      Aug 2026); but code that calls tools against one-at-a-time calls cut wall time per task for two
+      of four models (Gemini 3.1 Pro 117.8 to 44.6 s) and raised it for two (GPT-5.4 mini 14.0 to 19.1
+      s) (Mao, Nov 2026), and bash against typed tools was faster in one of four model-benchmark pairs
+      (5.1 to 3.0 minutes) and slower in three (Mak, Sep 2026)
+    basis: evidence
   security:
-    effect: unknown
+    effect: degrades
+    size: large
+    when: a shell or code interpreter lets the agent run anything its sandbox allows, where typed tools
+      and code limited to a typed catalog expose only listed operations; no source here measures attack
+      rates by interface, so how much it degrades depends on the sandbox and network policy (10.a.i)
+    basis: assessment
   governance:
-    effect: unknown
+    effect: degrades
+    size: medium
+    when: named typed tools are easier to allowlist and audit than free shell or code; one study recommends
+      code limited to a typed catalog where policy requires a fixed set of actions (Mak, Sep 2026), and
+      a restriction set only in the prompt still let a few edit-tool calls through (7 and 4 in 110 runs)
+      (Yang, Jul 2026)
+    basis: assessment
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: experiment
   tier: 3
-  how: 'paired eval per model, interface A against B: success, cost, steps'
+  how: 'paired eval per model and task type, interface A against B (typed tools, bash, typed tools plus
+    bash, code that calls the tools) with the same model, prompt and budget and several repeats: success
+    and pass^k, cost, steps, wall-clock time, environment errors per run and the share of calls made through
+    the assigned interface; where success ties, keep the cheaper interface'
+- method: monitor
+  how: 'per run in production: interface and model, success, cost, steps, wall-clock time, errors by kind
+    (nonexistent tools, malformed commands, broken edits, import or command-not-found errors), calls outside
+    the assigned interface and sandbox violations; re-run the paired eval when the model changes'
 evidence:
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
@@ -168,27 +245,34 @@ evidence:
 - source: paper Figure 12
   task: MATH
   effect: Validation 0.88 to 0.92 (best of run) and test 0.86 to 0.88 with T07; train stayed at 0.81.
+  date: 2026-02
 - source: paper Figure 12
   task: MATH
   effect: Added in phase 5 (train 0.90, validation 0.90) then removed in phase 6; no lasting gain over
     T08.
+  date: 2026-02
 - source: paper Figure 14 (Default, Sonnet 4.5)
   task: GAIA
   effect: The seed's CodeInterpreter tool was replaced with plain function tools (see T15) and that was
     the biggest gain of the run.
+  date: 2026-02
 - source: paper Figure 14
   task: GAIA
   effect: Validation 0.07 to 0.24 in one phase; the largest single jump in any example trajectory. Final
     0.30, the best GAIA result in Table 2.
+  date: 2026-02
 - source: paper Table 10
   task: GAIA/FACTS/SimpleQA
   effect: Knight 12+ packages vs Pawn 3 (math, datetime, json, re).
+  date: 2026-02
 - source: repo figure_04
   task: Terminal-Bench and others
   effect: MAX_CONCURRENT_SHELLS raised twice, never lowered.
+  date: 2026-02
 - source: repo figure_01
   task: five follow-up benchmarks
   effect: 3 to 13 of 20 runs per benchmark (13 on GAIA-Shell, whose seed is empty).
+  date: 2026-02
 - source: Mak et al., "Is Bash All You Need? An Empirical Study of Tool Interfaces for Enterprise Digital
     Worker Agents", https://arxiv.org/abs/2609.11999
   date: '2026-09-10'
@@ -199,6 +283,7 @@ evidence:
     tool calling saves tokens but scores below bash.'
   direction: supports
   measured: true
+  locator: Abstract; §4 Table 1; §5.1; §5.2 Table 2; §5.6
 - source: Patel et al., "The Bitter Lesson of Tool Calling", https://arxiv.org/abs/2608.06370
   date: '2026-08-06'
   task: Call tools from code rather than JSON
@@ -206,6 +291,7 @@ evidence:
     11; more robust under degraded context, where the JSON baseline loses 2.3% on average.'
   direction: supports
   measured: true
+  locator: Abstract; §4.1 Table 2; §5.3; App. A Table 6
 - source: Bin Wu et al. (Anthropic), "Introducing advanced tool use on the Claude Developer Platform",
     https://www.anthropic.com/engineering/advanced-tool-use
   date: '2025-11-24'
@@ -213,6 +299,7 @@ evidence:
   effect: Programmatic tool calling cut tokens 37% (43.6k to 27.3k) on complex research tasks.
   direction: supports
   measured: true
+  locator: 'Programmatic Tool Calling (efficiency gains: Token savings)'
 - source: 'Matt Carey (Cloudflare), "Code Mode: give agents an entire API in 1,000 tokens", https://blog.cloudflare.com/code-mode-mcp/'
   date: '2026-02-20'
   task: Expose a large API through search and execute in code
@@ -236,14 +323,142 @@ evidence:
     its own answers, at about 2x SQL''s tokens. Found and fixed 5 wrong expected answers in the benchmark.'
   direction: mixed
   measured: true
-caveats: 'The paper flags this as intuitively helpful but the test gain is within noise; MATH
-  baseline 0.87 is near the target model''s ceiling.'
+- source: 'Huanzhi Mao, Chengkun Cao, Shuo Yuan, Joseph E. Gonzalez, "I-PTC: Interactive Programmatic
+    Tool Calling for Stateful Tool-Augmented Agents", https://arxiv.org/abs/2611.01446'
+  date: '2026-11-01'
+  task: 'Compare one-at-a-time tool calling, programmatic tool calling (PTC: model-written Python that
+    calls the tools, in a fresh sandbox per call) and a stateful version (I-PTC: persistent notebook cells,
+    tool schemas loaded on demand, API notes updated from failures) on long many-call workflows, with
+    a model-size sweep and wall-clock overhead'
+  effect: 'PTC-Bench (240 tasks; main subset mean 87.7 API calls, median 51), pass rate tool calling /
+    PTC / I-PTC: GPT-5.4 18.6% / 71.5% / 80.0%; GPT-5.4 Mini 10.1 / 59.1 / 68.0; Gemini 3.1 Pro 67.9 /
+    82.8 / 82.9; Claude Opus 4.7 61.8 / 84.2 / 82.9; Claude Sonnet 4.6 54.0 / 83.9 / 80.6; Kimi K2.5 28.1
+    / 75.5 / 78.9; PTC beat tool calling for all ten models. Raw tokens: PTC used more than tool calling
+    for Claude Opus 4.7 (172K to 184K), Claude Sonnet 4.6 (139K to 218K) and Kimi K2.5 (130K to 169K)
+    and fewer for the other seven; I-PTC used the fewest for all ten. Qwen3.5 sweep, tool calling / PTC
+    / raw I-PTC: 0.8B 5.3 / 4.6 / 4.4; 2B 10.3 / 8.9 / 8.7; 4B 26.9 / 32.2 / 32.8; 9B 32.1 / 43.5 / 46.8;
+    27B 62.6 / 79.4 / 78.6; 397B-A17B 43.5 / 75.3 / 77.8. Mean wall time per task, tool calling / PTC
+    / I-PTC: GPT-5.4 mini 14.0 / 19.1 / 15.5 s; Gemini 3.1 Pro 117.8 / 44.6 / 53.7 s; Claude Sonnet 4.6
+    84.9 / 96.5 / 65.6 s; Kimi K2.5 239.9 / 179.9 / 147.4 s. Independent subsets (GPT-5.4 mini; Gemini
+    3.1 Flash-Lite): MCP-Universe 0.278 / 0.304 / 0.422 and 0.378 / 0.489 / 0.484; MCP-Bench 0.420 / 0.427
+    / 0.439 and 0.354 / 0.385 / 0.403. Persistent cells raised pass rate in all eight matched ablations
+    by 0.6-5.7 points (several within run-to-run variation); on-demand schema inspection gave most of
+    the token savings; second-turn API calls on multi-turn tasks fell from about 27-30 to 4-8.'
+  conditions: Authors' own benchmark (simulated APIs, deterministic verifiers) built around many dependent
+    calls, where tool calling often stopped early; three runs per cell; GPT runs on a chat-completions
+    endpoint that did not allow reasoning alongside function tools; independent checks on MCP-Universe
+    (90 tasks) and MCP-Bench (70 tasks) subsets with two models; I-PTC is the authors' method
+  direction: supports
+  measured: true
+  locator: §4 Table 1; §5.1 Tables 2-3; §5.2 Fig 5; §5.3 Table 4; §5.4 Table 5; §6; App. 10.2-10.3 Tables
+    8-10
+- source: 'Zhenning Shi, Liang Pang, Yongqi Li, "Matched Capabilities, Different Behaviors: A Controlled
+    Study of MCP and CLI Interfaces for Language Agents", https://arxiv.org/abs/2610.34298'
+  date: '2026-10-25'
+  task: Offer the same operations either as typed tool calls (MCP-style named tools with JSON arguments)
+    or as command-line text commands, with one shared validation and execution path behind both, and compare
+    six models on three interactive environments
+  effect: 'Score, command text (CLI) against typed calls (MCP): typed was higher in 8 of 18 model-environment
+    pairs and lower in 10, by 0.5 to 36.6 points. Qwen3-14B: ALFWorld 56.7 vs 20.1 (typed used 54.9k more
+    tokens per task), WebShop 59.5 vs 64.4 (typed used 35.0k fewer); Gemini-2.5-Flash ALFWorld 56.7 vs
+    67.2; DeepSeek-v4-Flash within 0.5-3.8 points everywhere. On WebShop typed calls lowered the attempt-level
+    failure rate for all six models by 1.1-8.9 points; WebShop/Qwen3-4B retry acceptance 50% (CLI) vs
+    77% (typed). 1,889 of 2,004 paired episodes (94.3%) diverged, mostly early. Swapping only how the
+    action is written changed realization failure by up to 84.4 points (ALFWorld/Qwen3-32B). A repair
+    step that keeps the chosen action and fixes only its syntax (DART, Gemini-2.5-Flash) added 0.8-9.0
+    points in all six benchmark-interface settings and cut typed-call tokens by 4.3k-27.1k per task.'
+  conditions: Qwen3-4B/8B/14B/32B, DeepSeek-v4-Flash, Gemini-2.5-Flash; 134 ALFWorld, 100 WebShop and
+    100 ScienceWorld tasks per model; temperature 0; both formats compiled from one action contract, so
+    the CLI is a command syntax for each benchmark's own actions, not a general shell; mostly small open
+    models; DART tested on one model
+  direction: mixed
+  measured: true
+  locator: §5; §6.1 Table 1; §6.2 Fig 2; §6.3 Fig 3; §6.4 Fig 4; App. B.1
+- source: 'Xiangzhe Xu, Hamidreza Saghir, Qianhui Wu, Marc-Alexandre Côté, Tong Wang, Kiran Lakkaraju,
+    Kexin Pei, Xiangyu Zhang, "The Devil Is in the Interface: Evaluating How Tool Architecture Shapes
+    Coding Agent Behavior", https://arxiv.org/abs/2608.11386'
+  date: '2026-08-11'
+  task: Hold capabilities roughly equal and compare a bash-only coding agent with bash plus typed file
+    and search tools (Atomic), Python code actions in place of tool calls, a natural-language search tool
+    and two note-taking tools, across three models with repeated rollouts
+  effect: 'Resolve rates broadly similar across architectures for each model (figure only). Consistency
+    pass^5 and pass^9, bash-only to typed tools: Qwen3Coder-30B 0.046 to 0.106 and 0.020 to 0.094 (4.7x);
+    Kimi K2.5 0.290 to 0.304 and 0.266 to 0.280; Claude Sonnet 4.5 0.296 to 0.313 and 0.252 to 0.283;
+    the gain held at 30 repeats. Bash-only environment errors per trajectory: 3.11 (Qwen3Coder-30B), 0.35
+    (Kimi K2.5), 0.54 (Sonnet 4.5); typed tools cut Qwen3Coder-30B''s broken edits from 1.64 to 0.19 and
+    malformed commands from 0.96 to 0.01. Median steps and input tokens, bash-only to typed tools: Qwen3Coder-30B
+    64 to 43 and 980K to 662K (-32%); Kimi K2.5 56 to 59 and 950K to 1,141K (+20%); Sonnet 4.5 74 to 80
+    and 2,140K to 2,576K (+20%), as the stronger models already chain more operations per bash call (1.40-1.50
+    against 1.15). Python actions: mean steps 77 to 46, 65 to 47 and 80 to 55 at similar resolve rates,
+    but pass^5 fell for all three models (Qwen3Coder-30B 0.046 to 0.016). On 72 further instances with
+    the two open models: typed tools +9.5 and +2.5 points pass^5; Python -0.6M and -0.4M input tokens
+    and -25.9 and -15.1 steps.'
+  conditions: SWE-bench Live subset, 65 instances x 10 rollouts per model and setup (11,700 trajectories);
+    Trae Agent-based harness; extension on SWE-bench Verified, SWE-bench Pro and a debugging split with
+    5 rollouts; the abstract's 41.6% fewer steps and 56.3% fewer tokens are not traceable to a table
+  direction: supports
+  measured: true
+  locator: §2.1; §3.1-3.4 Table 2, Fig 4; App. B.1-B.3 Table 4, Fig 6; App. B.5 Tables 8-10; App. B.6
+    Tables 12-15
+- source: Hong Yang, Qi Yu, Travis Desell, "When Does Restricting a Coding Agent to execute_code Help?
+    A Regime × Agent-Design Ablation", https://arxiv.org/abs/2607.10569
+  date: '2026-07-12'
+  task: Restrict production coding agents to their default tools, to bash plus read-only browsing (no
+    edit tools), or to one execute_code tool on a persistent Python and Bash REPL, with the same model
+    and prompts, on computation tasks and repository edits
+  effect: 'Pass rates within 3 points across all four task-agent cells and three arms; no headline pass-rate
+    contrast significant. Cache-adjusted cost of code-only against the cheaper other arm: computation
+    tasks, Claude -24.6% (p<1e-13; input tokens -33.6%) and Codex -6.7% (not significant); SWE-bench Mini,
+    Codex -19.9% (p<1e-8) and Claude +14.4% (p=0.12), with Claude''s output tokens +39.9% (p<1e-9) as
+    every edit became a script; on tasks every arm solved Claude''s gap fell to +4.1%. Bash-only was the
+    costliest arm on SWE-bench with Codex (+4.8% over default, p=0.005). Under code-only Codex batched
+    about 2.5 tool calls per model step against about 1.0. Codex restrictions were set by prompt: 7 (bash-only)
+    and 4 (code-only) explicit edit-tool events in 110 runs against 344 under default.'
+  conditions: Claude Code 2.1.139 with claude-sonnet-4-6 and Codex CLI with gpt-5.5; 93 self-made computation
+    tasks and 100 SWE-bench Mini instances, 3 seeds each, paired Wilcoxon per task; workshop paper; list-price
+    costs; no wall-clock comparison
+  direction: mixed
+  measured: true
+  locator: Abstract; §1 Table 1; §3.1; §4.2; §5.1-5.3 Table 2, Fig 1; §6.1-6.3 Table 4; §6.5; Limitations
+- source: 'Bowen Yang, Kaiming Jin, Zichen Ding, Zhenyu Wu, Zehao Li, Zhoumianze Liu, Kanzhi Cheng, Fangzhi
+    Xu, Yanan Sun, Qiushi Sun, Yu Qiao, "OS-Helix: Unifying GUI Interaction and Code Execution in Native
+    Computer-Using Agents", https://arxiv.org/abs/2610.22234'
+  date: '2026-10-15'
+  task: Add a code-execution tool beside GUI actions for a computer-use agent, untrained and after training
+    on hybrid GUI and code data
+  effect: 'OSWorld-Verified, matched backbones: adding code without training a hybrid policy moved Qwen3-VL
+    Instruct from 34.17% (GUI only) to 32.68% (hybrid) and Qwen3-VL Thinking from 39.08% to 42.88%. After
+    fine-tuning on hybrid data, OS-Helix-32B reached 50.56% (+17.88 points over its matched hybrid baseline)
+    and the Thinking variant 51.67% (+8.79); OS-Helix-27B and 35B-A3B gained 16.25 and 14.43 points over
+    their Qwen3.5 hybrid baselines. The authors read the Instruct drop as showing GUI and code routing
+    must be trained.'
+  conditions: Ubuntu desktop tasks, 50-step cap, same harness for all baselines; the large gains need
+    the authors' own fine-tuning and RL data; the untrained effect of adding code was negative for one
+    backbone and positive for the other; authors' own method
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.2 Table 1 and text
+caveats: 'Much of the evidence is bundled, small or self-reported: the harness study changed tools together
+  with prompts, file-state tracking and diagnostics; Vercel''s 80%-fewer-tools result also removed prompts
+  and context and covers 5 queries; mini-SWE-agent''s 74% is self-reported, Cloudflare''s 1,000-token
+  figure is calculated rather than tested and Block''s 30% is one author''s test; and the largest code-execution
+  gains (GPT-5.4 18.6% to 71.5%) come from the authors'' own many-call benchmark, with gains of 0.7 to
+  11.1 points on independent MCP benchmarks. The best interface depends on the model and the task, so
+  a result for one model does not transfer: the same actions as typed calls or as command text differed
+  by up to 36.6 points in either direction across six models and three environments, code that calls tools
+  scored slightly below typed calls at 2B parameters or fewer, and two frontier coding agents'' pass rates
+  moved under 3 points across interfaces while cost moved by up to 24.6%. VeRO flags the narrow calculator
+  tool on MATH as intuitively helpful but its test gain (0.86 to 0.88) as within noise, with a MATH baseline
+  of 0.87 near the target model''s ceiling.'
 related:
 - 2.a.i
-- 6.c.i
+- 2.a.ii
+- 2.b.ii
 - 10.a.i
-- 9.a.i
+- 6.c.i
 - 2.c.i
+- 9.a.i
+- 1.b.i
 absorbs:
 - legacy_id: P06
   name: CodeAct

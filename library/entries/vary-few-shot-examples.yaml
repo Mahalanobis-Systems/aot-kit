@@ -20,40 +20,64 @@ evidence_domains:
 - planning
 - document-extraction
 - judging
+- retrieval
+- web-research
 categories:
 - prompts.structure
-summary: 'An agent''s own history, and any examples in its prompt, act as few-shot demonstrations: when
-  the context fills with near-identical action-observation pairs (twenty similar items in a row, a retried
-  call), the model tends to copy their surface form instead of judging the current item. The change is
-  to break that uniformity: vary the serialization, phrasing and order of examples and of newly appended
-  actions and observations, describe repeated or failed actions instead of replaying them verbatim, or
-  move independent items into separate contexts (5.c.ii). The measured support is mostly for the mechanism
-  and for diverse examples: a failed call''s verbatim string accounted for 83% of small models'' pull
-  toward repeating it, batching 20 studies flipped 5.6-26.7% of one model''s screening decisions against
-  one-at-a-time runs, and diverse demonstrations beat the most similar ones by up to 23 points. No study
-  tests Manus-style serialization noise on an agent end to end, and equivalent formats alone moved accuracy
-  by up to 76 points, so measure the variation instead of assuming it helps.'
+summary: 'Keep the model from copying its own context: when it fills with near-identical steps or items,
+  vary how new entries are written, label or describe repeats instead of replaying them, and give independent
+  items their own context. An agent''s own history and its prompt examples act as few-shot demonstrations:
+  in one study agents attended more to their own earlier responses as context grew, and periodically clearing
+  old rounds beat keeping the full history on eight agent tasks (68.9% against 54.4% for Qwen3-8B, 71.1%
+  against 64.6% for GPT-4o-mini). Separating items pays most when many similar ones would share a context:
+  grading 25 per prompt changed 11-22% of decisions between random batches, and a majority vote over nine
+  orders of each batch still left 52-60% of those flips; for prompt examples, diverse demonstrations beat
+  the most similar ones by up to 23 points. Changes to how history is written help only a little on current
+  agents and have limits: labeling each observation as the outcome of the action before it raised success
+  from 46.39% to 48.25% and cut repeats from 36.91% to 32.23% across five models, keeping only the last
+  three steps cost the same models 10.4 points, seven current search agents (including Opus 5 and GPT-5.6
+  Sol) still switched strategy 3.6-17.4 points less after a dead-end history than after a neutral one
+  of the same length, and no study tests Manus-style serialization noise end to end, so measure the variation
+  instead of assuming it helps.'
 how: '1. Start from the baseline: run the agent with its uniform template on a batch of near-identical
   items (for example 20 resumes or abstracts in one context), plant an outlier late in the batch (position
   15 of 20), run every item alone in a fresh context as the reference, and log accuracy and decisions
-  by position, repeated actions and repeats of failed calls. 2. Find where uniformity enters: tool results
+  by position, repeated actions and repeats of failed calls; for batched grading, also run the same items
+  in a second random arrangement and with renamed item keys, since accuracy can hold (AUROC moved -0.033
+  to +0.010) while 11-22% of decisions change with the batch. 2. Find where uniformity enters: tool results
   and actions serialized with one fixed template, harness messages with identical wording, few-shot examples
-  that share one format and one structure, many similar items in one context, and failed calls replayed
-  verbatim. 3. Diversify the examples in the prompt: choose examples that differ in structure and cover
-  edge cases instead of the most similar ones; if you also vary their formatting (field names, separators,
-  layout), pin the required output format with an instruction or a schema, since examples are what the
-  model copies the format from. 4. Vary newly appended history, deterministically: rotate two or three
-  equivalent templates and phrasings for observations and harness messages, and the order of fields that
-  carry no meaning, choosing the variant from the item index or a seed at append time; never rewrite earlier
-  entries, so the context stays append-only and the prefix cache-stable (see 3.b.i). 5. Do not replay repeated
-  or failed actions verbatim (see 7.b.ii): replace a failed call with a short runtime-generated description
-  of what failed, or block exact repeats at the decoder (see 7.b.i); an instruction not to repeat did not
-  reduce repeats, and deleting the failed step made them worse. 6. Where items are independent, break
-  the repetition structurally instead: process each item or small batches in fresh contexts (5.c.ii), shuffle
-  item order across batches, and in proposal loops reject proposals too similar to recently accepted ones;
-  raising the temperature did not add real diversity. 7. Measure with paired runs on the same items, uniform
-  against varied (and against per-item contexts): accuracy and outlier detection by position, decision
-  flip rate against the single-item runs, exact-repeat rate, output-format errors, tokens and cache hit
+  that share one format and one structure, many similar items in one context, failed calls replayed verbatim,
+  and long runs of unproductive steps that all follow one strategy. 3. Diversify the examples in the prompt:
+  choose examples that differ in structure and cover edge cases instead of the most similar ones; if you
+  also vary their formatting (field names, separators, layout), pin the required output format with an
+  instruction or a schema, since examples are what the model copies the format from. 4. Vary and label
+  newly appended history, deterministically: rotate two or three equivalent templates and phrasings for
+  observations and harness messages, and the order of fields that carry no meaning, choosing the variant
+  from the item index or a seed at append time; label each observation as the outcome of the action that
+  produced it ("Outcome of <action>: ..."), which raised success from 46.39% to 48.25% and cut third repeats
+  from 36.91% to 32.23% across five current models; never rewrite or reorder earlier entries (shuffling
+  past actions cost 2.55 points), so the context stays append-only and the prefix cache-stable (see 3.b.i).
+  5. Do not replay repeated or failed actions verbatim (see 7.b.ii): replace a failed call with a short
+  runtime-generated description of what failed, or block exact repeats at the decoder (see 7.b.i); on
+  small models an instruction not to repeat did not reduce repeats and deleting the failed step made them
+  worse, while on five current models a short caution that earlier steps may be wrong, incomplete or stale
+  and that "Repetition is not evidence of correctness" raised success from 46.39% to 48.60%. Do not have
+  the agent write its own lessons into the history as the fix: those notes cut repeats the most (to 21.38%)
+  but lowered success (45.01%). 6. Where items are independent, break the repetition structurally: give
+  each ambiguous item its own context, with all shared instructions first so they are served from the
+  prompt cache (see 5.c.ii); shuffling is not a substitute, since a majority vote over nine orders of
+  a batch left 52-60% of the flips and batches of five still differed from single-item grading on 9-16%
+  of decisions; if you must batch, shuffle items across batches and report agreement with single-item
+  runs. In long sessions on tasks whose state is in the current observation, try clearing old rounds periodically
+  (for example back to the last round once the history reaches 12 rounds) instead of keeping all of it
+  or sliding a window, which cannot reuse the cache, and compare it with full history first: on ALFWorld,
+  ScienceWorld, WebShop and AppWorld, keeping only the last three steps cost five current models 10.4
+  points (see 5.a.i). In proposal loops, reject proposals too similar to recently accepted ones; raising
+  the temperature did not add real diversity. 7. Measure with paired runs on the same items, uniform against
+  varied and labeled history (and against per-item contexts): accuracy and outlier detection by position,
+  decision flip rate against the single-item runs and between two random batch arrangements next to a
+  renamed-keys baseline, exact-repeat rate, strategy switches after a planted run of unproductive steps
+  against a neutral history of the same length, task success, output-format errors, tokens and cache hit
   rate, over several template sets and per model, reporting the spread rather than one number.'
 detect:
   static: Every action and tool result serialized with one fixed template; harness messages with identical
@@ -61,14 +85,18 @@ detect:
     to the input; many similar items processed in one context; failed calls replayed verbatim in the history.
   traces: Identical or near-identical consecutive actions; repeats of a call that already failed; later
     outputs that copy wording or structure from earlier items; decisions that drift with position in the
-    batch or toward the batch majority, or that differ from the same item run alone.
+    batch or toward the batch majority, or that differ from the same item run alone or in another random
+    batch; few strategy switches after a run of unproductive steps.
   evals: Accuracy and outlier detection by position in the batch; decision flip rate against each item
-    run alone; spread across several equivalent templates.
+    run alone and between two random batch arrangements, next to a renamed-keys baseline (accuracy can
+    hold while decisions flip); spread across several equivalent templates.
   judge: 'Detect over-generalization: later outputs that carry over content or conclusions from earlier
     items instead of the current one.'
   probes:
-    what: A batch of similar items with one outlier.
+    what: A batch of similar items with one outlier; a history of repeated unproductive steps.
     construct: Twenty similar items with an outlier at position fifteen; run each item alone as the reference.
+      For agents, prefill ten unproductive steps that follow one strategy and compare strategy switching
+      against a neutral history of the same shape and length.
   primary:
   - evals
   - probes
@@ -76,11 +104,16 @@ impact:
   quality:
     effect: mixed
     size: medium
-    when: diverse demonstrations beat the most similar ones by up to 23 points, 50.3 to 73.5, on compositional
-      semantic parsing (Levy, Dec 2022); mixing formats across few-shot examples raised one task's worst-format
-      accuracy from 0.139 to 0.712 but lost on three task-model pairs (Ngweta, Apr 2025); describing a
-      failed call instead of replaying it cut exact repeats from 31% to 16% while task success went from
-      42% to 33%, within noise (Gumaan, Aug 2026); rejecting near-duplicate proposals and reweighting
+    when: diverse demonstrations beat the most similar ones by up to 23 points, 50.3 to 73.5 (Levy, Dec
+      2022); mixing formats across few-shot examples raised one task's worst-format accuracy from 0.139
+      to 0.712 but lost on three task-model pairs (Ngweta, Apr 2025); clearing old rounds periodically
+      beat the full history by 6.5-14.5 points on eight agent tasks (Wan, Feb 2026), but keeping only
+      the last three steps cost five current models 10.4 points, labeling observations as action outcomes
+      raised success from 46.39% to 48.25%, and self-written lesson notes cut repeats to 21.38% while
+      success fell to 45.01% (Liu, Oct 2026); describing a failed call instead of replaying it cut exact
+      repeats from 31% to 16% while task success went from 42% to 33%, within noise (Gumaan, Aug 2026);
+      one item per prompt avoids the 11-22% of decisions that changed with the batch, of which a vote
+      over nine orders left 52-60% (Xie, Oct 2026); rejecting near-duplicate proposals and reweighting
       toward unused edit types raised audited faithfulness from 0.44 to 0.71 where a higher temperature
       added 0.02-0.03 (He, Aug 2026); equivalent formats alone moved accuracy by up to 76 points (Sclar,
       Oct 2023)
@@ -90,19 +123,32 @@ impact:
     size: small
     when: replacing a verbatim call with a description cost no generated tokens (Gumaan, Aug 2026); varying
       entries already in the history breaks the prompt cache, which the same Manus post warns against
-      (Ji, Jul 2025); one item per call gives up the savings that are the reason to batch (Hida, Aug 2026)
+      (Ji, Jul 2025); one item per call gives up the savings that are the reason to batch (Hida, Aug 2026),
+      but with the shared instructions first and cache reads billed at 0.1 of the input price or less
+      it adds at most that fraction of the shared prefix per item over a cached batch, while voting over
+      three to nine orders of a batch costs three to nine times as much (Xie, Oct 2026); clearing old
+      rounds keeps a cacheable prefix within each cycle, unlike a sliding window (Wan, Feb 2026)
     basis: evidence
   performance:
-    effect: none
-    when: no study reports latency; serialization changes add no generated tokens (Gumaan, Aug 2026);
-      per-item contexts add calls that can run in parallel (see 5.c.ii)
+    effect: mixed
+    size: small
+    when: clearing old rounds periodically ran prefill 2-7x faster than a sliding window, which cannot
+      reuse the cache (Wan, Feb 2026); serialization changes add no generated tokens (Gumaan, Aug 2026);
+      voting over orders multiplies calls three to nine times (Xie, Oct 2026); per-item contexts add calls
+      that can run in parallel (see 5.c.ii)
     basis: evidence
   security:
     effect: none
     basis: assessment
   governance:
-    effect: none
-    basis: assessment
+    effect: improves
+    size: small
+    when: 'a verdict made in its own context depends only on its item and can be reproduced: in batches
+      of 25, 11-22% of moderation and grading decisions changed with which items shared the prompt, and
+      one model flagged 58% of comments targeting a race when graded alone against 35% in batches (point
+      estimates; Xie, Oct 2026); batching changed 5.6-26.7% of one model''s screening decisions for systematic
+      reviews (Hida, Aug 2026)'
+    basis: evidence
   brand:
     effect: mixed
     size: small
@@ -113,14 +159,19 @@ measure:
 - method: experiment
   tier: 3
   how: 'paired runs on one batch of near-identical items with an outlier planted late (position 15 of
-    20), each item also run alone as the reference: uniform template against varied templates, phrasing
-    and order (and against per-item contexts); accuracy and outlier detection by position, decision flip
-    rate against the single-item runs, exact-repeat rate of actions, output-format errors, tokens and
-    cache hit rate; repeat over at least three template sets and report the spread, per model'
+    20), each item also run alone as the reference and the batch also run in a second random arrangement
+    with renamed item keys as the noise baseline: uniform template against varied templates, phrasing
+    and order, against outcome-labeled history, and against per-item contexts; accuracy and outlier detection
+    by position, decision flip rate against the single-item runs and between arrangements, exact-repeat
+    rate of actions, task success, output-format errors, tokens and cache hit rate; for agents, also prefill
+    a run of unproductive steps in one strategy and compare strategy switching against a neutral history
+    of the same shape and length; repeat over at least three template sets and report the spread, per
+    model'
 - method: monitor
   how: 'per batch in production: share of consecutive identical or near-identical actions, repeats of
-    a call that already failed, decision rates by position against the first items of the batch and drift
-    toward the batch majority; on a weekly sample, re-run items alone and track the decision flip rate'
+    a call that already failed, strategy switches after unproductive steps, decision rates by position
+    against the first items of the batch and drift toward the batch majority; on a weekly sample, re-run
+    items alone and in a second random batch and track the decision flip rate'
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -320,6 +371,119 @@ evidence:
   direction: contradicts
   measured: false
   locator: 'Zero-shot vs few-shot prompts: Optimal number of examples; Consistent formatting'
+- source: 'Yanru Xiao, Yingwei Yu (Amazon Web Services), "Cognitive Bias Signatures in Search-Equipped
+    LLM Agents: A Stage-Resolved Analysis", https://arxiv.org/abs/2611.05720'
+  date: '2026-11-03'
+  task: Prefill a search agent's own history with ten environment-consistent search calls and results
+    that follow a dead-end route, and compare strategy switching (a later search returning mostly documents
+    from the productive route) against no history and against a neutral history matched in shape and serialized
+    length (within 5%); also describe identical work as the agent's own or someone else's, and swap the
+    order of a wrong- and a right-supporting document on the first result page
+  effect: 'Switching drop from the dead-end history against the matched neutral one: Haiku 4.5 +6.7, Sonnet
+    4.6 +7.5, Sonnet 5 +8.0, Opus 5 +15.0, GPT-5.6 Luna +3.6, GPT-5.6 Sol +5.0, GLM-5 +17.4 and Qwen3-Next
+    +63.5 points (all detected), MiniMax M2.5 +0.0; the neutral history itself changed nothing except
+    for Qwen3-Next (+13.0), which switched in 100% of worlds without history, 87% after the neutral history
+    and 23.5% after the dead end. "No model shows a detected provenance effect" (own against someone else''s
+    work). Putting the wrong-supporting document first raised wrong-candidate adoption by 7.6 to 66.0
+    points during active search, while with all evidence supplied in full, order effects were "largely
+    undetected across models".'
+  conditions: 10 models through Amazon Bedrock (Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus 5, Fable 5, GPT-5.6
+    Luna and Sol, Qwen3-Next-80B-A3B-Instruct, GLM-5, MiniMax M2.5), temperature 0 where supported; synthetic
+    fictional worlds of 19-29 short documents and a deterministic search-and-open tool loop, 12 tool calls
+    in the dead-end task; 200 worlds per arm (n=135-200 pairs), paired 95% intervals with Holm-adjusted
+    McNemar tests; the dead-end histories are fabricated prefills and Fable 5 skipped them; diagnosis
+    only, no fix for the dead-end effect is tested
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §3.1-3.2; §4.1-4.2 Table 1; Appendix A.3; Appendix C Table 4
+- source: 'Peng Xie, Amr Alanwar (Technical University of Munich), "Judged in Company: In-Context Batching
+    Makes LLM Verdicts Depend on Other Items", https://arxiv.org/abs/2610.40241'
+  date: '2026-10-29'
+  task: Grade the same 2,000 items per task alone and in three independent random partitions into batches
+    of 25 (one JSON verdict per item), plus conditions that change only the order of an item's neighbors,
+    its slot or which items share its batch, against renamed item keys, a reworded instruction and one-at-a-time
+    generation as baselines; then vote over up to nine orders of a batch or fifteen independent batches,
+    vary the batch size (5, 10, 50), and edit single generations to swap in another batch's earlier verdicts
+    or neighbor texts
+  effect: On harm and short-answer grading, a new random partition changed 11-22% of decisions for five
+    4-9B models, 6.5-13.3 points more than renaming the item keys or rewording the instruction, while
+    AUROC against human labels moved only -0.033 to +0.010; for four 14-32B models 6-15% changed, 4.2-9.1
+    points above the largest baseline. Majority votes over three, five and nine orders of a batch left
+    71-76%, 60-69% and 52-60% of the flips at three, five and nine times the cost, and the majority of
+    fifteen independent batches still disagreed with single-item grading on 8.4-17.8% of decisions. With
+    five items per prompt 9-16% of decisions already differed from single-item grading, with fifty 12-23%.
+    Swapping in another batch's earlier verdicts changed 7-23% of target decisions and its neighbors'
+    texts 9-26%; shuffling the model's own earlier verdicts changed 5-19%. On easy star ratings only 2.9-3.9%
+    of decisions changed. In an earlier sample, Gemma-4 flagged 58% of comments targeting a race when
+    graded alone and 35% in batches (point estimates). The authors "recommend grading ambiguous items
+    one per prompt, recovering most of the cost with a cached prefix, and reporting agreement with single-item
+    grading whenever items are batched"; with cache reads billed at a fraction c of the input price, isolation
+    adds c(1-1/k) times the shared prefix per item over a cached batch of k.
+  conditions: Qwen3-4B-Instruct-2507, Qwen3-8B (thinking off), Gemma-4-E4B-it, Granite-3.3-8B-Instruct,
+    GLM-4-9B-0414, and Qwen3-14B/32B (thinking off), Gemma-4-31B-it and GLM-4-32B-0414 on harm and grading
+    only; greedy decoding; Measuring Hate Speech, SciEntsBank and Yelp reviews, 2,000 items each; one
+    prompt template with one rewording; a closed moderation model (batches of 16) in an appendix; no frontier
+    API models; varies batch membership and order, not serialization templates
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §5.1 Table 2; §5.2 Table 3; §5.4; §5.5; §5.6; §6; Appendix F; Appendix G; Appendix
+    J
+- source: 'Jingyu Liu, Zhiwen Wang, Yuxin Jing, Huanyu Zhou, Yong Liu (Renmin University of China, ByteDance),
+    "When History Fails to Become Experience: Action Calibration in Language Agents", https://arxiv.org/abs/2610.02769'
+  date: '2026-10-02'
+  task: 'Change only how an agent''s history is rendered, in full rollouts from the initial state: raw
+    history; only the last three steps; observations without past actions; past actions shuffled among
+    earlier positions (all, or only those older than the last three); each observation labeled as the
+    outcome of the preceding action; a "History caution" reminder in the prompt; and agent-written experience
+    notes kept in the history. Also measure, on 1,815 fixed histories ending in two identical actions
+    whose feedback does not support a third, how often the agent repeats the action'
+  effect: 'Pooled success over 10,000 episodes per condition: raw 46.39%, last three steps only 35.99%,
+    observations only 40.93%, all actions shuffled 43.84%, older actions shuffled 46.75%, outcome labels
+    48.25%, reminder 48.60%, experience notes 45.01%; "Shuffle-All retains most of Raw''s performance,
+    with an overall decrease of only 2.55 percentage points". Third repeats: raw 36.91%, outcome labels
+    32.23%, experience notes 21.38%, but for the notes "this reduction in repetition does not translate
+    into improved task success". GPT-5.6-Sol went from 73.30% to 74.30% with labels and repeated 8.70%
+    of the time raw, against 51.36% for Qwen3-8B. With separate user and assistant messages (2,000 episodes
+    per condition): raw 46.00%, labels 47.75%, all actions shuffled 43.50%. Adding a recorded later segment
+    of the same failed trajectory as reference lowered recovery from 15.8% to 11.4%. The reminder reads
+    in part: "Repetition is not evidence of correctness."'
+  conditions: GPT-5.6-Sol, DeepSeek-V4-Pro, Qwen3.5-Plus, Qwen3-32B, Qwen3-8B; ALFWorld, ScienceWorld,
+    WebShop, AppWorld; 500 tasks per model-environment cell, up to 30 actions; history rendered as one
+    block of observations and actions without intermediate reasoning (separate chat messages in an appendix);
+    one run per condition, no significance tests; the repetition probe was screened by GPT-5.6-Sol; the
+    authors' trained calibrator is their own method and not cited here
+  direction: mixed
+  measured: true
+  locator: Abstract; §3; §4 Table 2; §5.1-5.2 (Figures 4-5); Appendix B.1 Table 3; Appendix C Table 4;
+    Appendix D.1 Table 5; Appendix F
+- source: Yang Wan, Zheng Cao, Zhenhao Zhang, Zhengwen Zeng, Shuheng Shen, Changhua Meng, Linchao Zhu
+    (Zhejiang University, University of Rochester, Ant Group), "Mitigating Conversational Inertia in Multi-Turn
+    Agents", https://arxiv.org/abs/2602.03664
+  date: '2026-02-03'
+  task: 'Measure how much an agent''s current response attends to its own earlier responses as a multi-turn
+    context grows, then compare inference-time context management on the same agents: the full history
+    (Long), a sliding window of the last rounds, Clip (once the history reaches H rounds, cut it back
+    to the last L rounds, so each cycle keeps a stable, cacheable prefix) and Clip plus summaries of the
+    cleared rounds; plus a fine-tuning method (Context Preference Learning)'
+  effect: '"LLMs erroneously mimic their own previous responses as few-shot examples": attention to previous
+    assistant responses "grows monotonically with context length, while attention to user inputs remains
+    relatively stable". Eight-environment average success, Long / Window / Summarization / Clip: Qwen3-8B
+    54.4 / 64.9 / 68.8 / 68.9; Llama3.1-8B 48.3 / 58.6 / 57.9 / 59.2; GPT-4o-mini 64.6 / 66.0 / 67.5 /
+    71.1. Clipping cut diagonal attention to earlier responses by 7%, and "reduced inertia from clipping
+    context plays a major role in summarization methods'' performance gains, rather than the generated
+    summarization". Clip "achieves 2-7x prefill speedup over window methods", which cannot reuse the prefix
+    cache. Cutting back to one round at 12 scored 68.9 against 60.7 when keeping 11 (Qwen3-8B). On BrowseComp
+    (128 cases, two runs) Clip-12to6 scored 29.3 against 25.0 for Window-6, while replacing all cleared
+    rounds with summaries (Sum-12to0) lowered the score of early answers from 56% to 37.4%.'
+  conditions: Qwen3-8B (thinking off), Llama3.1-8B-Instruct and GPT-4o-mini at temperature 0.8; eight
+    AgentGym environments (Maze, ALFWorld, WebShop, TextCraft, FrozenLake, Hangman, 2048, RushHour), mostly
+    text games and puzzles; settings tuned per method on the same environments; SEM about 0.4-0.6 points
+    on the average; BrowseComp with Tongyi DeepResearch; no current frontier or reasoning models; the
+    history is cut, not varied; numbers from v3 (May 2026)
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §2.2; §3.3 Table 1; §3.4; §3.5 Table 2; §3.9 Table 3; §3.10; Appendix F; Appendix
+    H Table 7; Appendix N
 assessment:
   qa:
     unit: null
@@ -362,6 +526,8 @@ related:
 - 7.b.i
 - 3.b.i
 - 7.b.iv
+- 5.a.i
+- 6.b.ii
 provenance:
   layer: target
   origin: observed
@@ -369,12 +535,17 @@ provenance:
   sub_type: few_shot
   library_group: Production
   library_source: master
-caveats: 'No study tests Manus-style serialization noise on an agent end to end: the measured support
-  is for the mechanism (models copy what repeats in their context) and for diverse few-shot examples,
-  often on small or older models (135M-1.7B for the failed-call study, Codex for the demonstration study).
-  Variation is not free: equivalent formats moved accuracy by up to 76 points, mixing formats lost on
-  some task-model pairs, Google advises identical formatting across examples, and a serialization fix
-  that cut repeats did not raise task success. The effect depends on the model and task: thinking models
-  did not self-condition on errors in their history, larger models copied a failed call less, and a batch-judging
-  study found contrast between neighbors rather than imitation. Varying entries already in the history
-  also breaks the append-only, cache-stable context, so vary only new entries, deterministically.'
+caveats: 'No study tests Manus-style serialization noise on an agent end to end: the history changes tested
+  on current agents moved success by about two points (outcome labels 46.39% to 48.25%, a caution reminder
+  48.60%, one run each), cutting repeats did not reliably raise success (self-written lesson notes, a
+  description of the failed call), and clearing old history helped 8B models and GPT-4o-mini on mostly
+  text games and puzzles, with settings tuned per method, while keeping only the last three steps cost
+  five current models 10.4 points. Stronger models are less affected but not immune: GPT-5.6-Sol repeated
+  a twice-repeated action 8.70% of the time (46 histories) against 51.36% for Qwen3-8B, thinking models
+  did not self-condition on errors in their history, larger models copied a failed call less, and seven
+  current search agents including Opus 5 still switched strategy 3.6-17.4 points less after a dead-end
+  history; the batch-grading study used open-weight models up to 32B, and on easy items batching changed
+  only 2.9-3.9% of decisions. Variation is not free: equivalent formats moved accuracy by up to 76 points,
+  mixing formats lost on some task-model pairs, Google advises identical formatting across examples, a
+  batch-judging study found contrast between neighbors rather than imitation, and varying entries already
+  in the history breaks the append-only, cache-stable context, so vary only new entries, deterministically.'

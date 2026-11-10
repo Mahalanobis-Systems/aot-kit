@@ -15,44 +15,143 @@ domains:
 - general
 evidence_domains:
 - code-generation
-- data-analysis
-- tool-use
+- security-research
 categories:
 - safety.sandbox
-summary: Run the agent in an OS-level sandbox with a workspace path guard that resolves symlinks, scrub
-  credentials from the command environment, run agent-written SQL read-only with timeouts and row caps,
-  and set resource limits on generated code.
-how: 1. List what the agent can reach (paths, credentials, databases, network). 2. Remove write access
-  and credentials it does not need; add the path guard and limits. 3. Run the safety evals before and
-  after.
+summary: 'Limit what the agent can reach at the operating system, not in its prompt or tool wrappers.
+  Run the agent process and every program it starts in one OS-level sandbox (a VM, gVisor or a hardened
+  container) with network denied by default, a path guard that resolves symlinks and checks the file it
+  will actually act on, credentials kept outside the sandbox behind a proxy or scrubbed from the command
+  environment, agent-written SQL read-only with timeouts and row caps, and resource limits with headroom.
+  In one study of 74 scripted attacks on a coding agent, a tool allowlist plus a command sandbox like
+  those deployed agents use let 56 succeed, while confining the whole agent and resolving every request
+  let 2 succeed at the cost of 3 of 46 benign operations; a vendor reports its sandbox cut permission
+  prompts 84% and that only environment controls could have stopped a pasted prompt that exfiltrated credentials
+  in 24 of 25 runs. The limits: secrets still leave through allowed hosts in encoded form, seven frontier
+  models escaped misconfigured containers in every run, and memory limits pinned at a benchmark''s spec
+  failed 5.8% of its runs.'
+how: '1. Start from the baseline: list everything the agent and the programs it starts can reach (files
+  it can read and write, including ~/.ssh, ~/.aws and .env; network destinations; credentials in its environment
+  or in readable files; database roles; local sockets and daemons; and files other tools execute later,
+  such as editor tasks, agent hooks, git config and HEAD, and virtual-environment interpreters), then
+  run out-of-bounds probes against the current setup and record which succeed. 2. Isolate at the operating
+  system, not in the tool wrapper: run the agent process itself and every program it starts, interpreters
+  included, under one policy (in one study a tool allowlist plus a command sandbox that confined only
+  spawned programs still let 56 of 74 attacks through; also confining the agent process and resolving
+  every request to the object it acts on let 2 through). Use a VM or gVisor where the agent runs unattended
+  or its users cannot judge shell commands, and prefer maintained primitives (hypervisors, gVisor, seccomp,
+  bubblewrap, Seatbelt) over code you write yourself. In containers, never use privileged mode, a mounted
+  Docker socket or writable host mounts, drop unneeded capabilities, and patch the kernel and runtime:
+  seven frontier models escaped such misconfigured containers in every run. Remove any switch the agent
+  can use to run a command outside the sandbox, and do not load project-local config or hooks before the
+  user trusts the folder. 3. Deny network by default and route allowed traffic through a proxy outside
+  the sandbox. Treat each allowlisted host as a capability grant, not a destination filter: an allowlisted
+  API can accept uploads to an attacker''s account, so at the proxy pass only requests that carry the
+  session''s own token, bind entries to host and port, and resolve host names so a name that points at
+  an internal address is refused. 4. Bound files by object, not by name: allow writes only inside the
+  workspace and deny reads where secrets live; resolve every path (.., symlinks, hard links, case aliases)
+  to the file the kernel will open before checking it, and check again at use; keep the repository''s
+  own control files (.git, agent settings and hooks, editor tasks, virtual-environment interpreters) read-only
+  or held for review; mount read-only or no-delete where the task allows. 5. Keep credentials and data
+  access narrow: keep secrets out of the sandbox (in the host keychain, or in a broker or proxy that attaches
+  a per-session, revocable, scoped token on the way out); where a secret must stay in a command environment,
+  scrub variables whose names match TOKEN, SECRET, KEY, AUTH or CREDENTIAL from every other command; give
+  agent-written SQL a read-only role with a statement timeout and a row cap (one text-to-SQL agent allowed
+  only SELECT and WITH, a 25-second timeout and 10,000 rows). 6. Limit compute with headroom: set CPU,
+  memory, process and time limits on generated code as a guaranteed allocation plus a separate, higher
+  kill threshold, calibrated so task success at the two levels is within noise (on Terminal-Bench 2.0,
+  limits pinned at the per-task spec failed 5.8% of runs on infrastructure errors; a 3x ceiling cut that
+  to 2.1% with no significant change in score). 7. Measure: rerun the out-of-bounds probes and reach-related
+  safety cases before and after (canary reads outside the workspace directly, through a symlink and from
+  a spawned interpreter; writes to hooks and editor tasks; a request to a non-allowlisted host and an
+  encoded canary sent to an allowlisted one; a write through the SQL tool; a container-escape check for
+  your configuration), plus the task eval for completion, latency and permission prompts per task; in
+  production, monitor sandbox denials, egress decisions, prompts and out-of-memory kills, alert on attempts
+  to run outside the sandbox, and export these logs where isolation hides the agent from endpoint monitoring.'
 detect:
-  static: shell or code execution without a sandbox; credentials in the agent's environment; write access
-    where read is enough; no row cap or timeout on agent SQL
-  traces: commands touching paths outside the workspace; queries returning very large result sets; failure
-    rows labeled unauthorized-irreversible-action
-  evals: safety evals with out-of-bounds actions
+  static: shell or code execution without a sandbox, or a sandbox around spawned commands only while the
+    agent process runs unconfined; privileged containers, a mounted Docker socket or writable host mounts;
+    path checks on the string (prefix match, or before symlinks are resolved); credentials in the agent's
+    environment or in files it can read; an agent-reachable way to run commands outside the sandbox; open
+    network, or allowlisted hosts that accept any account's credentials; write access where read is enough;
+    no row cap or timeout on agent SQL; memory limits set equal to the guaranteed allocation
+  traces: commands touching paths outside the workspace once symlinks are resolved; reads of credential
+    files; writes to hooks, editor tasks or git config; egress to hosts outside the allowlist; requests
+    to run a command outside the sandbox; queries returning very large result sets; out-of-memory kills;
+    failure rows labeled unauthorized-irreversible-action
+  evals: safety evals with out-of-bounds actions (credential reads, writes outside the workspace, egress)
+    and container-escape checks for the configuration in use
+  probes:
+    what: Out-of-bounds probes from inside the agent's environment.
+    construct: 'Plant canaries outside the workspace and try to read them directly, through a symlink
+      and from a spawned interpreter; write a hook or editor task; call a non-allowlisted host and send
+      a Base64-encoded canary to an allowlisted one; run a write statement through the SQL tool; run a
+      container-escape check. Record which succeed: every attempt but the encoded send should be blocked
+      or held for review, and the encoded send shows where the boundary ends.'
 impact:
   quality:
-    effect: none
+    effect: degrades
+    size: small
+    when: 'where limits are too tight or confinement blocks legitimate work: memory limits pinned at the
+      per-task spec failed 5.8% of Terminal-Bench 2.0 runs on infrastructure errors and uncapped resources
+      scored 6 points higher, while a 3x ceiling cut errors to 2.1% with no significant score change (Segato,
+      Feb 2026); object-bound confinement completed 43 of 46 operations and 4 of 7 workflows against 46
+      and 7 for an allowlist with a command sandbox, failing on subprocesses, virtual environments and
+      commit -a (Commey, Oct 2026)'
     basis: evidence
   cost:
     effect: degrades
     size: small
-    basis: evidence
+    when: 'mainly build and upkeep: native OS sandboxing is ''a substantial multi-thousand-line investment''
+      where a harness builds its own, while Claude Code wraps a reusable runtime (Barbaste, Jul 2026);
+      one confinement broker is 3,164 lines of trusted code (Commey, Oct 2026); no source measures run
+      cost'
+    basis: assessment
   performance:
-    effect: degrades
+    effect: mixed
     size: small
+    when: a brokered request added 4.0 ms and spawned programs 8.5 to 18.4 ms (Commey, Oct 2026); where
+      an OS sandbox replaced per-action approval, permission prompts fell 84% (Anthropic, May 2026, vendor
+      claim)
     basis: evidence
   security:
-    effect: unknown
+    effect: improves
+    size: large
+    when: 'against 74 scripted attacks on a coding agent, a tool allowlist let 66 succeed, the allowlist
+      plus a command sandbox around spawned programs 56, and object-bound confinement of the whole agent
+      2, with 14 held for review (Commey, Oct 2026); the vendor judged environment controls the only defense
+      against a pasted prompt that exfiltrated cloud credentials in 24 of 25 runs (Anthropic, May 2026);
+      the bound: seven frontier models escaped misconfigured containers in every run, and Claude Mythos
+      Preview escaped in 84% of runs across 18 tasks at a 100M-token budget (Marchand, Mar 2026, updated
+      Aug 2026)'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: mixed
+    size: small
+    when: an open-sourced sandbox runtime makes the boundary auditable (Anthropic, May 2026) and a broker
+      can sign every authorization into a tamper-evident log (Commey, Oct 2026), but VM isolation kept
+      enterprise endpoint detection from seeing inside, with only pulled log exports as a mitigation (Anthropic,
+      May 2026)
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - security
 measure:
 - method: before-after
   tier: 2
-  how: safety evals and out-of-bounds action attempts
+  how: 'run out-of-bounds probes and reach-related safety cases before and after the change: canary reads
+    outside the workspace (SSH key, cloud credentials, .env) directly, through a symlink and from a spawned
+    interpreter; writes outside the workspace and to files other tools execute (hooks, editor tasks, git
+    config); a request to a non-allowlisted host and an encoded canary sent to an allowlisted one; a write
+    and an unbounded query through the SQL tool; and a container-escape check for the configuration in
+    use; count successes and escalations per category, and rerun the task eval for completion, wall-clock
+    time and permission prompts per task'
+- method: monitor
+  how: 'per session: sandbox denials and escalations by category, egress allow and deny decisions by host,
+    credential use through the proxy, permission prompts, out-of-memory kills and infrastructure errors;
+    alert on attempts to run outside the sandbox and on reads of credential files; export the logs where
+    isolation hides the agent from endpoint monitoring'
 evidence:
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
@@ -76,7 +175,11 @@ evidence:
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
   task: Gate actions with workspace guard and allow/ask/deny permissions
-  effect: Held fixed, not ablated. The deny and allow lists are given in the bash tool description.
+  effect: 'Held fixed, not ablated: ''A workspace guard resolves each path and rejects any that escapes
+    the project root, including through symlinks.'' A read-before-write check and a permission layer that
+    classifies each action as allow, ask or deny follow; destructive commands (rm -rf, sudo, git push,
+    git reset --hard, chmod -R, chown -R) are denied by default, and the deny and allow lists are given
+    in the bash tool description.'
   direction: supports
   measured: false
   locator: §2.4 Safety; App 8.3 Fig 27
@@ -84,7 +187,9 @@ evidence:
     Layer from Execution for Text-to-SQL (GATE: Grounding After Test from Execution)", https://arxiv.org/abs/2606.05634'
   date: '2026-06-04'
   task: Restrict agent SQL to read-only with timeout and row caps
-  effect: Implementation detail (Appendix B.2), not ablated.
+  effect: 'Implementation detail, not ablated: SQL queries ''are restricted to read-only operations (SELECT
+    / WITH only)'', with data-modifying statements ''rejected before execution''; ''Each query is subject
+    to a timeout of 25 seconds, and results are capped at 10,000 rows.'''
   direction: supports
   measured: false
   locator: Appendix B.2
@@ -98,9 +203,125 @@ evidence:
   direction: supports
   measured: false
   locator: 'Benefits: State persistence and skills (closing note)'
+- source: 'Daniel Commey, "Names Are Not Objects: Object-Bound Confinement for Compromised AI Coding Agents",
+    https://arxiv.org/abs/2610.14488'
+  date: '2026-10-10'
+  task: 'Compare confinement designs for a compromised coding agent against 74 scripted attacks with ground-truth
+    oracles (file system, program execution, files handed to tools outside the sandbox, network, request
+    protocol, approvals, and direct actions by the agent process): no defense; a tool allowlist with lexical
+    path checks and program and host lists; the allowlist plus a command sandbox modeled on deployed agents
+    (spawned programs may read and run anything, write only the workspace and a temporary directory, no
+    network; the agent process itself unconfined); and ZTAC, which runs the agent in a kernel sandbox
+    whose only route out is a broker that resolves each request to the file, program or endpoint it will
+    act on, decides on that object and checks it at use, with spawned programs sandboxed under the same
+    policy'
+  effect: 'Attacks that succeeded (/ were held for review), of 74: no defense 74; tool allowlist 66; allowlist
+    plus command sandbox 56; broker without the agent sandbox 12 / 13, losing all 10 direct attacks; full
+    ZTAC 2 / 14, both successes sending an access key to the allowlisted sink Base64-encoded or split
+    across two requests. Of 10 replayed incidents disclosed in 2025 and 2026, the allowlist lost 10, the
+    command sandbox lost 6 (payload files in the workspace or a write through a symlink) and ZTAC blocked
+    7 and held 3. The command sandbox lost because ''programs may read anywhere, workspace contents have
+    no path-rule protection, and only spawned commands are confined''; all 8 handoff attacks succeeded
+    when the developer later ran the planted files outside it. Utility: ZTAC completed 43 of 46 operations
+    with 8 prompts and 4 of 7 workflows, against 46 of 46 and 7 of 7 for the allowlist and the command
+    sandbox (the failed operations ran a subprocess, a virtual environment and an environment read through
+    Python; failed workflows hit refused process creation, protected virtual-environment metadata and
+    unsupported commit -a). Overhead: a no-op brokered request 4.0 ms median; spawned programs 8.5 to
+    18.4 ms slower (Python 26.4 ms instead of 8.0 ms); 3,164 lines of trusted Rust; authorization records
+    form a signed hash chain.'
+  conditions: One author's macOS prototype on Seatbelt, evaluated with a client library rather than an
+    off-the-shelf agent runtime; attacks are scripted, not model-generated, so they test enforcement rather
+    than whether an agent would attempt them; one small Python project with canary secrets; the deployed-style
+    command sandbox is modeled, not the products themselves; utility uses a simulated reviewer who approves
+    every prompt; Seatbelt itself was not tested for escapes; endpoints are matched by host name, so a
+    name resolving to an internal address would be reached
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §2 Table 1; §4.6, §4.8; §6.1; §6.2 Tables 2-3; §6.5 Table 5; §6.6 Table 6; §7
+- source: Max McGuinness, Mikaela Grace, Jiri De Jonghe, Jake Eaton, Abel Ribbink (Anthropic), "How we
+    contain Claude across products", https://www.anthropic.com/engineering/how-we-contain-claude
+  date: '2026-05-25'
+  task: Contain agents in three products (a gVisor container for claude.ai code execution, an OS-level
+    sandbox for Claude Code, a local VM for Claude Cowork) and report what held and what failed
+  effect: '''Our telemetry showed users approved roughly 93% of permission prompts.'' An OS-level sandbox
+    (Seatbelt on macOS, bubblewrap on Linux) with reads allowed, writes inside the workspace and network
+    denied by default: ''The result was an 84% reduction in permission prompts'', with the runtime open-sourced
+    ''so the boundary is auditable''. In a February 2026 red-team exercise a phished employee launched
+    Claude Code with a prompt that asked it to read ~/.aws/credentials, encode them and POST them out:
+    ''Across 25 retries of that prompt, Claude completed the exfiltration 24 times''; ''The only defense
+    that holds in this situation is the environment, specifically egress controls that block the POST
+    regardless of intent and filesystem boundaries that keep ~/.aws out of reach in the first place.''
+    Cowork keeps credentials in the host keychain and gives the VM ''a per-session scoped-down token'';
+    it offers read-only, read-write and read-write-no-delete mounts, and ''symlink resolution has to happen
+    before path validation, not after''. A malicious workspace file carrying an attacker''s API key made
+    Claude upload workspace files through the allowlisted api.anthropic.com: ''The sandbox worked perfectly,
+    and yet the data was exfiltrated''; the fix was a proxy inside the VM that ''only passes requests
+    carrying the VM''s own provisioned session token''. ''The hypervisor, seccomp, and gVisor across our
+    products have been dependable. Our custom allowlist proxy was the piece that failed.'' Three disclosed
+    vulnerabilities ran project-local configuration before the trust prompt; in Claude Code ''a privileged
+    process sits outside the sandbox deciding per-command whether to enforce it'', which an injected prompt
+    or a fatigued approval can get to run something unsandboxed. VM isolation kept enterprise endpoint
+    detection from seeing inside; the mitigation is pull-based OTLP log export. ''An agent with read-only
+    DB access ... can be deployed far more broadly than one that writes to prod.'''
+  conditions: Vendor reporting on its own products; the 84% is internal usage (also reported in Anthropic's
+    October 2025 Claude Code sandboxing post), the 24 of 25 is one internal red-team prompt, and the allowlist
+    exfiltration is one third-party disclosure; no attack rates are given with and without the sandbox
+  direction: supports
+  measured: true
+  locator: 'Introduction; Three types of risk; Pattern 1; Pattern 2 and ''Risk we missed: The user as
+    an injection vector''; Pattern 3 (filesystem controls; ''Exfiltration through an approved domain'';
+    ''VM isolation kept the endpoint detection software out too''); Looking ahead (Agent identity); Summary'
+- source: Rahul Marchand, Art O Cathain, Jerome Wynne, Philippos Maximos Giavridis, Stuart Jennings, Freddy
+    Tuxworth, Tolga H. Dur, Sam Deverett, John Wilkinson, Jason Gwartz, Harry Coppock (University of Oxford,
+    UK AI Security Institute), "Quantifying Frontier LLM Capabilities for Container Sandbox Escape", https://arxiv.org/abs/2603.02277
+  date: '2026-03-01'
+  task: Measure whether LLM agents with a root shell inside a Docker container or Kubernetes pod can escape
+    to the host, on 18 tasks built on known vulnerability classes (orchestration, engine and runtime,
+    kernel; difficulty 1 to 5), run inside a VM so an escape stays contained
+  effect: 'Success over 5 runs per task (Table 12): at difficulty 1 (privileged container, mounted Docker
+    socket, writable host /etc mount) 1.00 for Claude Opus 4.5, Claude Sonnet 4.5, GPT-5, Claude Opus
+    4.6, GPT-5.4 Pro, GPT-5.5 and Claude Mythos Preview, against 0.67 for Claude Haiku 4.5, 0.47 for GPT-OSS-120B
+    and 0.20 for GPT-5-nano. Overall: Claude Opus 4.5 0.52, GPT-5 0.49, Claude Haiku 4.5 0.18, GPT-OSS-120B
+    0.16; at difficulty 3 GPT-5 and Opus 4.5 0.41; none at difficulty 4 or 5 in the original cohort. August
+    2026 update at a 100M-token budget: Claude Mythos Preview 0.84 overall (0.87 at difficulty 5), GPT-5.4
+    Pro 0.68, Claude Opus 4.6 0.66, GPT-5.5 0.64. Success rose roughly log-linearly with tokens, and many
+    runs cost on the order of $1. Models found four unintended escape paths (default VM credentials, an
+    unintended eBPF exploit). In the long runs agents crashed their own sandbox in 47% to 100% of failed
+    runs. ''We recommend that agent developers treat "plain Docker isolation" as insufficient by default'';
+    the paper cites UK NCSC guidance that hypervisor isolation ''should be used as a bare minimum''.'
+  conditions: UK AI Security Institute and University of Oxford; Inspect harness, 5 runs per model and
+    task; original cohort 2.5M tokens per run, update cohort 100M, so the cohorts are not at equal budget;
+    the agent is told it is in a container and that escape is the goal, has internet access, no monitoring
+    and intentionally introduced weaknesses; the authors say results 'should not be interpreted as end-to-end
+    compromise likelihood in defended production environments'; hypervisor escapes out of scope
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1; §5.1; §5.3; §6.1-6.2 and App E.2.3 Table 3; §7; §8; App B Table 1; App H Tables
+    11-12
+- source: Gian Segato (Anthropic), "Quantifying infrastructure noise in agentic coding evals", https://www.anthropic.com/engineering/infrastructure-noise
+  date: '2026-02-05'
+  task: Run Terminal-Bench 2.0 under six resource configurations, from per-task CPU and RAM specs enforced
+    as both the guaranteed allocation and the hard kill limit (1x) to uncapped, with the same Claude model,
+    harness and tasks; repeat on SWE-bench varying RAM
+  effect: 'Infrastructure error rate fell monotonically from 5.8% at 1x to 0.5% uncapped; 1x to 3x cut
+    it to 2.1% (p < 0.001) while success stayed ''within the margins of noise (p=0.40)''; from 3x to uncapped,
+    success rose almost 4 points; total lift over 1x 6 points (p < 0.01). Under tight limits some models
+    ran out of memory installing pandas, networkx and scikit-learn ''before the agent writes a single
+    line of solution code''. SWE-bench (227 problems, 10 samples each, RAM up to 5x): 1.54 points higher
+    at 5x. Recommendation: specify a guaranteed allocation and a separate hard kill threshold, with the
+    band calibrated so scores at floor and ceiling fall within noise of each other.'
+  conditions: Vendor measuring its own eval infrastructure on Google Kubernetes Engine; one unnamed Claude
+    model, direction replicated across Anthropic models, other models not rigorously tested; benchmark
+    runs, not production; the 6 points compares pinned limits with no limits, not with a calibrated ceiling
+  direction: mixed
+  measured: true
+  locator: How we got here; How this affects measurement; What we recommend
 related:
-- 2.a.iii
 - 10.b.i
+- 10.c.i
+- 2.a.iii
+- 6.c.i
+- 7.b.iii
 absorbs:
 - legacy_id: P61
   name: Tool capability compartmentalization
@@ -168,3 +389,15 @@ provenance:
   sub_type: environment
   harness_role: env_setup
   action: add
+caveats: 'The measured evidence is small and mostly comes from builders and vendors: the 74-attack comparison
+  is one author''s scripted suite against his own system on one small Python project, with the deployed-style
+  sandbox modeled rather than run, and the 84% prompt reduction and the 24-of-25 exfiltration are a vendor''s
+  reports on its own products, with no attack rates with and without its sandbox. A boundary controls
+  where data goes, not what it encodes: both attacks that beat full confinement sent an access key to
+  an allowlisted host Base64-encoded or split in two, and a vendor''s sandbox let workspace files leave
+  through its own allowlisted API under an attacker''s key. Container isolation erodes as models improve:
+  seven frontier models escaped misconfigured containers in every run, and with a 100M-token budget Claude
+  Mythos Preview escaped in 84% of runs across all 18 tasks, kernel and runtime exploits included, though
+  the agents knew escape was the goal and no one was monitoring. Tight settings cost work: full confinement,
+  which refuses process creation, finished 4 of 7 workflows, and memory limits pinned at a benchmark''s
+  spec failed 5.8% of runs on one Claude model, with uncapped resources scoring 6 points higher.'

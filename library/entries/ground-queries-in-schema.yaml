@@ -19,35 +19,87 @@ evidence_domains:
 categories:
 - context.filter-input
 - retrieval.query
-summary: 'When the model writes SQL or structured filters, put the schema it is querying in its context:
-  table and column descriptions, key relationships, what enum codes and nulls mean, sample values. Give
-  it directly, in the prompt or as files it reads, rather than behind a search tool. This holds while
-  the schema fits in a modest share of the window; past that, link it by exploration (8.b.ii). Making the
-  schema context good (names, descriptions, examples) is data-side work.'
-how: '1. Count the schema''s tokens with descriptions and sample values; if it takes more than a modest
-  share of the window, use 8.b.ii instead. 2. Write or generate the missing descriptions: column meanings,
-  keys, enum codes, null semantics. 3. Put the schema in the prompt, or mount it as files, instead of
-  a retrieval tool. 4. Paired eval on execution accuracy and wrong-table, wrong-column and wrong-value
-  failures.'
+summary: 'Tell a SQL-writing agent what its data means, not only what it is called: what each column,
+  code and NULL means and how each metric is computed, with keys and sample values. The meaning does the
+  work: emptying the prose from an otherwise identical context cost 26 to 36 points on hard data-agent
+  tasks across four models in one ablation, a 4 KB semantic document added 17 to 23 points for three frontier
+  models in a vendor study, and keys and join paths added only a few points over descriptive names in
+  a third study. Put a short document in the prompt; when the rules run long, keep an index in the prompt
+  and let the agent read each rule by name, since the same knowledge pasted as a 24,177-character prompt
+  gained much less, and on a second benchmark long business documents helped less than concise rule snippets.
+  Each result rests on one benchmark, and once the schema outgrows a modest share of the window, link
+  it by exploration (8.b.ii).'
+how: '1. Start from the baseline: run your own questions with the bare schema (table and column names,
+  types) and count what the full context would cost in tokens as you would send it (descriptions, code
+  meanings, sample values, rule documents); if the schema alone takes more than a modest share of the
+  window, use 8.b.ii instead. 2. Make every name say what it holds, then add keys: in one factorial study
+  on corrected BIRD questions, replacing anonymous column names with abbreviated ones moved accuracy 18.5
+  to 42.3 points by difficulty, while adding types, primary keys, foreign keys and join paths to a names-only
+  schema moved it 2.6 to 5.5, most on the hardest questions (models up to Gemini 2.5 Flash). Rename or
+  describe cryptic identifiers first and name link columns plainly: with foreign keys declared, the model
+  still joined on canonical key names. 3. Write down what no column name records: what each code means,
+  what a NULL means (in one benchmark a NULL in a fee rule meant ''applies to all values'', not ''unknown''),
+  and how each metric is computed, as a SQL expression where you can, starting from existing manuals and
+  data dictionaries. Most of the gain is here: emptying that prose from an otherwise identical context
+  cost 26 to 36 points on hard DABStep tasks across four models, and BIRD''s per-question hints added
+  16.36 points on BIRD dev for gemini-1.5-pro. 4. Add sample values for the text and code columns that
+  questions filter on: in one study they added 1.76 points overall and 5.52 on challenging BIRD questions,
+  for about 4,772 more tokens per request (mean plus one standard deviation). 5. Choose the delivery by
+  length. A short document goes in the prompt: a 4 KB semantic document added 17 to 23 points for three
+  frontier models in a vendor study, where an agentic platform holding the same knowledge did not significantly
+  beat raw DDL. When the rules run long, keep an index of domains and metrics in the prompt and have the
+  agent read each rule by name, from files or a lookup tool, before it writes SQL: the same knowledge
+  pasted as a 24,177-character prompt trailed the lookups by 13.7 to 44.6 hard-task points and on one
+  model did no better than the bare schema, and on another benchmark all eight systems tested did better
+  with concise expert-written evidence than with the whole business document (21.4% against 15.9% for
+  the best). 6. Keep the static part cache-friendly (3.b.i) and watch the bill: looked-up rules are billed
+  as fresh input (on GPT-5.6, $8.87 against $3.55 of fresh input for the cached prompt, $21.32 against
+  $14.42 in total), though fewer turns and less reasoning made lookups the cheapest per correct answer
+  on three of four models. 7. Measure with paired runs on your own questions, with the production model
+  and a cheaper one: bare schema against the full context and, where it runs long, prompt against index
+  plus lookups. Report execution accuracy split by questions that need a documented rule and those that
+  don''t (the pasted manual led on the easy tasks on all four models), wrong-table, wrong-column, wrong-value
+  and rule-not-applied failures, whether the SQL carries each documented rule, fresh and cached input
+  tokens, turns, and cost per correct answer, over at least two runs (23.4% of verdicts flipped between
+  two near-identical runs in one study).'
 detect:
-  static: a SQL-writing agent with no table and column descriptions, keys or allowed values in its context;
-    schema context reachable only through a search tool
-  traces: queries against non-existent columns, wrong joins, guessed enum codes; failure rows labeled
-    tool-hallucination (names) or domain-knowledge-deficit
-  evals: failures from wrong table, column or value
+  static: a SQL-writing agent with no column descriptions, code meanings, null semantics or metric definitions
+    in its context; a long rule document pasted whole into the system prompt with no index or lookup by
+    name; schema context reachable only through a similarity-search tool
+  traces: queries against non-existent columns, wrong joins, guessed codes; SQL that omits a rule the
+    context documents (a NULL wildcard read as unknown, an excluded code kept); failure rows labeled tool-hallucination
+    (names) or domain-knowledge-deficit
+  evals: failures from wrong table, column or value, or from a documented rule not applied
 impact:
   quality:
     effect: improves
     size: large
-    when: 'Cube: +17 to +23 points from a semantic-context document on 99 questions (Apr 2026)'
+    when: domain semantics fetched by lookup raised hard DABStep accuracy from 13.9-37.0% to 55.1-77.4%
+      on four models, 26 to 36 points of it from the prose itself, while the same knowledge pasted as
+      a 24,177-character prompt reached 22.9-50.3% (Ye, Sep 2026); a 4 KB semantic document +17.2 to +23.2
+      points on 99 questions, breaking 4 to 8 passing ones per model (Rumiantsau, Apr 2026); long business
+      documents raised the best of eight systems from 6.8% to 15.9%, concise per-question evidence to
+      21.4% (Liao, Jun 2026); BIRD hints +16.36 and sample values +1.76 (+5.52 on challenging questions)
+      for gemini-1.5-pro (Chung, Jan 2025); abbreviated names over anonymous ones +18.5 to +42.3, keys
+      and join paths +2.6 to +5.5 (Su, Jun 2026)
     basis: evidence
   cost:
-    effect: degrades
-    size: small
-    when: the schema costs prompt tokens on every call; caching the prefix (3.b.i) recovers most of it
+    effect: mixed
+    size: medium
+    when: a 4 KB document added 2.4K to 4.2K input tokens per query (Rumiantsau, Apr 2026) and sample
+      values about 4,772 tokens per request, mean plus one SD (Chung, Jan 2025); caching the prefix (3.b.i)
+      makes a static document near free in steady state (Cube's claim, unmeasured); in an agent, a 24,177-character
+      pasted manual meant 191k input tokens per task against 91k for the bare schema on Sonnet 5, and
+      lookups were billed as fresh input ($21.32 against $14.42 for the cached manual on GPT-5.6) but
+      cut turns and reasoning, giving a lower cost per correct answer than the bare schema on all four
+      models (Ye, Sep 2026)
     basis: evidence
   performance:
     effect: none
+    when: latency per query changed -0.9 to +1.8 s with a 4 KB document (Rumiantsau, Apr 2026); 4,772
+      more tokens of sample values left normalized latency unchanged, but latency grows near-linearly
+      with context and its variance rises past 32K tokens (Chung, Jan 2025); in an agent, fetched semantics
+      took the fewest turns per task of any arm on all four models (Ye, Sep 2026)
     basis: evidence
   security:
     effect: unknown
@@ -55,10 +107,22 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: experiment
   tier: 3
-  how: paired eval with and without the schema context, on execution accuracy
+  how: 'paired runs on the same questions with the production model and a cheaper one: bare schema, schema
+    plus descriptions, code meanings, null semantics and metric definitions, and, where the semantics
+    run long, the same content pasted in the prompt against an index plus lookups by name; report execution
+    accuracy split by questions that need a documented rule and those that don''t, failures by wrong table,
+    column, value or rule not applied, fresh and cached input tokens, turns and cost per correct answer,
+    over at least two runs'
+- method: monitor
+  how: 'in production traces: queries against non-existent columns or guessed codes, SQL that omits a
+    documented rule (for example a NULL wildcard read as unknown), lookups per question and questions
+    answered without one, the schema context''s share of prompt tokens and its cache hit rate'
 evidence:
 - source: Andrew Qu (Vercel), "We removed 80% of our agent's tools", https://vercel.com/blog/we-removed-80-percent-of-our-agents-tools
   date: '2025-12-22'
@@ -86,9 +150,13 @@ evidence:
     A Paired Benchmark of Accuracy and Hallucination Across Three Frontier Models", https://arxiv.org/abs/2604.25149'
   date: '2026-04-28'
   task: Put the semantic context in the prompt, not behind search
-  effect: 'Reported only in passing (Section 6.5; REPORT.md 3.5): "did not significantly outperform raw-DDL
-    Claude on this benchmark"; numbers not given in the paper. 25-table schema, so everything fit in context;
-    the authors flag 1,000+ table warehouses as open.'
+  effect: 'Reported only in passing, numbers not given. Paper §6.5: an internal experiment found "an agentic-tool-use
+    system with equivalent underlying semantic knowledge did not outperform the schema-only baseline on
+    this benchmark"; REPORT.md 3.5: the agentic platform held "the same underlying knowledge expressed
+    as cubes" and "did not significantly outperform raw-DDL Claude on this benchmark, suggesting that
+    for one-shot accuracy at least, all-context-in-prompt outperforms search-based discovery". The compared
+    system was Cube''s own agentic platform, not a schema-search tool. 25-table schema, so everything
+    fit in context; the authors flag 1,000+ table warehouses as open.'
   direction: supports
   measured: false
   locator: Section 6.5 Limitations; REPORT.md 3.5
@@ -100,10 +168,114 @@ evidence:
   direction: supports
   measured: false
   locator: §2.2.2
+- source: Qing Ye (independent researcher), "Which Part of the Context Layer Does the Work? Separating
+    Semantic Content from Retrieval Scaffolding in Text-to-SQL Agents", https://arxiv.org/abs/2609.22259
+  date: '2026-09-06'
+  task: 'Four-arm ablation on a data-agent benchmark: bare schema; a domain contract fetched through lookup
+    tools; the same tools and lookup instruction with every prose field emptied; and the benchmark''s
+    own manual pasted into the system prompt, on four models'
+  effect: 'Table 4, hard-split accuracy (GLM / DeepSeek / Sonnet 5 / GPT-5.6): bare schema 13.9 / 22.6
+    / 22.9 / 37.0%; hollow contract (same nine tools and instruction, prose emptied) 19.3 / 22.6 / 38.0
+    / 51.2%; manual pasted into a 24,177-character system prompt 22.9 / 42.9 / 23.8 / 50.3%; contract
+    read through lookup_domain and lookup_metric 55.1 / 56.6 / 68.4 / 77.4%. Easy split: manual 73.9 /
+    90.6 / 89.9 / 94.2% against contract 71.0 / 81.1 / 75.4 / 85.5%. Sonnet 5''s manual scored 79 of 332
+    hard tasks against 76 for the bare schema (not significant). Graded by the benchmark itself on GLM:
+    contract 51.9% against manual 18.8% on 378 hard tasks. Table 7: the SQL expressed all six fee clauses
+    on 39 / 65 / 55 / 98% of the tasks needing them with the contract, 3 / 9 / 4 / 4% with the manual.
+    Table 8: turns per task 7.1 / 8.2 / 7.0 / 6.5 with the contract against 12.1 / 13.7 / 11.3 / 7.9 for
+    the bare schema; cost per correct answer $0.0029 / $0.0061 / $0.136 / $0.067 (contract), $0.0076 /
+    $0.0117 / $0.311 / $0.062 (manual), $0.0084 / $0.0195 / $0.288 / $0.082 (bare schema). Table 9, GPT-5.6:
+    contract $21.32 in total ($8.87 fresh input) against manual $14.42 ($3.55), "because its knowledge
+    arrives as tool results" (1,692 against 582 fresh tokens per turn); on Sonnet 5 the manual put 191k
+    input tokens per task in context against 91k for the bare schema. A near-replicate GLM run flipped
+    94 of 401 verdicts (23.4%).'
+  conditions: glm-5.3-flash and deepseek-v4-flash (temperature 0), Claude Sonnet 5 and GPT-5.6 (no temperature
+    control), medium reasoning effort; DABStep, 401 of 450 test tasks (332 hard, 69 easy; 279 complete-case
+    tasks on DeepSeek) graded against golds the author reconstructed from leaderboard submissions, which
+    run about 5.7 points high for the contract and 3.0 for the manual on hard tasks; 294 of 332 hard tasks
+    concern fees; one run per model; 50-row results, 40 tool calls; the 60,181-character YAML contract
+    was written from the 22,127-character manual and README alone, frozen before any question was read,
+    and settles three points the manual leaves open; the author maintains the contract library tested
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.3; §4.1-4.4 Tables 2-3; §5.1 Tables 4-5; §5.2; §6.1 Table 7; §6.2 Tables 8-9;
+    §8; App. C
+- source: 'Daniel Yitian Su, Sophie Yiran Su, Qiang Sun, Yihao Ding, Wei Liu (University of Western Australia),
+    "Disentangling Structure and Semantics: How Schema Representation Affects LLM-Based SQL Generation",
+    https://arxiv.org/abs/2608.20356'
+  date: '2026-06-17'
+  task: Cross six levels of structural metadata in the prompt (from one denormalized wide table to 3NF
+    with types, primary keys, foreign keys and explicit join paths) with three levels of identifier naming
+    (anonymous, abbreviated, descriptive) on fixed BIRD questions
+  effect: 'Figure 3, L1·S3 (one wide table, descriptive names) minus L6·S1 (3NF with types, keys, foreign
+    keys and join paths, anonymous names): +18.2 Gemini 2.5 Flash, +10.6 Qwen2.5-Coder-14B, +11.3 Phi-4,
+    +2.7 OLMo-2-13B; positive in 8 of 9 databases. Table 4 (the paper''s primary model): S1 to S2 +42.3
+    / +28.5 / +18.5 points (simple / moderate / challenging), S2 to S3 +0.7 / +0.1 / +3.3; L3 to L6 (adding
+    types, keys, foreign keys and join paths to names-only 3NF) +3.2 / +2.6 / +5.5. "The semantic axis
+    spans two to three times the range of the structural axis on every model tested." Table 5 (Gemini
+    2.5 Flash, descriptive names): wrong-table 28-31% and join-plan 10-12% of failures at every level
+    from names only to explicit join paths; "even at L5, where foreign keys are explicit, the model still
+    joins on canonical key names rather than BIRD-specific link columns". With anonymous names, wrong
+    column was 78% of failures. Qwen2.5-Coder scaling: the naming gain emerges at 7B and reaches +24.4
+    points at 32B.'
+  conditions: Gemini 2.5 Flash, Phi-4, OLMo-2-13B-Instruct and Qwen2.5-Coder-Instruct 0.5B to 32B, zero-shot,
+    greedy, one sample; 397 corrected BIRD mini-dev questions (Arcwise-Plat-SQL) on nine databases of
+    3 to 13 tables and 11 to 199 columns; descriptive names derived from BIRD's column descriptions, no
+    separate description text; denormalized levels graded against 3NF gold queries; failures labeled by
+    a Claude Sonnet 4.5 agent
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3 Tables 1-2; §4.1 Table 3; §5.1 Figures 1-3, Table 4; §5.2 Figures 4-5; §5.3
+    Tables 5-6
+- source: 'Chengxi Liao, Tao Xu, Zulong Chen, et al. (HKUST (GZ), Alibaba Group), "EntSQL: A Benchmark
+    for Grounding Text-to-SQL in Long-Context Enterprise Knowledge", https://arxiv.org/abs/2606.03363'
+  date: '2026-06-02'
+  task: Run eight frontier systems on enterprise BI questions with the schema only, with the domain's
+    long business document added, or with concise expert-curated evidence added
+  effect: 'Table 2, English, average execution accuracy (schema only / with document / with evidence):
+    Claude Code (Sonnet 4.6) 6.8 / 15.9 / 21.4%; Sonnet 4.6 5.9 / 11.6 / 17.6; Opus 4.6 5.9 / 13.3 / 15.5;
+    Gemini 3.1 Pro 4.7 / 9.9 / 12.8; GPT-5.4 4.8 / 11.2 / 16.7; Qwen 3.6 Max 5.7 / 12.6 / 16.3; Kimi K2.6
+    4.8 / 8.3 / 10.6; GLM 5.1 5.5 / 12.9 / 17.1. Best hard-question accuracy with the schema only 0.8%.
+    "Concise evidence is more effective than full documents"; "Adding long-form documents alone is not
+    consistently effective": a large gain in Treasury, little in Finance, Business Management and Union/Party
+    Building, and a slight drop in Human Resources (Figure 3, averaged over systems). Table 3, 212 sampled
+    questions: Claude Code 6.1 / 14.6 / 20.3% against experts 33.5 / 46.2 / 84.0%.'
+  conditions: 1,066 English examples translated from Chinese, five BI domains, 35 tables and 1,489 columns;
+    96.0% need knowledge beyond the question and schema; gold SQL averages 388.7 tokens; documents average
+    3.6K to 5.3K tokens per domain; schema as DDL; single-turn calls at temperature 0 for standalone models,
+    Claude Code with default settings; the evidence setting gives each question its own expert-curated
+    evidence; one run; numbers unchanged from v1 to v3 (Jul 2026)
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.3 Table 1; §3.1; §3.2 Table 2; §3.3 Table 3; §3.4 Figure 3
+- source: Yeounoh Chung, Gaurav T. Kakkar, Yu Gan, Brenton Milne, Fatma Özcan (Google), "Is Long Context
+    All You Need? Leveraging LLM's Extended Context for NL2SQL", https://arxiv.org/abs/2501.12372
+  date: '2025-01-21'
+  task: Add context to the full database schema one element at a time (per-question hints, sample column
+    values, self-correction, extensive column values, synthetic examples) and measure accuracy, tokens
+    and latency; separately add SQLite documentation chunks
+  effect: 'Table 8, BIRD dev, gemini-1.5-pro, incremental: all tables of the database 43.87% EX at 10,772.77
+    tokens per request (mean plus one SD); + hints 60.23% (+16.36) at 10,796.12; + sample column values
+    61.99% (+1.76 overall; +0.76 simple, +2.58 moderate, +5.52 challenging) at 15,568.47 tokens (+4,772.35),
+    normalized latency 1.0 unchanged; + self-correction 64.80% (+2.81) at 50,142.14 tokens and 2.5 latency
+    units; + disambiguation (extensive column values after empty results) 65.51% (+0.71) at 385,141.42
+    tokens and 33.5 units. §4.7: SQLite documentation gave no accuracy gain while it increased "the context
+    size, thus the latency, significantly". §4.8: latency near-linear in context size (R² 92.6), with
+    latency and its variance rising significantly beyond 32K tokens.'
+  conditions: gemini-1.5-pro-002 (and 1.5-flash elsewhere) on Vertex AI; BIRD dev (1,534 questions); incremental
+    ablation, each row adds to the one above, single run; hints are BIRD's per-question evidence; latency
+    in units of one 8K-token request, differences under 10% ignored; tokens reported as mean plus one
+    standard deviation; the authors argue for long-context NL2SQL on their own model; numbers identical
+    in v1 and v6 (Jun 2025)
+  direction: supports
+  measured: true
+  locator: §3.1; §4.1; §4.7; §4.8 Figure 5, Table 7; §5 Table 8
 related:
 - 8.b.ii
-- 8.a.ii
 - 7.a.i
+- 8.a.ii
+- 3.a.i
+- 3.a.iv
 - 3.b.i
 - 9.a.i
 provenance:
@@ -113,5 +285,13 @@ provenance:
   sub_type: context
   harness_role: retrieval
   action: add
-caveats: The measured gain comes from a semantic-layer vendor's study (Cube) on one 25-table schema. Past
-  a modest share of the window, loading the whole schema costs more than it returns; that is 8.b.ii.
+caveats: 'Each measured gain rests on one benchmark and few runs: Cube''s vendor study (99 questions on
+  one 25-table schema), a single-author ablation on DABStep in which 294 of 332 hard tasks are fee questions,
+  no run was repeated and the author maintains the lookup library tested, and BIRD studies with gemini-1.5-pro
+  or models no larger than Gemini 2.5 Flash. The lookup-over-prompt result is confounded and bounded:
+  the looked-up contract restated the manual as per-metric entries with SQL expressions and settled three
+  points the manual left open, the pasted manual still led on easy tasks on all four models, and Cube''s
+  internal test favored the prompt for its 4 KB document. On EntSQL, concise evidence beat whole documents
+  only when experts wrote it per question, and even then Claude Code reached 20.3% against 84.0% for experts
+  on a 212-question sample. Past a modest share of the window, loading the whole schema costs more than
+  it returns; that is 8.b.ii.'

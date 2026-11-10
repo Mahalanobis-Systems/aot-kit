@@ -20,27 +20,72 @@ evidence_domains:
 - reasoning
 - web-research
 - tool-use
+- judging
 categories:
 - models.specialists
 - models.workload-fit
 - prompts.reasoning-effort
-summary: Pick the model per role or call site rather than one model everywhere, and set its reasoning
-  effort and sampling parameters per site; tune each role's prompt to its model (GEPA raised every model
-  tested at lower cost). Give the agent explicit effort budgets by query class (e.g. one agent and 3-10
-  tool calls for simple fact-finding) so simple queries are not over-served. Upgrade the model generation
-  before doubling token budgets. A prompt that forces stepwise reasoning is the same lever from the prompt
-  side and hurt on GPQA; prefer the model's own effort setting.
-how: 1. From traces, list call sites and their token, cost and error profile. 2. For each, run a small
-  model grid (cheaper, specialist, effort levels) on the eval slice that exercises it. Sweep effort rather
-  than max it, since forced extra thinking cut GSM8K accuracy from 87.3% to 70.3% (1,100 to 15,980 thinking
-  tokens), majority-voted parallel traces beat one long trace at the same budget (+10.1%), and stopping
-  once a candidate answer appears cut reasoning tokens by 24.5% for a 2.9-point accuracy drop.
-  3. Optimize each site's prompt for its model. 4. Add per-query-class budgets. 5. Paired eval per call
-  site.
+summary: 'Start each call site at a low reasoning effort and a model chosen on its own eval, instead of
+  the top setting everywhere: on agentic coding tasks that every effort level solved, xhigh effort cost
+  2.5 to 5.3 times low effort, and on Terminal-Bench every one of eight models lost some tasks its lowest
+  level had solved. Pick the model per role or call site and tune each role''s prompt to its model (a
+  model per role raised one data agent from 81.4% to 91.6% at lower cost; GEPA raised every model tested
+  at lower cost), give explicit effort budgets by query class (e.g. one agent and 3-10 tool calls for
+  simple fact-finding), and where an external check exists, escalate effort only after a verified failure,
+  which matched or beat fixed top effort''s success for all eight models, mostly at lower cost. Choose
+  by measured cost and quality per task, not list price or release date: a model at a fifth of the per-token
+  price cost only 3.2 times less per task and passed 16.4% of tasks against 27.1%, and the newer generation
+  of each of three model families lost recall on one fraud benchmark (by up to 22.2 points), so try a
+  newer model before doubling token budgets but benchmark it on the site''s eval first. Routers that pick
+  model or effort per query or turn often matched but did not beat the best single choice, and a prompt
+  that forces stepwise reasoning is the same lever from the prompt side and hurt on GPQA; prefer the model''s
+  own effort setting.'
+how: '1. From traces, list call sites and their token, cost, latency and error profile; the baseline is
+  the current model and effort at each site. Count realized cost per task (input including cache reads,
+  reasoning and output, calls per task), not list price: in one spreadsheet-agent study Claude Haiku 4.5,
+  at a fifth of GPT-5.6 Sol''s input price, made about 41 calls per session against about 25 and cost
+  only 3.2 times less per task while passing 16.4% against 27.1%. 2. For each site, run a small model
+  grid (cheaper, specialist, effort levels) on the eval slice that exercises it. Sweep effort from the
+  lowest level up rather than max it: in one eight-model sweep, on tasks every level solved, low to xhigh
+  raised mean cost 2.51 to 5.34 times in the GPT-5.6 and Claude Sonnet 5 cases reported for Terminal-Bench
+  and SWE-Bench Pro (up to 42 times across models and benchmarks), largely through longer trajectories
+  (GPT-5.6-sol 14.7 to 28.4 calls), and on Terminal-Bench every model lost some tasks its lowest level
+  had solved; xhigh cost 2.11 to 4.22 times medium on SlopCodeBench while strict passes fell for two of
+  three models (one run each); Claude Opus 4.8 at low effort passed more multi-turn spreadsheet tasks
+  than at high for 27 to 46% less cost. Forced extra thinking cut GSM8K accuracy from 87.3% to 70.3% (1,100
+  to 15,980 thinking tokens), majority-voted parallel traces beat one long trace at the same budget (+10.1%),
+  and stopping once a candidate answer appears cut reasoning tokens by 24.5% for a 2.9-point accuracy
+  drop. Include ''none'' in the sweep but count its calls: GPT-5.6-luna made 21.5 calls at none against
+  5.4 at low and cost 4.58 times as much. 3. Where the site has an external correctness check (tests,
+  a verifier), run it at the lowest effort and retry at the top effort only after a failed check. Across
+  eight models this matched or beat fixed top effort on every benchmark, at median cost savings of 25.3%
+  (AIME), 41.5% (GPQA) and 15.5% (corrected SWE-Bench Pro), with cheaper runs for four of eight models
+  on Terminal-Bench (GPT-5.6-sol 83.0% to 88.6% success at 17.4% lower cost); letting the model pick its
+  own effort from the task description did no better than random allocation. 4. Optimize each site''s
+  prompt for its model (GEPA raised every model tested as a table-search sub-agent at lower cost), and
+  keep per-model prompt variants and metadata in a registry so a model swap does not need code changes.
+  5. Add per-query-class budgets (e.g. one agent and 3-10 tool calls for simple fact-finding, 2-4 sub-agents
+  for comparisons). If a multi-turn agent routes per user turn, give the router the session history (at
+  a matched offloading rate it raised pass rate from 25.0% to 28.3%) and switch down early rather than
+  up late: at that study''s prices a switch to a cheaper model recovered its lost prompt cache in about
+  1.25 calls, an upward switch never did. In long coding tasks, let the capable model start and hand the
+  rest to the cheaper one, not the reverse: on DeepSWE, handoffs to Qwen3.8-27B at 30 to 60% of the trajectory
+  kept accuracy within a point of the capable model at 47.9 to 82.4% lower cost, while cheap-first handoffs
+  saved little (6.1% for GPT-5.6 Sol) or lost accuracy. 6. Re-run the site''s eval before any model upgrade,
+  under the existing prompt and decision policy: on one fraud benchmark the newer Sonnet lost 22.2 recall
+  points and the newer GPT 20.7, although general benchmarks improved. Do not pack several items into
+  one call at a reasoning-heavy site, since per-item reasoning shrinks with the number of items (random
+  batches of six lost 10.5 points on GPQA-Diamond, eight-model mean). 7. Paired eval per call site and
+  query class, with repeated runs: success, tasks gained and lost against the current setting (not only
+  the aggregate), realized cost per task, calls per task and latency per model and effort level.'
 detect:
-  static: one model and one effort setting for every call site; no per-query-class budget
+  static: one model and one effort setting (often the top one) for every call site; no per-query-class
+    budget; a model or version upgrade shipped without re-running the site's eval; several items packed
+    into one call at a reasoning-heavy site
   traces: simple queries using as many steps, tokens or sub-agents as complex ones; a call site whose
-    cost dominates with no quality reason; retries exhausted or timeouts at one site
+    cost dominates with no quality reason; trajectories that grow longer (more calls, more self-verification)
+    at higher effort on tasks a lower setting already solves; many calls per task at effort none; retries
+    exhausted or timeouts at one site
   evals: 'quality and cost per call site, per model; price not predicting quality across the measured
     configurations (in an email-triage agent we measured: Spearman 0.12)'
 impact:
@@ -48,25 +93,52 @@ impact:
     effect: improves
     size: medium
     when: 'Genie: 81.4% to 91.6% with a model per role (May 2026); in an email-triage agent we measured,
-      the best recall came from gpt-5-nano at low effort'
+      the best recall came from gpt-5-nano at low effort; escalating effort only after a failed check
+      raised Terminal-Bench success for all eight models tested, e.g. GPT-5.6-sol 83.0% to 88.6% (Sun,
+      Oct 2026); Opus 4.8 at low effort beat high on multi-turn spreadsheets, 31.2% vs 29.5% and 36.7%
+      vs 32.1% (Parashar, Oct 2026); limits: newer generations lost 20.7 and 22.2 recall points on one
+      fraud benchmark (Ma, Oct 2026), and cheap-first model handoffs lost accuracy (Li, Oct 2026)'
     basis: evidence
   cost:
     effect: improves
     size: large
-    when: Genie 2.13x to 0.95x cost
+    when: Genie 2.13x to 0.95x cost (May 2026); on tasks every level solved, low to xhigh effort cost
+      2.51-5.34x on agentic benchmarks and up to 42x across all benchmarks, and escalating only after
+      a failed check saved a median 15.5 to 41.5% against fixed top effort (Sun, Oct 2026); xhigh cost
+      2.11-4.22x medium on SlopCodeBench (Horthy, Oct 2026); a capable-then-cheap model handoff cut API
+      cost 65.9% on average over 11 model pairs (Li, Oct 2026); a history-aware per-turn router saved
+      nothing ($0.369 vs $0.365 per task) where the cheap setting alone was as good (Parashar, Oct 2026)
     basis: evidence
   performance:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: low instead of max effort cut median response time per run by 20% (37.4 vs 47.0 s and 52.6 vs
+      65.9 s for two GPT-5.6 tiers) on routine office tasks (Xu, Aug 2026); at higher effort GPT-5.6-sol's
+      SWE-Bench Pro trajectories grew from 14.7 to 28.4 calls (Sun, Oct 2026); step-by-step prompts made
+      reasoning models' requests 20-80% (10-20 s) slower (Meincke, Jun 2025); escalating after a failed
+      check adds a second full run on those tasks
+    basis: evidence
   security:
     effect: unknown
   governance:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - cost
+  - quality
 measure:
 - method: experiment
   tier: 3
-  how: paired eval per call site and per query class
+  how: 'paired eval per call site and per query class: each candidate model and effort level (from the
+    lowest, including none where offered) on the same items, with repeated runs; success, tasks gained
+    and lost against the current setting, realized cost per task (input incl. cache reads, reasoning,
+    output), calls per task and latency; for escalation or routing policies, charge both attempts and
+    the router calls'
+- method: monitor
+  how: 'per call site in production: cost per task, calls per trajectory, latency, escalation or routing
+    rate and quality on sampled traffic; re-run the site''s eval on every model or provider version change
+    before switching'
 evidence:
 - source: The Databricks AI Research Team, "Pushing the Frontier for Data Agents with Genie", https://www.databricks.com/blog/pushing-frontier-data-agents-genie
   date: '2026-05-08'
@@ -143,13 +215,16 @@ evidence:
 - source: paper Figure 13
   task: GPQA
   effect: Train 0.61 to 0.58 (regressed) in phase 1.
+  date: 2026-02
 - source: paper §4.3, Table 10
   task: GAIA/FACTS/SimpleQA (Knight agent)
   effect: Knight's 140-line prompt bakes in CoT, ReAct and self-verification; it is harder to improve
     but far more stable than Pawn.
+  date: 2026-02
 - source: repo figure_01
   task: five follow-up benchmarks
   effect: 8 to 14 of 20 runs per benchmark.
+  date: 2026-02
 - source: Jeremy Hadfield, Barry Zhang, Kenneth Lien, Florian Scholz, Jeremy Fox, Daniel Ford (Anthropic),
     "How we built our multi-agent research system", https://www.anthropic.com/engineering/multi-agent-research-system
   date: '2025-06-13'
@@ -257,10 +332,161 @@ evidence:
   direction: supports
   measured: true
   locator: §2.2 Figures 3-4; §4 Table 2
-caveats: 'The model checkpoint itself is off-limits under VeRO''s rules; only its call parameters
-  move.'
+- source: Kaiser Sun, Yongchan Kwon, Zain Hasan, Shang Zhu, Kaitlyn Zhou, Federico Bianchi (Johns Hopkins,
+    Together AI, Cornell), "What Effort Level Should I Choose? On the Economics of Reasoning Effort in
+    LLM Agents", https://arxiv.org/abs/2610.34491
+  date: '2026-10-25'
+  task: Sweep each model's own reasoning-effort setting (none to xhigh or max) with tasks, prompts and
+    harness fixed; compare solved sets and cost on tasks every level solves; test self-chosen effort and
+    'naive laddering' (lowest effort, retry at the highest only after a failed external check, both runs
+    charged)
+  effect: 'Terminal-Bench: every one of eight models lost some tasks between its lowest and highest effort;
+    GPT-5.6-sol high to xhigh lost 8, gained 5 (76 to 73 of 89). On always-solved tasks, low to xhigh
+    raised mean cost 2.51x (GPT-5.6-sol) and 3.04x (Claude Sonnet 5) on Terminal-Bench and 4.54x ($0.27
+    to $1.24, GPT-5.6-sol) and 5.34x (GPT-5.6-luna) on SWE-Bench Pro, up to 42x across all benchmarks;
+    GPT-5.6-sol trajectories 14.7 to 28.4 calls. GPT-5.6-luna at none: 21.5 calls vs 5.4 at low, 4.58x
+    the cost. GPT-5.6-sol read the reference-fix commit on 15.9% of tasks at low vs 75.0% at xhigh. Laddering
+    matched or improved success over fixed top effort for every model and benchmark; median cost savings
+    25.3% (AIME), 41.5% (GPQA), 15.5% (corrected SWE-Bench Pro); Terminal-Bench cheaper for 4 of 8 models
+    (GPT-5.6-sol 83.0% to 88.6%, -17.4% cost; Claude Sonnet 5 76.1% to 83.0%, -8.7%; Kimi K3 73.0% to
+    84.3%, -30.5%), costlier for the other four. Self-routing: ''no consistent cost-accuracy advantage
+    over random allocation''.'
+  conditions: GPT-5.6-sol, -terra, -luna, Claude Sonnet 5, GLM-5.2, Inkling, Kimi K3, DeepSeek-V4-Flash;
+    AIME 2026 (30 x 10), GPQA Diamond (198 x 4), Terminal-Bench 2.1 (89 tasks, Terminus-2), SWE-Bench
+    Pro (44-instance sample, mini-swe-agent, original and corrected environments); agentic tasks run once
+    per effort level; laddering reconstructed from recorded runs, not run live; max effort not run for
+    proprietary models; four-rollout DeepSWE check in App. J
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1 Figure 1; §3.2 Figure 2; §3.3 Figure 3; §3.4 Figure 5; App. A Table 1; App.
+    F; App. H; App. J
+- source: Anikesh Parashar, Avik Dutta, Vashu Chauhan, Sumit Gulwani, Priyanshu Gupta, Hosein Hasanbeig,
+    Vu Le, Ashish Tiwari (Microsoft), "Whose turn is it? Context-guided model routing for stateful agents",
+    https://arxiv.org/abs/2610.19292
+  date: '2026-10-13'
+  task: Zero-shot routing at the user-turn boundary in multi-turn spreadsheet agents between a cheap and
+    an expensive candidate differing in size, provider or reasoning effort; router with or without session
+    history, escalation, de-escalation and random routing against single-model baselines, with router
+    calls and prompt-cache effects charged
+  effect: 'SheetCopilot (Table 3) pass / cost per task: Opus 4.8 high-only 29.5% / $0.365, low-only 31.2%
+    / $0.268, history-aware router 31.2% / $0.369; Sol-only 25.9% / $0.341, Luna-only 28.6% / $0.061,
+    router 26.8% / $0.392; Sol 27.7%, Haiku 4.5 20.5%, router 26.8%. History-aware router vs no history
+    at matched offloading (22.7% vs 23.3% of turns): 28.3% vs 25.0% pass, gain in every pair. SSB-2 (Table
+    4): Opus 4.8 high 32.1% / $2.009 vs low 36.7% / $1.081. Haiku 4.5, at one fifth of Sol''s input price,
+    made about 41 calls and 1.6M input tokens per conversation vs about 25 and 0.9M, costing only 3.2x
+    less per task ($0.37 vs $1.18) while passing 16.4% vs 27.1%; its discount was 6.8x on shorter SheetCopilot
+    sessions. A downward switch repays its lost cache after k* = 1.25 calls; an upward switch never does.
+    Random routing passed fewer tasks than both fixed models in every pair.'
+  conditions: SheetCopilot (112 multi-turn tasks, 2.88 turns on average) and SpreadsheetBench 2 (221 workflows,
+    4.76 turns); pairs GPT-5.6 Sol/Luna, Sol/Claude Haiku 4.5, Claude Opus 4.8 high/low effort; GPT-5.6
+    Luna as router; one harness; router costs exact only for the Opus pair; no intervals reported; escalation,
+    de-escalation and random ran in a separate harness
+  direction: mixed
+  measured: true
+  locator: Abstract; §4 Figure 2, Table 3, Table 4; Figure 3; Figure 4 and switch-cost analysis
+- source: 'Junlong Li, Jindong Jiang, Yonggan Fu, Jiarui Yao, Hanrong Ye, Wonmin Byeon, Peter Belcak,
+    Hao Zhang, "AgentBaton: Efficient Model Collaboration in Agentic Tasks", https://arxiv.org/abs/2610.35959'
+  date: '2026-10-25'
+  task: Hand a long-horizon agentic task from one model to another partway through (capable-to-efficient
+    vs efficient-to-capable; history in context or as a log file), at fixed checkpoints and with a trained
+    handoff detector
+  effect: 'DeepSWE v1.1, fixed checkpoints, capable to Qwen3.8-27B: Kimi K3 at 45% 72.57% vs 73.45% capable-only,
+    -61.5% cost; GPT-5.6 Sol at 60% 67.26% vs 68.10%, -47.9%; GLM-5.3 at 30% 61.1%, matching its baseline,
+    -82.4%. Efficient-to-capable: later handoffs to GLM-5.3 and Kimi K3 lost accuracy; to GPT-5.6 Sol
+    at 30% 70.80% vs 68.10% but only -6.1% cost. Prompting the capable model to hand off: Kimi K3 never
+    did, GLM-5.3 on 6 of 113 tasks. Detector: API cost -65.9% on average over 11 pairs and two benchmarks,
+    up to +8.8 points; 12 of 22 pair-benchmark settings improved accuracy or lost under 5% relative. Against
+    a reproduced per-turn router (MTRouter): 46.7-86.6% lower cost at matched or better accuracy in four
+    settings.'
+  conditions: Terminal-Bench 2.1 and DeepSWE v1.1 (113 tasks); capable models GPT-5.6 Sol, Kimi K3, GLM-5.3
+    (max effort), plus Claude Opus 5 and Gemini 3.8 Flash in the main table; efficient Qwen3.8-27B (xhigh)
+    and GPT-5.6 Luna; detector trained on 4,000 SWE-rebench V2 trajectories; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1 Table 1; §3.2 Figure 3; §4 Table 2; §5 Tables 3-4
+- source: Xiaonan Xu, Wenjing Wu (Georgia Tech, CU Boulder), "Low Reasoning Effort Is Enough for Routine
+    Office Work by Language-Model Agents", https://arxiv.org/abs/2608.03169
+  date: '2026-08-04'
+  task: Run the same routine office tasks (each with an item the rules block and a forbidden tool that
+    would complete it) at low and max reasoning effort; check rule following from final state and record
+    tokens and latency
+  effect: 'Forbidden tool used in 0 runs at either level (difference at most 4.30 points on Terra and
+    6.38 on Sol at 95% confidence). Median per trajectory, low vs max: output tokens 483 vs 861.5 (Terra)
+    and 539 vs 937.5 (Sol); response latency 37.4 vs 47.0 s (Terra) and 52.6 vs 65.9 s (Sol), ''about
+    43% fewer output tokens and 20% less time''; tool calls 16 vs 16 and 16 vs 17.'
+  conditions: GPT-5.6 Terra and Sol via the Responses API; 14 simulated office tasks x 3 versions; 6 runs
+    per cell on Terra, 4 on Sol; 840 runs; rule following only, task difficulty low; up to 20 or 32 tool
+    steps
+  direction: supports
+  measured: true
+  locator: Abstract; §3.2; §4.1 Table 1; §4.2 Table 2
+- source: 'Yao Ma, Xuwei Tan (Coinbase), "Part 2/3 Owning Intelligence Series: How Coinbase Built, Evaluated,
+    and Post-Trained a Fraud Agent", https://www.coinbase.com/blog/part-two-owning-intelligence-series'
+  date: '2026-10-07'
+  task: Swap the model behind a fraud-review agent call site for the next version in its family, with
+    the prompt, context and risk-to-decision policy fixed, and score on a fixed replay benchmark
+  effect: 'Newer vs earlier version, percentage points: Sonnet 4.6 to Sonnet 5 recall -22.2, dollar-weighted
+    recall -22.9; Opus 4.5 to Opus 5 recall -0.8, lower on all four metrics; GPT-5.4 to GPT-5.6 (sol)
+    precision +11.5, recall -20.7, dollar-weighted recall -21.8. ''Across all three pairs, the newer version
+    had lower recall, F1, and dollar-weighted recall.'''
+  conditions: 16,140 historical transactions across 7,293 users, 813 confirmed fraud, from nine weeks
+    before the agent's rollout; decision agent only; point estimates (Figure 1), no absolute scores or
+    intervals; vendor case study (the evaluator is not the model vendor)
+  direction: mixed
+  measured: true
+  locator: Results; Figure 1; What This Means for Model Selection
+- source: Dex Horthy, with Gabe Orlanski (HumanLayer), "SlopCodeBench update 10/2026 - Opus 5.5 update,
+    Astra improves by 1.5% over gpt-5.5, xhigh considered harmful", https://github.com/humanlayer/advanced-context-engineering-for-coding-agents/blob/main/benchmarking-new-models-on-slop-code-bench.md
+  date: '2026-10-15'
+  task: Run coding agents at medium and xhigh effort through all 36 SlopCodeBench problems (196 checkpoints)
+    and compare strict passes and estimated cost
+  effect: 'Medium to xhigh strict passes of 196: Opus 5.5 28 to 25 (4.22x cost), GPT-6 SOL 30 to 26 (2.11x),
+    GPT-6 Astra 29 to 32 (2.91x). ''higher effort was not a reliable way to buy more strict passes in
+    these runs.'' Opus 5.5 xhigh code had less flagged slop (77.75% vs 94.25% of source lines on 28 matched
+    problems). Cheapest campaign GPT-6.1 SOL Medium $178.51 with 29 strict passes; Fable 5.1 XHigh $1,550.07
+    with 26.'
+  conditions: pinned v1.0 catalog, stock just-solve prompt, seed 42; one run per model and setting; estimated
+    costs; practitioner write-up
+  direction: supports
+  measured: true
+  locator: '''more effort == more spend'' table; complete-campaign table; code quality section'
+- source: 'Chenpan Li, Thies Brockmoeller, Stefanie Jegelka, Sharut Gupta, Nikolaos Karalias (TU Munich,
+    MIT CSAIL), "On the Fragility of Tasks under Composition: Implicit Budgeting in Language Models",
+    https://arxiv.org/abs/2610.27190'
+  date: '2026-10-19'
+  task: Compose several independently solvable tasks into one prompt and measure per-task reasoning tokens
+    and accuracy; batch tasks by measured or predicted fragility
+  effect: 'Per-task reasoning shrinks approximately as a power law in the number of composed tasks. GPQA-Diamond,
+    random batches of six: -10.5 pp accuracy, -60.9% tokens (eight-model mean); fragility-aware (measured)
+    +0.2 pp, -32.8%. Averaged over models and datasets except AIME, measured fragility saved 43% of tokens
+    at +0.6 pp; the deployable linear predictor saved 31.0% with at most 0.5 pp loss per dataset. Claude
+    Opus 5 (medium effort) on GPQA-Diamond: isolated 89.5% at 689 tokens; random k=6 -0.9 pp, -18%; measured
+    fragility -0.4 pp, -24%; predictor -2.0 pp, -0.5%.'
+  conditions: Qwen3 4B Thinking, 8B, 14B, Qwen3.8 27B, three R1 distills, Claude Opus 5 (GPQA-Diamond
+    only, fewer trials); GPQA-Diamond, GSM8K, MATH-500, MMLU-Redux, StrategyQA, AIME, integrals, OneWordQA;
+    43% uses fragility measured on the same tasks
+  direction: supports
+  measured: true
+  locator: §3.1; §4.1 Table 1; §4.2; App. A.1.6 Table 2
+caveats: 'Most effort sweeps on agentic tasks run each setting once (the eight-model sweep and the SlopCodeBench
+  comparison), and a four-rollout check found lost lower-effort tasks at rates comparable to chance, so
+  compare settings on repeated runs and tasks gained and lost, not one aggregate score. Effort and model
+  do not move uniformly: higher effort raised strict passes for one of three coding models and its code
+  had less flagged slop for another, escalating after a failed check needs a reliable external check and
+  cost more than fixed top effort for four of eight models on Terminal-Bench, and none can cost more than
+  low when the agent compensates with extra calls. Routing per query or turn often matched but did not
+  beat the best single setting: a history-aware router stayed within a point of the expensive model at
+  no cost saving, a cheap model or low effort alone matched or beat it in two of three pairs, self-chosen
+  effort did no better than random allocation, and within-turn de-escalation trailed the fixed models
+  on average on spreadsheets while capable-first handoffs in coding saved 65.9% on average but lost 5%
+  or more relative accuracy in 10 of 22 settings (the authors'' own method). Newer generations can regress
+  on a narrow task (one fraud benchmark, point estimates only), and packing several items into one call
+  cuts reasoning per item, so re-run the site''s eval on every upgrade or batching change.'
 related:
+- 6.a.i
 - 9.c.ii
+- 7.b.iii
+- 3.b.i
 - 6.b.iii
 absorbs:
 - legacy_id: P03

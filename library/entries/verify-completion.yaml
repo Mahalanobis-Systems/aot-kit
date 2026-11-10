@@ -16,53 +16,134 @@ domains:
 evidence_domains:
 - code-generation
 - data-analysis
+- tool-use
+- conversation
 categories:
 - verification.completion
-summary: 'Never take the agent''s own report that it finished. Before it stops, check the claim against
-  something it cannot write: the environment''s end state, a smoke test or end-to-end run, or its transcript
-  (files it claims to have reviewed against files it opened). Veto stopping when code changed with no
-  verification run; ask for an explicit scope statement; re-verify sub-agent findings before relaying
-  them. Keep the checklist the agent is judged by in a form it is unlikely to rewrite (JSON, one status
-  field editable), but expect rules alone to be weak: only a check the agent cannot see reliably held.'
-how: 1. Define what 'done' means as an environment check (tests pass, feature works end to end, files
-  reviewed). 2. Add a stop hook that runs it and refuses to stop on failure. 3. Lock the checklist format.
-  4. Measure false-success and premature-stop rates.
+summary: 'Before an agent stops, check its claim that it is done against evidence it cannot write (the
+  environment''s end state, tests it cannot edit, or a separate reviewer that runs the result) and send
+  it back with what failed. Unchecked claims are often wrong: across seven current models on SkillsBench,
+  completion claims exceeded official pass rates by 28.7 to 37.9 points, and letting only trusted validator
+  evidence finalize a run cut that gap to 12.8 points and raised the pass rate from 61.1% to 73.1% at
+  1.53x tokens (one study, repair included); even a cheap check that read only the dialogue withheld 61%
+  of invalid customer-service completions. Who checks matters: gates that reopened the work for the same
+  agent gained -0.5 to +6.2 points at up to 1.76x cost on coding tasks, a separate critic that ran the
+  deliverable gained 3.9 to 9.5 points at 1.00 to 1.25x, and a verifier reading only the agent''s response
+  never passed 0.70 F1 where one checking state and trace reached 0.96. Veto a stop when code changed
+  with no check since, re-verify sub-agent findings, and keep the checker and its checklist out of the
+  agent''s reach, since rules and self-written tests it can see are weak; expect false vetoes (17% and
+  41% of correct runs withheld in one study) and know that a guard that only refuses to stop finished
+  none of the work-unit tasks in another unless the harness also tracked what remained.'
+how: '1. Start from the baseline: score recorded runs or an eval set from the environment (hidden tests,
+  end state, the official evaluator), never from the agent''s message, and log false successes (the agent
+  says done, the check fails), premature stops (required work missing, or the run ends after an edit with
+  no test or build), success, tokens, turns and wall-clock. Expect a gap: across seven current models
+  on SkillsBench, completion claims exceeded official pass rates by 28.7 to 37.9 points, and in Terminal-Bench
+  runs only 6.2% to 13.6% of editing turns were followed by a check. 2. Define done per task type as checks
+  the agent cannot write: tests or a build it cannot edit, the end state (records, files, a deployed endpoint),
+  an end-to-end run through the real interface (browser automation for a web app), and for review tasks
+  the transcript (files claimed as reviewed against files opened). Turn the task''s stated requirements
+  into such checks; let a check block the stop only after you have confirmed it accepts correct work,
+  and keep vague or subjective requirements advisory: in one study, letting unqualified validators block
+  too kept 90.3% of the tasks the unguarded agent had passed, against 96.8%. 3. Enforce it in the harness
+  at the stop: a stop hook or verify-on-stop guard intercepts the final answer, runs the checks, and on
+  failure returns which checks failed and what remains, with a cap on rounds and a logged release at the
+  cap (the critic study allowed one revision). Refuse to stop when files changed after the last passing
+  check, and re-run checks whose inputs changed: without that, all 248 targeted later edits in one study
+  left stale passing evidence accepted. Refusing to stop is not enough on its own: in one study such a
+  guard completed none of the work-unit tasks, while a controller that also tracked pending units completed
+  25% to 50% (7.b.iv). 4. Where the check needs judgment, give it to a separate checker instead of asking
+  the agent to recheck: a critic in a fresh context with read-only access to the live environment, given
+  the task and the diff, that tries to falsify each claim by running the deliverable and returns findings
+  for revision. Across seven coding models this added 3.9 to 9.5 points at 1.00 to 1.25x cost, against
+  -0.5 to +6.2 points at up to 1.76x for gates that reopened the work for the same agent; adding the full
+  trajectory did not help consistently and raised critic cost 29% to 43%. Have an LLM checker fetch evidence
+  for each claim from state and trace with bounded queries, never only the agent''s message (a response-only
+  judge never passed 0.70 F1, a state-and-trace verifier reached 0.96), and before a finding is reported,
+  reproduce it live and have a fresh-context agent replay it (25% fewer false positives, 95% CI 14% to
+  38%, in one vendor''s test). Re-verify sub-agent reports the same way (6.b.iii). 5. Keep the checker
+  and what it reads out of the agent''s write reach: tests and checker configuration read-only or hidden
+  (see 9.a.i on tests agents edit or special-case), the checklist as JSON with only a status field the
+  agent may change, results in a store only the harness writes, and audit scores not shown back (in one
+  study a sealed audit raised results for all six models and revealing its scores lowered them for five).
+  Ask for a scope statement in the final report (what was checked and what was not), but do not rely on
+  it: when asked, only 19.6% of incomplete runs admitted the gap. 6. Set the guard by the cost of each
+  error: a check that read only the dialogue withheld 61% of invalid customer-service completions for
+  under one cent per episode, but also 17% and 41% of correct ones in two domains; where a wrong ''done''
+  is cheap, use a lighter check or send blocked runs to review, and where it is expensive, accept more
+  false vetoes. 7. Measure against the baseline on the same tasks with several runs per arm: false-success
+  and premature-stop rates, success, correct runs blocked, guard firings and rounds per run, runs released
+  at the cap, tokens and wall-clock; re-run after a model change.'
 detect:
-  static: completion taken from the agent's final message or its own status flag; no stop hook; the agent
-    can edit the tests or checklist it is judged by
+  static: completion taken from the agent's final message or its own status flag; no stop hook or verify-on-stop
+    guard; the stop check is the same agent asked to recheck, or a judge that reads only the final message;
+    passing checks not re-run after later edits; the agent can edit the tests, checker or checklist it
+    is judged by
   traces: final message claims success while the environment or transcript shows otherwise; runs ending
-    right after an edit with no test or build run; edits to checklist items; failure rows labeled satisficing
-    or specification-gaming
+    right after an edit with no test or build run; edits to checklist items or tests; guard firings, rounds
+    per run and releases at the cap; failure rows labeled satisficing or specification-gaming
   evals: tasks scored failed where the agent reported success (false-success rate); features marked done
-    that fail an end-to-end check
+    that fail an end-to-end check; correct runs blocked by the guard (false-veto rate)
+  judge: a separate model in a fresh context with read-only access to the environment, given the task
+    and the diff, that tries to falsify each completion claim by running the deliverable; never one that
+    reads only the final message
+  probes:
+    what: Tasks the obvious first attempt leaves incomplete
+    construct: Tasks with a requirement the first attempt usually misses (an edge case covered by a hidden
+      test, a target count of N items, a later edit that breaks an earlier passing check); score whether
+      the agent stops early and whether the guard catches it and lets correct runs through
 impact:
   quality:
     effect: improves
     size: medium
-    when: 'MAST: ProgramDev 25.0 to 40.6 with reviewer sign-off (2025); Advani: false success is 45-76%
-      of failures where the agent claims success, so the catch rate is large even if the fix is not (Jun
-      2026)'
+    when: 'letting only validator evidence finalize runs: SkillsBench pass rate 61.1% to 73.1%, GuideBench
+      86.2% to 91.3% (Li, Sep 2026); a separate critic before acceptance +5.9 to +9.5 points on Terminal-Bench
+      and +3.9 to +6.6 on SWE-bench Verified, gates that reopened the work for the same agent +0.7 to
+      +6.0 and -0.5 to +6.2 (Zhang, Oct 2026); a dialogue-only terminal check cut false passes from 57.21%
+      to 20.96% (Zhang, Sep 2026); reviewer sign-off raised ChatDev ProgramDev from 25.0 to 40.6 (Cemri,
+      Mar 2025); a guard that only refused to stop added nothing on work-unit tasks (Cai, May 2026)'
     basis: evidence
   cost:
     effect: degrades
-    size: small
+    size: medium
+    when: under one cent per episode for a dialogue-only check (Zhang, Sep 2026); 1.00 to 1.25x for a
+      separate critic, 1.48 to 1.76x for gates that reject the stop and reopen the work (Zhang, Oct 2026);
+      1.53x task-agent tokens and 0.36 more calls per task for a validator-governed runtime (Li, Sep 2026);
+      an evidence-first verifier cost 23% less than the next-best agentic verifier but about 4x a response-only
+      judge (Sanayei, Oct 2026)
     basis: evidence
   performance:
     effect: degrades
     size: small
+    when: 1.24x execution wall-clock for a validator-governed runtime (Li, Sep 2026); a median 12 to 19
+      more agent steps after a rejected stop on Terminal-Bench, 4 to 6 after a request to inspect changes
+      (Zhang, Oct 2026)
     basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: small
+    when: 'accepted completions carry the evidence that authorized them: in a validator-governed runtime
+      96.2% of failure reports named the requirement, the failed condition and the repair target, against
+      42.5% from raw trajectories (Li, Sep 2026); an evidence-first verifier attaches a receipt of its
+      evidence to each verdict (Sanayei, Oct 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
-- method: before-after
+- method: experiment
   tier: 2
-  how: false-success and premature-stop rate on the same cases
+  how: 'paired runs on the same tasks with and without the stop check, and with a separate checker against
+    the agent rechecking itself, several runs per arm, scored by checks the agent never sees: false-success
+    and premature-stop rates, success, correct runs blocked by the guard, rounds per run and runs released
+    at the cap, tokens and wall-clock'
 - method: monitor
-  how: sampled completion checks in production
+  how: in production, log each guard firing (which check failed, rounds used, release at the cap) and
+    sample stopped runs for an environment check of the agent's claim; track false-success and blocked-correct
+    rates per model and after model changes
 evidence:
 - source: 'Laksh Advani, "From Confident Closing to Silent Failure: Characterizing False Success in LLM
     Agents", https://arxiv.org/abs/2606.09863'
@@ -185,10 +266,13 @@ evidence:
   effect: 'Unprotected, 7 models x 5 Atari games: all 35 valid cells end with self-score >= 0.70, yet
     15 of 35 final policies score below the game''s random reference, six at Pong''s -21.0 floor. Weaker
     models overwrite discovered strategies behind easy self-tests (failure to retain); stronger ones still
-    mismeasure the shifted deployment distribution.'
+    mismeasure the shifted deployment distribution. On Breakout (6 models, 3 seeds), a sealed external
+    audit the agent never saw, rejecting candidates that regress against the current policy, beat no protection
+    for every model (e.g. Gemini-3-Flash 7.9 -> 30.0, GPT-5.5 7.4 -> 15.2); revealing its scores after
+    a rejection lowered the result for five of six (Doubao-Seed-2.0-Pro 35.1 -> 12.7).'
   direction: supports
   measured: true
-  locator: Finding 1, Table 4, Figure 4
+  locator: Finding 1, Finding 2 (Breakout ablation, audit leakage), Table 4, Table 5, Figure 4
 - source: Guo et al., "Self-Authored Verification Is Unreliable in Heuristic Self-Improving Agents", https://arxiv.org/abs/2607.24300
   date: '2026-07-27'
   task: Forbidding test weakening does not close the gap
@@ -278,10 +362,164 @@ evidence:
   direction: supports
   measured: false
   locator: App. G.1, Table 4
+- source: Zhengxin Zhang, Erkang Zhu, Yin Lin, Claire Cardie, Bolin Ding, Jingren Zhou (Cornell University,
+    Alibaba Group), "Rethinking Verification in Agent Harnesses", https://arxiv.org/abs/2610.34577
+  date: '2026-10-25'
+  task: 'Compare 17 verification designs in a coding-agent harness by when and who checks: verification
+    instructions at the start (L0), reminders after edits (L1), completion gates that fire on the first
+    turn without a tool call and reopen the work for the same agent (inspect changes, run and check, recheck
+    before finishing, or a scripted ''NOT complete, keep working'' rejection; one message, then the next
+    stop is accepted) (L2), and independent review (L3): a separate critic model in a fresh context with
+    read-only shell access to the live sandbox, given the task and the diff (or also the trajectory),
+    that tries to falsify the agent''s claims by running the deliverable and returns findings for one
+    revision before acceptance'
+  effect: 'Average accuracy change over baseline, Terminal-Bench / SWE-bench Verified: L2 completion gates
+    +0.7 to +6.0 / -0.5 to +6.2 points (best: the scripted rejection fired early, +6.0 / +6.2), rejection
+    designs at 1.60-1.76x / 1.48-1.56x baseline cost, early user recheck at 1.13x / 1.20x; L3 independent
+    review +5.9 to +9.5 / +3.9 to +6.6 at 1.13-1.25x / 1.00-1.04x cost, critic and revision included.
+    Trajectory-based review scored higher than diff-based review on Terminal-Bench but not on SWE-bench
+    or VisualBench, at 29-43% higher critic cost. Per model, L2 gates ranged from -10.7 to +17.9 points.
+    After a user-role rejection agents took a median 12-19 more steps (4-6 after ''inspect changes'')
+    and changed files in 86-96% of triggered runs. In baseline Terminal-Bench runs only 6.2% to 13.6%
+    of editing turns were followed by a checking command before the next edit or the run''s end. Four
+    critics added 3.1 points over one (62.7% to 65.8%) at 1.33x total cost. Authors: ''we recommend avoiding
+    completion-time self-checking.'' VisualBench (18 tasks, blinded expert comparisons): early rechecking
+    +2.7 net preference, independent review +13.2 to +23.8.'
+  conditions: Qwen3.7-Max, Qwen3.8-Max, GLM-5.2, DeepSeek V4-Pro, DeepSeek V4-Flash, Kimi-K2.7-Code, MiniMax-M2.5,
+    with Qwen3.7-Plus as the critic; 31 Terminal-Bench 2.1 tasks and about 30 SWE-bench Verified tasks
+    chosen from baseline pass rates to span difficulty; three trials per model and task; no confidence
+    intervals; costs given in Figure 2 and the text only; the 'Reject completion' gates send a scripted
+    rejection with no real check; E2B sandboxes run with Harbor; no stake in a stop-hook product, though
+    the critic is the authors' employer's model
+  direction: mixed
+  measured: true
+  locator: §3 Table 1; §5.3; §5.4 Figure 4; Tables 2-3; Figure 2; App B.4, B.6 Table 7, B.7 Table 9; App
+    E.3-E.4
+- source: Haiqing Li, Xin Ma, Yinhao Wu, Wenliang Zhong, Feng Jiang, Thao M. Dang, Xiao Hu, Hehuan Ma,
+    Yuzhi Guo, Junzhou Huang, "Who Holds the Pen? Let Specifications, Not Agents, Sign Off", https://arxiv.org/abs/2609.29921
+  date: '2026-09-24'
+  task: 'Let only evidence from trusted validators, never the agent''s claim, mark requirements satisfied
+    and authorize finishing (SpecHarness): compile the task''s visible requirements into obligations,
+    let only qualified validators block (unverifiable or subjective requirements stay advisory), commit
+    results to a versioned ledger the agent cannot write, mark results stale when later edits change their
+    inputs, and allow the run to finish only when every mandatory obligation has a fresh pass, with online
+    validator feedback and repair; compared with raw agents and with a terminal completion gate (VeriMAP,
+    adapted)'
+  effect: 'SkillsBench, raw agents: completion-claim rate minus official pass rate 28.7 to 37.9 points
+    across seven models (macro 32.8). SpecHarness: macro pass rate 61.1% to 73.1% (+12.0, 95% CI +9.1
+    to +14.9) and gap 32.8 to 12.8; every model improved (+6.9 to +17.2 points, McNemar significant after
+    Holm, 0 or 1 task lost per model). GPT-5.6 Sol: raw 71.3% pass / 28.7 gap; terminal completion gate
+    79.3 / 20.7; post-hoc rubric verification 74.7 / 23.0; SpecHarness 85.1 / 6.9. Ablation: without commitment
+    the gap rose to 25.3; letting unqualified validators block cut the gap to 5.7 but the pass rate to
+    79.3 and kept 90.3% of raw passes (96.8% for the full runtime). Without invalidation, all 248 targeted
+    later edits left stale passing evidence accepted for completion (0% with it; 95.6% of tasks recovered
+    after repair). GuideBench (1,042 tasks): macro pass rate 86.2% to 91.3%, gap 13.8 to 6.9. Cost: 1.53x
+    task-agent tokens, 1.24x execution wall-clock, 0.36 more calls per task; failure reports naming the
+    requirement, failed condition and repair target 96.2% against 42.5% from raw trajectories.'
+  conditions: GPT-5.6 Sol, Claude Fable 5, Gemini 3.1 Pro, Kimi K3, GLM-5.2, Qwen3.7-Max and DeepSeek-V4-Pro
+    in OpenHands; SkillsBench (87 tool-use and artifact tasks, 509 extracted requirements) and GuideBench;
+    one run per task and model; official verifiers used only for scoring; the full runtime adds online
+    feedback and repair and compute was not matched, so the gain is not the stop gate's alone; baselines
+    adapted by the authors; the authors' own method; Table 1's raw gap equals 1 minus the pass rate for
+    only three of seven models although the text says it should for every raw run
+  direction: supports
+  measured: true
+  locator: Introduction, Figure 3; Results Tables 1-3; Ablation Tables 5-6; App C.2 Table 15; App D.1
+    Tables 16-17; App D.3 Table 23
+- source: Yukun Zhang, Kemu Xu, Yishen Chen, "How Do Agent Harnesses Create Value? Planning Information
+    and Release Control in Stateful LLM Agents", https://arxiv.org/abs/2609.20474
+  date: '2026-09-17'
+  task: Add a read-only terminal verifier that reviews a run the agent has ended (the executor's own model,
+    reading the last eight user and assistant messages truncated to 300 characters each, no database access,
+    200-token output) and withholds the result when it answers INCOMPLETE, with no repair loop; compared
+    with the plain harness and with a full stack of planning, repair, memory, orchestration and verification
+  effect: 'Retail: rejected 83 of 137 oracle-invalid episodes (61%) and 16 of 92 oracle-correct ones (17%);
+    84% of its rejections were invalid outcomes; false-pass rate 57.21% before the check to 20.96% (plain
+    harness 58.30%); matched false-pass reductions negative for all six models (6.25 to 100 points). Airline
+    pilot: rejected 25 of 41 invalid (61%) and 7 of 17 correct (41%). Extra cost under one cent per episode
+    ($0.0079 mean in matched high-risk pairs); the check''s latency was not counted. The verifier alone
+    avoided 48.38 points of false passes against 49.82 for the full stack, at a twelfth of its incremental
+    cost; pooled mean cost per episode $0.0164 against $0.0136 plain and $0.0739 for the full stack.'
+  conditions: tau2-bench Retail (6 models, 16 tasks, up to 3 replications; 229 verifier-arm episodes)
+    and an Airline pilot (5 models, 6 tasks, 58 verifier-arm episodes); claude-haiku, deepseek-v4-flash,
+    deepseek-v4-pro, glm-4-air, glm-4-flash and qwen-turbo (Airline adds doubao-pro); the oracle is the
+    benchmark's end-state check; public tasks; the check reads dialogue, not environment state; independent
+  direction: mixed
+  measured: true
+  locator: §4.4; §6.1 Table 5, eq. 8; §6.3; §6.4; §7.1 Table 6; §7.3 eq. 12
+- source: 'Yuandao Cai, Yuzhang Zhu, Liyou Gao, Wensheng Tang, Shengchao Qin, "Push Your Agent: Measuring
+    and Enforcing Quantitative Goal Persistence in Long-Horizon LLM Agents", https://arxiv.org/abs/2605.23574'
+  date: '2026-05-22'
+  task: Refuse to let the agent stop or ask the user while fewer than the requested number of items have
+    passed a hidden verifier (verifier-gated completion), compared with a standard controller and with
+    controllers that also keep verifier-aligned progress state (submitted items, pages searched, pending
+    and passed units) and route the agent back to unfinished work
+  effect: 'Repository-artifact collection (36 tasks per row): verifier gating moved success from 0.028
+    to 0.083 and from 0.083 to 0.028 (gpt-4.1-mini, two backends), 0.306 to 0.333 and 0.306 to 0.389 (gpt-4.1),
+    0.306 to 0.472 and 0.167 to 0.222 (gpt-5.4); on gpt-4.1 LangGraph +8.3 points (95% CI -2.8 to +22.2);
+    the state-tracking controller reached 0.694 to 0.778 with zero duplicate submissions. Work-unit tasks
+    (24 backlogs per cell) and coding-style repair units: standard and verifier-gated controllers completed
+    none for every model and backend, while the backlog-tracking controller reached 25.0% to 50.0% and
+    37.5% to 41.7%. ''Verifier gating prevents unsupported completion, but lacks the progress state needed
+    to finish the backlog.'' Claude Code (Sonnet 4.6) and Codex CLI (gpt-5.4) solved 7 of 9 tasks at 50
+    artifacts and 3 of 9 at 100; a checklist prompt changed paired success by 0.'
+  conditions: gpt-4.1-mini, gpt-4.1 and gpt-5.4 with a native policy and LangGraph; PushBench tasks built
+    from requests, pytest and flask snapshots and public data, kept to low or medium difficulty to isolate
+    persistence; one execution per task instance and condition; the gate is a baseline here (the authors
+    propose the state-tracking controllers); independent
+  direction: mixed
+  measured: true
+  locator: §3 Verifier-gated completion; §5; §7 Table 1; §8 Figure 2; App B.2; App C Tables 3-4; App D.1
+    Table 6; App D.2 Table 7
+- source: Reza Sanayei, Razvan-Gabriel Dumitru, Sunjie Hou, MohammadHossein Rezaei, Haris Riaz, Robert
+    Vacareanu, Minglai Yang, Ying Liu, Mihai Surdeanu, Daniel Yue Zhang (Scale AI, University of Arizona),
+    "Evidence-First Agentic Verification", https://arxiv.org/abs/2610.17724
+  date: '2026-10-13'
+  task: Decide whether each requirement of a finished run was met with a verifier (Sauron) that queries
+    environment state and the execution trace in bounded queries, accepts a claim only after checking
+    it against its source, and attaches a receipt of the evidence; compared with verifiers that read state
+    but not the trace, state snapshots, or only the agent's response
+  effect: 'PA100 (2,586 human-labeled criteria from 100 episodes), GPT-5.6 Sol: F1 0.96 at $297.69 against
+    0.92 for the strongest baseline (state, no trace) at $388.25 (23% lower cost), 0.92 for a state-snapshot
+    judge at $2,058, and 0.65 for a judge reading only the response at $76.09; averaged over eight backbones
+    the lead is 0.03 F1 at about 20% lower cost, and the response-only judge never exceeded 0.70 F1. Ablation:
+    without trace access -0.15 F1. Fault injection (637 pairs, 13 families including simulated reward
+    hacking, fabricated claims and state-trace mismatch): 97% of faults detected at 2% false alarms, against
+    51% at 68% for the response-only judge and 84% at 13% when it was given the full trace.'
+  conditions: Opus 4.8 agent episodes in a simulated personal-assistant environment; eight verifier backbones;
+    TRAIL traces (GAIA, SWE-bench Lite) for real errors; no repeated runs; the PA100 sample and the fault-injection
+    suite are the authors' own; verifiers grade fixed trajectories offline, not inside a live agent loop;
+    Scale AI authors evaluating their own verifier
+  direction: supports
+  measured: true
+  locator: §5.1 Table 1; §5.3 Table 2; §6.1 Table 4; App A
+- source: Anish Naik, Marcelo Morales (Trail of Bits), "Your AI agent fixed the bug, but what else did
+    it change?", https://blog.trailofbits.com/2026/10/21/your-ai-agent-fixed-the-bug-but-what-else-did-it-change/
+  date: '2026-10-21'
+  task: Before reporting a suspected regression, have the review agent reproduce it with a proof of concept
+    on a live deployment, replay it with a fresh-context agent, and pass an adjudication step that must
+    rule out a false positive, an incomplete fix, a latent bug and a pre-existing bug; every step returns
+    a fixed schema (claim, revision, required check, raw evidence) so the next step verifies the previous
+    one instead of trusting its summary
+  effect: regression-hunt produced 25% fewer false-positive findings than a Codex agent prompted to 'review
+    the PR for regressions' (95% CI 14% to 38%); its evidence rules left some known regressions 'borderline'
+    (suspected but not confirmed). The earlier unstructured review found the 21 confirmed regressions
+    among 58 candidates in one run (about 36% precision).
+  conditions: 21 confirmed regressions from more than 130 Trail of Bits patches merged upstream; Codex;
+    no absolute false-positive counts or recall reported; preliminary evaluation; the vendor about its
+    own plugin
+  direction: supports
+  measured: true
+  locator: Standardizing the patching process; How we designed the plugins; regression-hunt reduces false
+    positive rates
 related:
-- 9.b.i
 - 9.b.ii
 - 9.a.i
+- 7.c.iii
+- 7.b.iv
+- 6.b.iii
+- 9.c.i
+- 9.b.i
 absorbs:
 - legacy_id: P40
   name: Stop-hook auto-continue
@@ -346,3 +584,14 @@ provenance:
   sub_type: termination
   harness_role: control_loop
   action: add
+caveats: 'Most of the new evidence is one study per design, often by the method''s own authors: the validator-governed
+  runtime''s gains include online feedback and repair with one run per task, the critic comparison used
+  about 30 tasks per benchmark with three trials and no confidence intervals, and the dialogue-only check
+  was tested on small or older models over public tau2-bench tasks. Checks err both ways: the dialogue-only
+  check withheld 17% and 41% of correct runs, letting unqualified validators block lost 9.7% of the tasks
+  the unguarded agent had passed (3.2% with qualified ones), gates that reopened the work cost some models
+  up to 10.7 points and once turned a passing result into a failure, and a guard that only refused to
+  stop finished none of the work-unit tasks without progress tracking. LLM checkers can still be swayed
+  by agent-written content in the state or trace, and the fault-injection suites behind their best numbers
+  are their authors'' own. Rules and tests the agent can see or edit stay weak (forbidding test weakening
+  left 4 of 6 models below no protection), so the check helps only where the agent cannot reach it (9.a.i).'

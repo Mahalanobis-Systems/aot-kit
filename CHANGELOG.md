@@ -7,6 +7,8 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-10
+
 - New technique: write a fail-to-pass test before the fix, and harden it against wrong fixes
   (9.c.iv, Tier 3, proposed), with 7 sources. A coding agent writes its reproduction test before
   any source edit; the test is kept only if it fails on the current code, then test and fix are

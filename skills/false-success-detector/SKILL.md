@@ -68,6 +68,8 @@ The detector's evidence for the triage task itself comes from one single-author 
 - `aot-kit:audit-verifier-cascade` (9.c.iii, Audit a verifier-gated cascade against a gold sample the verifier never sees)
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
+- `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
+- `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

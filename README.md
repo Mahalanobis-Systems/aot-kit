@@ -114,6 +114,7 @@ Real trade-offs within the existing design; needs the calibrated quality eval an
 | `reflection-loop` | 7.c.i ¹ | Reflection loop |  |
 | `self-critique-evaluator` | 7.c.ii ¹ | Self-critique evaluator loop |  |
 | `parallel-read-only-tools` | 6.b.i ¹ | Parallel tool execution for read-only calls |  |
+| `test-first-fail-to-pass` | 9.c.iv ¹ | Write a fail-to-pass test before the fix, and harden it against wrong fixes |  |
 
 ### Tier 4: Restructuring
 

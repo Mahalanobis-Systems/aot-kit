@@ -76,6 +76,7 @@ The injection result is one study with one fixed payload per case and no adaptiv
 - `aot-kit:choose-retriever` (8.a.i, Choose the retriever by corpus size and question type)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
 - `aot-kit:constrain-agent-reach` (10.a.i, Constrain what the agent can touch)
+- `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
 - `aot-kit:graph-of-thought` (7.c.iv, Graph-of-Thought)
 - `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
 

@@ -73,6 +73,8 @@ Restructuring is not a reliable gain on its own: in VeRO's TerminalBench study a
 - `aot-kit:extractable-final-answer` (9.b.i, Make the final answer reliably extractable: state the format, extract robustly, force an answer at the limit)
 - `aot-kit:cache-stable-prefix` (3.b.i, Keep the prompt prefix cache-stable)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
+- `aot-kit:ground-queries-in-schema` (5.b.i, Give the model the schema it queries, in context: descriptions, keys, codes, sample values)
+- `aot-kit:contain-untrusted-input` (10.c.i, Contain sensitive data and untrusted input)
 - `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
 
 <!-- End of the generated part. Everything below is written by hand. -->

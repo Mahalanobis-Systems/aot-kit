@@ -69,6 +69,7 @@ The case for dropping tests rests on one prompt study (mini-SWE-agent on SWE-ben
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:reflection-loop` (7.c.i, Reflection loop)
+- `aot-kit:test-first-fail-to-pass` (9.c.iv, Write a fail-to-pass test before the fix, and harden it against wrong fixes)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

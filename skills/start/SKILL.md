@@ -67,6 +67,7 @@ patterns it absorbs.
 - `reflection-loop` (7.c.i): Reflection loop
 - `self-critique-evaluator` (7.c.ii): Self-critique evaluator loop
 - `parallel-read-only-tools` (6.b.i): Parallel tool execution for read-only calls
+- `test-first-fail-to-pass` (9.c.iv): Write a fail-to-pass test before the fix, and harden it against wrong fixes
 
 **Tier 4, Restructuring:** change the agent's structure; needs production cost baselines and an A/B or blue/green test.
 

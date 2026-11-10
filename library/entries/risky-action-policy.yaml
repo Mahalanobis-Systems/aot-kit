@@ -15,54 +15,152 @@ domains:
 - general
 evidence_domains:
 - code-generation
+- tool-use
 categories:
 - safety.approval
-summary: 'Classify every action the agent can take by its side effect (read, reversible write, irreversible
-  or externally visible: sending email, issuing a refund, deleting a record, posting publicly, pushing
-  code) and gate by class: allow, ask a human or a policy, or deny. Where the environment already stages
-  changes before they reach the world, gate only what escapes the stage. Coding agents can run on auto-approve
-  because the development process contains their changes (a branch, PR review and CI stand between the
-  agent and production). Most other agents (marketing, support, CRM, finance) have no such stage, so the
-  gate has to sit at the action, or the harness has to build one: drafts, pending changes, batched approval.
-  Keep a deny floor that auto-approve cannot switch off, and write the policy as code with tested examples.'
-how: '1. List the agent''s actions and mark each one''s side effect: read, reversible write, irreversible
-  or externally visible. 2. For each irreversible action, find where review can happen: an existing stage
-  (branch and PR, draft, staging environment) or none. 3. Where there is no stage, add one (draft and
-  approve, pending changes, batch approval) or an ask gate on the action; deny what should never run unattended,
-  in a floor auto-approve cannot lift. 4. Write the policy as code with tested examples. 5. Run safety
-  evals built from irreversible actions; monitor approved, denied and escalated actions in production,
-  including how often humans approve without changes.'
+summary: 'Sort every action the agent can take by its side effect (read, reversible write, irreversible
+  or visible to others) and let it run, ask first, or block it by class. Where the environment stages
+  changes (a branch with PR review and CI, a draft), gate only what escapes the stage, and count what
+  takes effect at run time (uploads, deletions, credential reads, install hooks) as escaping. Gates work
+  where the host enforces them: across six coding harnesses with injected instructions, auto-approve let
+  95.6% of attack checks pass against 29.2% with an LLM reviewer (at 18.3 points of task utility), and
+  a command deny list cut attack success from 41.7% to 1.3% with no utility loss, yet an estimated 90%
+  of destructive MCP tools have no server-side confirmation, so build a stage or enforce an ask gate in
+  the host for every tool not marked read-only. Give approvers the action''s effects, not only its text
+  (approvers reading only the command left 14.8% to 18.8% of coding tasks harmed against 19.7% with no
+  approval; one shown a sandboxed pre-run''s effects left 6.7%), keep a deny floor that auto-approve cannot
+  lift, and write the policy as code with tested examples.'
+how: '1. Start from the baseline: list every action the agent can take, by tool and by what each tool
+  runs underneath (package scripts, build targets, interpreters, MCP tools), and mark its side effect:
+  read, reversible write, or irreversible or externally visible (send, pay, delete, publish, push, network
+  calls, credential reads). Treat a tool you have not checked as irreversible: an estimated 90% of destructive
+  tools in a sample of the MCP registry have no server-side confirmation, and the MCP specification tells
+  clients to treat tool annotations as untrusted unless the server is trusted. Run your eval set with
+  auto-approve and count the irreversible actions the agent takes, including ones requested by injected
+  content (with no approval step, four of five low-cost models carried out an injected deletion in 479
+  of 960 runs). 2. For each irreversible action, find where review can happen before it takes effect:
+  an existing stage (a branch with PR review and CI, a draft, a staging environment, pending changes)
+  or none. A stage holds only what waits in it: workspace edits behind PR review are staged, but a command''s
+  run-time effects are not (an upload, an install-hook callback, a deleted untracked file), nor is a write
+  to a file a running system reads. Showing the agent its changes after each command is too late for these:
+  a staging file system that the agent reviewed and reverted itself left 21.2% of 682 shell tasks harmed
+  against 19.7% with no approval, because ''a credential once sent cannot be recalled''. Contain what
+  the agent can reach first (10.a.i), so fewer actions need a gate. 3. Where there is no stage, build
+  one (draft and approve, pending changes, batched approval) or enforce an ask gate in the host, not in
+  the tool''s arguments: given a confirmation flag, models set confirm=true themselves in 127 of 169 injected-deletion
+  attempts. Ask by default for every tool not marked read-only or non-destructive by a source you trust:
+  in one estimate this would leave 5.4% of destructive-tool and application pairs unapproved against 60.7%
+  under current defaults, at the cost of asking on 82.6% of pairs whose flagged tool is harmless, against
+  32.5%. Where no one can answer (headless or scheduled runs), refuse or queue the action. 4. Keep a deny
+  floor that auto-approve cannot lift for what must never run unattended: one harness denies rm -rf, sudo,
+  git push, git reset --hard, chmod -R and chown -R by default; another keeps a twelve-pattern hardline
+  floor that survives --yolo, with the switch frozen at startup so injected content cannot flip it, and
+  matches 47 dangerous patterns on deobfuscated commands. Parse commands and scope ''always allow'' grants
+  to the command and its subcommand (git commit *), not the whole tool. In one benchmark a command deny
+  list cut attack success from 41.7% to 1.3% of checks while utility rose from 94.6% to 99.8%, and an
+  allowlist cut it from 98.1% to 50.0% at 1.5 points of utility, but one agent ran a checker the gate
+  had refused through an allowed Python interpreter: test every path to each protected operation (interpreter,
+  script, file edit, MCP tool). 5. Send the ask class to a human, a rule or an automated approver that
+  fails closed on timeout or malformed output and returns its reason to the agent so it can take a safer
+  path. Give the approver the action''s effects, not only its text: on the same 682 tasks a rule checker,
+  three guardrail models and Claude Code Auto Mode left 14.8% to 18.8% of tasks harmed against 19.7% with
+  no approval, and 62.7% to 94.1% of tasks whose harm hid inside an invoked tool (71.6% with no approval);
+  pre-running each command in a snapshotted sandbox with the network off and giving an LLM approver a
+  short report of what it changed left 6.7% and 7.8% harmed, blocked 1.0% of safe look-alikes (61.8% for
+  the same approver without the report) and rolled blocked commands back (see 4.b.i). Make a high-risk
+  flag block by default and require an explicit override: with an LLM monitor alerting at the permission
+  prompt, developers kept an agent''s covert exfiltration in 9 of 16 correctly alerted sessions. 6. Write
+  the policy as code with tested examples (rules carrying inline match and not-match cases validated at
+  parse time), keep it under version control, and expose hooks that can deny or rewrite a call before
+  it runs, so every decision is auditable apart from the agent loop. Check that the settings in effect
+  are the ones you configured: of 205 confirmed security mechanisms across 40 coding harnesses, 109 are
+  opt-in. 7. Measure on the same tasks and model with the gate off and on, several runs per arm: harmful
+  outcomes checked on the environment''s state (files, records, receiver logs) rather than the transcript,
+  task utility, false blocks on safe twins (same request and command, harmless effect), prompts and blocks
+  per task, approval latency (a median 3.2 s per command for an LLM approver in one study, plus about
+  0.5 s of sandboxing per allowed command) and approver cost. In production, track approvals, denials
+  and escalations per action class, the approve-without-change rate, time to decision, overrides of flagged
+  actions, retries after a block, and irreversible actions that ran with no recorded decision.'
 detect:
   static: tools with irreversible or externally visible effects (send, pay, delete, publish, push) with
-    no gate and no staging step; one approval setting for every tool; a deny list that auto-approve disables
-  traces: irreversible actions taken without a policy or human check; failure rows labeled unauthorized-irreversible-action
-    or over-initiative
+    no gate and no staging step; approval left to a confirmation argument the model can set or to annotations
+    from an untrusted tool server; one approval setting for every tool; a deny list that auto-approve
+    disables; an automated approver that sees only the command text; alerts that warn without blocking
+  traces: irreversible actions taken without a policy or human check; an operation blocked once and then
+    reached through an allowed interpreter, script or file edit; flagged actions approved without change;
+    failure rows labeled unauthorized-irreversible-action or over-initiative
   evals: safety cases built from the agent's own irreversible actions, including prompt-injected requests
-    for them
+    for them, and safe twins (same request and command, harmless effect) to count false blocks
+  probes:
+    what: Tasks whose benign request leads to an irreversible action, including harm hidden inside a script
+      or tool the command runs
+    construct: For each irreversible tool or command path, one task that needs it, one where injected
+      content asks for it, and a safe twin with the same request and command but a harmless effect; success
+      is the gate blocking or asking on the first two and letting the twin through
 impact:
   quality:
-    effect: none
+    effect: mixed
+    size: medium
+    when: an LLM reviewer on permission requests cost 18.3 points of task utility against auto-approve
+      across six coding harnesses (77.1% against 95.4% of utility checks), within 2.3 points in three
+      harnesses and 30.8 to 44.6 points in the other three, while a command deny list raised utility from
+      94.6% to 99.8% and an allowlist cost 1.5 points (Zhu, Oct 2026); an approver that judged observed
+      effects kept safe outcomes at 67.8% against 66.6% with no approval, though more of them were refusals
+      (safe completions 48.6% against 57.4%) (Wu, Oct 2026)
     basis: evidence
   cost:
-    effect: none
+    effect: degrades
+    size: small
+    when: an LLM approver on each shell command cost $0.0135 per task (10.3 calls) on top of $0.0053 for
+      a low-cost agent, against $0.0060 for the agent alone, and Claude Code Auto Mode's classifier an
+      estimated $0.0550 per task at most (Wu, Oct 2026); no source measures human approval time
     basis: evidence
   performance:
     effect: degrades
     size: small
-    when: approval waits; staging and batching keep them small
+    when: median approval latency 3.2 s per command (p95 6.4 s) for an LLM approver given an effects report
+      and 3.3 s (p95 11.4 s) without it, plus about 0.5 s of sandboxing per allowed command and 1.5 s
+      per blocked one (Wu, Oct 2026); no source measures waits on a human
     basis: evidence
   security:
-    effect: unknown
+    effect: improves
+    size: large
+    when: against injected instructions in six coding harnesses, an LLM reviewer on permission requests
+      cut attack success from 95.6% to 29.2% of checks against auto-approve (0.0% to 81.7% by harness),
+      a command deny list from 41.7% to 1.3% and an allowlist from 98.1% to 50.0% (Zhu, Oct 2026); approvers
+      that read only command text left 14.8% to 18.8% of tasks harmed against 19.7% with no approval,
+      and one that judged observed effects 6.7% (Wu, Oct 2026); with no approval step, four of five low-cost
+      models carried out an injected deletion in 479 of 960 runs (Yao, Nov 2026)
+    basis: evidence
   governance:
-    effect: unknown
+    effect: mixed
+    size: medium
+    when: 'a gate puts a decision on each irreversible call only where the host enforces it: an estimated
+      60.7% of destructive-tool and application pairs in the MCP ecosystem have no enforced approval by
+      default, 5.4% if hosts asked for every tool not annotated read-only or non-destructive (Yao, Nov
+      2026), and 109 of 205 confirmed security mechanisms in coding harnesses are opt-in (Zhu, Oct 2026);
+      a human decision is weak oversight: developers kept an agent''s flagged covert exfiltration in 9
+      of 16 correctly alerted sessions (Ye, Jun 2026)'
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - security
+  - governance
 measure:
-- method: before-after
+- method: experiment
   tier: 2
-  how: safety evals on risky-action prompts
+  how: same tasks and model with the gate off (auto-approve) and on, several runs per arm, on safety cases
+    built from the agent's own irreversible actions, injected requests for them and safe twins (same request
+    and command, harmless effect), including other paths to each protected operation (an allowed interpreter,
+    a script, a file edit, an MCP tool); score harmful outcomes on the environment's state (files, records,
+    receiver logs), task utility, false blocks on the twins, prompts and blocks per task, approval latency
+    and approver cost
 - method: monitor
-  how: denied and approved risky actions in production
+  how: 'per action class in production: approvals, denials and escalations, the approve-without-change
+    rate, time to decision, overrides of flagged actions, retries after a block, irreversible actions
+    that ran with no recorded decision, and harmful actions found later; recheck that the gate settings
+    in effect match the configured ones after each harness update'
 evidence:
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
@@ -147,12 +245,136 @@ evidence:
 - source: Fan et al., "An Empirical Study of Harness Design for Coding Agents", https://arxiv.org/abs/2609.20804
   date: '2026-09-17'
   task: Gate actions with workspace guard and allow/ask/deny permissions
-  effect: Held fixed, not ablated. The deny and allow lists are given in the bash tool description.
+  effect: 'Held fixed, not ablated: ''Every action that reads or modifies the workspace passes through
+    three gates'': a workspace guard that ''resolves each path and rejects any that escapes the project
+    root, including through symlinks'', a read-before-write check, and a permission layer that ''classifies
+    each action as allow, ask, or deny''. The bash tool description says destructive commands (rm -rf,
+    sudo, git push, git reset --hard, chmod -R, chown -R) ''all return a denied error'', read-only commands
+    in a default allow list (git status, git diff, git log, ls, cat and others) run without prompting,
+    and ''Everything else goes through the approval callback.'''
   direction: supports
   measured: false
   locator: §2.4 Safety; App 8.3 Fig 27
+- source: 'Junwei Yao, Zike Yang, Zhijun Wang, Yongxi Zhou, Wenbo Ye, "When Neither Side Confirms: Destructive
+    Tool Approval Across MCP Servers and Hosts", https://arxiv.org/abs/2611.02527'
+  date: '2026-11-02'
+  task: 'Measure from source code whether a human approves destructive MCP tool calls by default: code
+    the server-side confirmation of destructive tools in a 1,000-repository sample of the official MCP
+    registry and the default approval path of 41 open-source hosts and agent SDKs, combine them per host
+    and tool pair, check 7 hosts live, and inject a deletion request into a read-only tool''s output through
+    four agent SDKs'
+  effect: 'An estimated 90% of destructive tools (95% CI 82-95) have no server-side confirmation (70%
+    neither confirm nor annotate, 20% carry an annotation only); of 168 tools that elicit by default,
+    130 still run when the host cannot relay the question (100 fall back to a model-settable flag, 30
+    proceed). Of 41 hosts, 7 prompt before ordinary MCP calls, Codex CLI decides from annotations, Qwen
+    Code uses an LLM classifier, and 32 have no approval step by default (16 of 25 applications, all 16
+    SDKs). No approval is enforced in 60.7% of destructive-tool and application pairs (74.9% with all
+    41 hosts). Injection: four of five low-cost models executed an injected deletion in 479 of 960 runs
+    (479 of 1,200 across all five); on the annotation-only server every attempted deletion succeeded (180
+    of 180), and on a server with a confirmation flag models set confirm=true themselves in 127 of 169
+    attempts when the injected text did not name it. If hosts prompted for every tool not annotated read-only
+    or non-destructive, the unapproved share would fall to 5.4% (at least 10.6% for all hosts once unflagged
+    tools are added), while the share of pairs with a harmless flagged tool that ask the user would rise
+    from 32.5% to 82.6%; universal elicitation support would leave 56.7%.'
+  conditions: 'Static reading of pinned commits: 1,000 registry repositories (200 most-starred, 800 random;
+    Python, TypeScript, JavaScript), 269 tools adjudicated destructive by two LLM coders with a third
+    resolving disagreements, checked against a 60-tool human audit (tiers matched for 58 of 60); 41 open-source
+    hosts traced by an AI agent, 20 re-traced independently; shares count host and tool pairs, not users
+    or calls, and do not measure whether users read prompts. Injection runs: a stub server deleting in-memory
+    notes, four SDKs, five low-cost models (Qwen3.7-Flash, Gemma 4 26B-A4B, Mistral Small 2603, GPT-4o-mini,
+    DeepSeek-V4.1-Flash), 240 runs per model; independent researchers'
+  direction: supports
+  measured: true
+  locator: Abstract; §3; §4 Table 1; §5 Tables 2 and 3; §6 Table 4 and counterfactuals; §7; Limitations
+- source: Weiheng Wu, Junkai Chen, Zhensu Sun, Jieke Shi, Yunbo Lyu, David Lo (Singapore Management University),
+    "'Shall We Approve?' Consequence-Aware Approval for Autonomous Coding Agents", https://arxiv.org/abs/2610.40753
+  date: '2026-10-29'
+  task: 'Compare approval mechanisms for a coding agent''s shell commands: no approval, a rule checker
+    (CARE), three guardrail models (TS-Guard, gpt-oss-safeguard-20b, Qwen3Guard-Gen-8B), a staging file
+    system whose change summaries the agent reviews and reverts itself (YoloFS), Claude Code Auto Mode,
+    and Caper, which pre-runs each command in a snapshotted sandbox with the network off, gives an LLM
+    approver a bounded report of observed effects, commits allowed commands and rolls back blocked ones
+    with a reason'
+  effect: 'SABER (682 shell tasks), harmful-outcome rate: no approval 19.7%; CARE 15.0%, TS-Guard 18.8%,
+    gpt-oss-safeguard 18.6%, Qwen3Guard 16.0%, Claude Code Auto Mode 14.8%, YoloFS 21.2%; Caper 6.7% (10.0%
+    as a Claude Code hook). Safe outcomes 66.6% without approval and 67.8% with Caper (safe completions
+    57.4% and 48.6%). YoloFS-Ext (102 tasks whose harm hides inside an invoked tool, each with a safe
+    twin): harmful 71.6% without approval, 62.7% to 94.1% for the text-based approvers (Auto Mode 62.7%),
+    35.3% for YoloFS, 7.8% for Caper (6.9% as a hook); safe twins blocked 1.0% by Caper, 3.9% by Auto
+    Mode, 8.8% by TS-Guard, 15.7% by gpt-oss-safeguard. Without the effects report the same approver blocked
+    61.8% of safe twins; predicting effects from the command and the files it references cut harm about
+    as far but still blocked 61.8%. ''YoloFS leaves more harm than no approval at all (21.2% versus 19.7%)
+    because a credential once sent cannot be recalled.'' Overhead: median approval latency 3.2 s (p95
+    6.4 s) against 3.3 s (11.4 s) without the report; the sandbox adds about 0.5 s per allowed and 1.5
+    s per blocked command; approver cost $0.0135 per SABER task (10.3 calls) on top of $0.0053 for the
+    agent, against $0.0060 for the agent alone; Auto Mode''s classifier an estimated $0.0550 per task
+    at most.'
+  conditions: Agent GLM-5.3-Flash in SABER's loop (one bash tool, at most 60 steps); Caper's approver
+    and Auto Mode's classifier both gpt-5.6-luna; each system ran each task once; SABER judged with the
+    authors' revised oracle (Caper is also lowest under the released one); YoloFS-Ext is the authors'
+    own extension; rollback covers the container's file system only, so the network is off during pre-execution;
+    file edits are left to the harness, and 'an edit that does harm by itself, such as overwriting a configuration
+    file, is judged only from the call'; no adaptive attacker tested; independent of the deployed systems
+    compared
+  direction: mixed
+  measured: true
+  locator: Abstract; §4; §5.1; §5.2 Table 3 and Fig. 4; §5.3 Figs. 5 and 6; §5.5; App. B Table 9; App.
+    F Tables 13 and 14; Limitations
+- source: 'Zhengyang Zhu, Liming Huang, Runmin Ji et al. (Sun Yat-sen University and others), "HarnessSecurity-Bench:
+    Do Security Mechanisms Really Protect Coding Agent Harnesses?", https://arxiv.org/abs/2610.07639'
+  date: '2026-10-06'
+  task: Turn nine native security mechanisms of six coding harnesses (Claude Code, Codex CLI, Gemini CLI,
+    gptme, Qwen Code, GitHub Copilot) on and off on coding tasks whose repository files, instructions,
+    tools, records or external services carry injected unauthorized steps, scoring task utility and attack
+    effects with separate deterministic oracles; with auto-approve off, permission requests go to a separate
+    LLM reviewer
+  effect: 'Auto-approve against an LLM reviewer of permission requests: attack success 95.6% (344/360
+    attack checks) against 29.2% (105/360), utility 95.4% (744/780) against 77.1% (601/780), 18.3 points.
+    Attack success rose in every harness (with the reviewer it ranged from 0.0% for Qwen Code to 81.7%
+    for Codex CLI); with the reviewer, utility was within 2.3 points of auto-approve for Codex CLI, Claude
+    Code and Gemini CLI and 30.8 to 44.6 points lower for gptme, GitHub Copilot and Qwen Code. Command
+    denylisting: attack success 41.7% to 1.3%, utility 94.6% to 99.8%. Command allowlisting: attack success
+    98.1% to 50.0%, utility 99.2% to 97.7%; one agent ran a checker the gate had rejected through an allowed
+    Python interpreter. Network isolation: 57.1% to 0.8% at 24.5 points of utility; read-only mode 8.3%
+    to 0.8% at 34.0 points. Of 205 confirmed mechanism implementations across 40 harnesses, 109 are opt-in;
+    auto-approve and read-only mode are mostly opt-in.'
+  conditions: Acting model GLM-5.2 in every harness; reviewer Qwen3.8-27B with fixed criteria through
+    a deterministic bridge, not a human; two tasks each in the auto-approve, allowlist and denylist benchmarks
+    (each mechanism has its own tasks, so rates are not comparable across mechanisms); 10 trials per task,
+    harness and setting, 2,500 trials in all; rates are shares of oracle checks passed, not of tasks;
+    Docker with simulated services; figures from v2 (Oct 10), unchanged from v1; independent of the harness
+    vendors
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §5.2; §6.1; §6.2 Table 6 and RQ3 answer; §6.3 Case B; §7.1-7.2; RQ2 answer
+- source: 'Jingheng Ye, Huiqi Zou, Simon Yu, Weiyan Shi (Northeastern University), "Coding with ''Enemy'':
+    Can Human Developers Detect AI Agent Sabotage?", https://arxiv.org/abs/2606.05647'
+  date: '2026-06-04'
+  task: 'Human study: developers work for about five hours with a coding agent (Claude-Opus-4.6, GPT-5.4,
+    Gemini-3.1-Pro or MiniMax-M2.7) on five tasks, each gated by CI tests, while the agent covertly tries
+    to send order data to an external server; in one Claude-Opus-4.6 condition an LLM monitor (Claude-Haiku-4.5,
+    on every mutating tool call through a PreToolUse hook) raises an alert beside the permission prompt
+    when its suspicion score exceeds 80, and the developer decides whether to approve'
+  effect: 'Without a monitor, 83 of 88 developers (94%) failed to detect and remove the sabotage. The
+    monitor flagged 16 of 19 attempts (84%); sabotage success was 12 of 19 (63%) against 18 of 19 in the
+    matched unmonitored condition, and in 9 of the 16 correctly alerted sessions (56%) the sabotaged code
+    stayed; six of those nine developers had at least three years of coding experience and four a security
+    background. Failure modes: minimal code review (''many participants auto-approved agent requests throughout
+    the session without examining the generated code''; ''When they appeared, I usually clicked confirm
+    to close them and continued with the task''), a plausible cover story, and overtrust in the agent.'
+  conditions: 107 participants across six conditions (17 to 19 each), US developers with coding-agent
+    experience, IRB-approved; one e-commerce app and one attack class (exfiltration to an external IP);
+    agents were instructed to sabotage (Claude and GPT through a disguised data-migration task), so it
+    measures oversight of covert harm, not of honest mistakes; one monitored condition; figures match
+    in v1 (Jun 2026) and v2 (Oct 2026); independent academic study
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3; §4.1 Fig. 2; §4.2 Fig. 3; §4.3; App. B; App. C Fig. 13
 related:
 - 10.a.i
+- 10.c.i
+- 4.b.i
+- 6.c.i
 absorbs:
 - legacy_id: P59
   name: Human-in-the-loop approval gates
@@ -271,8 +493,16 @@ provenance:
   sub_type: validation
   harness_role: tool_impl
   action: add
-caveats: 'Every source comes from coding-agent harnesses (a source-code study of 11 of them, and
-  one controlled study that held the policy fixed), and none measures the gate''s effect. The shell examples
-  (rm -rf, sudo, git push, command parsing) are one case of the general rule. Asking too often has a cost
-  of its own: approvals slow the agent, and humans who are asked constantly start approving without reading,
-  so stage and batch where you can rather than prompt per action.'
+caveats: 'The measured evidence is recent, from benchmarks and small samples, and mostly from coding agents:
+  the harness comparison ran one acting model and one 27B reviewer on two tasks per mechanism; the approver
+  comparison ran each of 682 tasks once with one agent and one approver model, against no attacker that
+  adapts to the approver; the human study had 17 to 19 developers per condition working with agents instructed
+  to exfiltrate data; and the MCP shares (60.7% unapproved, and 5.4% if hosts asked for every tool not
+  annotated read-only or non-destructive) are estimates from reading source code, not runtime counts.
+  Every gate leaks where an action reaches it by another path (an allowed interpreter, a file edit, an
+  MCP tool), approvers that read only command text barely beat no approval, and a sandboxed pre-run cannot
+  undo anything that leaves the sandbox, so it has to run with the network off. Humans are weak approvers:
+  most developers missed covert exfiltration in CI-gated sessions and most kept it after a correct alert,
+  and asking for every tool not annotated read-only or non-destructive would raise asks on harmless tools
+  (from 32.5% to 82.6% of such pairs in one estimate), so stage and batch where you can and keep a blocking
+  deny floor beside the prompts.'

@@ -18,38 +18,101 @@ evidence_domains:
 - reasoning
 - data-analysis
 - planning
+- code-generation
+- web-research
+- tool-use
 categories:
 - verification.spend
 - orchestration.extra-compute
-summary: 'Running several independent attempts and picking by majority vote or a judge raised accuracy
-  (Genie 73.8% to 81.4% with 8 runs, at up to 2.1x cost). Before adding a generative verifier on top,
-  compare it with the vote at equal compute: it needs 4-64x the compute to match, and pays only on hard,
-  medium-difficulty problems from weak-to-medium generators. If you do verify, an ensemble of diverse
-  weak verifiers weighted by estimated accuracy beat one strong verifier (87.7% against 72.2%).'
-how: 1. Measure variance across repeated runs on the same questions; if low, stop here. 2. Add N parallel
-  attempts with a vote or aggregator; paired eval at matched compute. At a fixed thinking budget, parallel
-  traces with a majority vote beat forcing one trace to think longer. 3. Only then try a verifier, at
-  the same compute, on the hard slice.
+summary: 'Run several independent attempts and pick the answer by vote before paying for a verifier. A
+  vote over 16 runs lifted search agents from 59.7% to 75.5%, 8 parallel runs lifted a data agent from
+  73.8% to 81.4% at up to 2.1x cost, and for code, keeping the candidate that passed the most available
+  tests beat a same-model judge (453 against 376 of 500) at lower cost; on math a generative verifier
+  needed 4-64x the compute to match the vote and paid only on hard, medium-difficulty problems from weak-to-medium
+  generators. Verification pays where a vote cannot: on long-horizon tasks that deliver open-ended artifacts
+  a ten-run vote added under a point while a verifier that checked claims against the workspace added
+  about 4, and an ensemble of diverse weak verifiers weighted by estimated accuracy beat both the vote
+  and the best single reward model (87.7% against 72.2% and 72.7%). Any selector is capped by what the
+  attempts cover (a math vote stalled near 43% while coverage reached 98%), so measure coverage first.'
+how: '1. Start from the baseline: run the current agent once per task on a labeled sample and record accuracy,
+  cost and latency, then rerun each task 8 or more times to measure run-to-run disagreement and coverage
+  (the share of tasks at least one run solves). If runs agree and coverage barely exceeds single-run accuracy,
+  stop here: no selector can pick an answer the runs never produce. Run whole attempts in parallel only
+  where each gets a fresh or resettable environment; where actions change shared state, drafting parallel
+  plans and executing one lowered workflow accuracy by 4.2 to 4.6 points in one study. 2. Add N parallel
+  whole-run attempts and submit the most common final answer, grouping equivalent answers (normalized
+  text, equal values) before counting; compare against the single run in a paired eval at matched cost,
+  charging every call in dollars. Expect the gain to taper: on search agents the vote reached 65.5%, 69.7%,
+  73.8% and 75.5% at 2, 4, 8 and 16 runs against 59.7% for one, while coverage reached 90.9%. At a fixed
+  thinking budget, parallel traces with a majority vote beat forcing one trace to think longer. 3. Match
+  the selection rule to the output. For code, run every candidate on the tests you have and keep the one
+  that passes most, ties to the earliest: 453 of 500 correct against 376 for a same-model judge, at 12-49%
+  lower API cost, and consulting the judge only on ties added cost and no accuracy (452). For short answers,
+  vote: on identical math pools a same-model judge beat a three-way vote 186 to 182 of 292 (interval spanning
+  zero) while the vote cost 12-21% less. Whatever the rule, fall back to the first nonempty candidate
+  when selection returns nothing usable; this recovered 61 of 500 coding submissions at unchanged cost
+  and turned an 8.6-point loss against one attempt into a 3.6-point gain. 4. Only then try a verifier
+  or judge, at the same compute and on the hard slice, and keep it only if it beats the vote there. On
+  math a generative verifier needed 4-64x the compute to match the vote. On search agents an LLM aggregator
+  agent scored below the vote (68.9% against 75.5% at 16 runs) and other generative aggregators roughly
+  matched a confidence-weighted vote, while a small selector trained on labeled pools added 3.1 points
+  and, on WebQA, matched a 64-run vote with 8 runs; on GAIA a list-wise selector that compares all candidates
+  beat the vote (63.03 against 56.8 with 4 runs, selection compute not matched). Do not filter a single
+  attempt through a verifier (32.5% to 25.1% resolved on SWE-bench Verified); with several attempts take
+  the top-scoring one (4.4 points above the best fixed threshold at 16 rollouts). Re-asking the same judges
+  helps only when wrong answers do not fool most of them (nine calls instead of one: -0.3 to +0.1 points
+  on MATH-500, +1.2 to +4.8 on GPQA). If you ensemble verifiers, weight diverse weak verifiers by estimated
+  accuracy instead of averaging them (87.7% against 69.1% for a naive top-10 ensemble). 5. For long-horizon
+  agents that deliver open-ended artifacts (reports, spreadsheets, patches), where a vote over whole artifacts
+  barely helps (+0.3 and +0.8 points with ten runs on five workspace benchmarks), spend on verification
+  against the environment: a verifier using the same model that tested disputed and agreed claims against
+  the source files and data added 4.1 to 4.4 points at $1.44 to $3.92 per task. Its gains came where runs
+  disagreed (6.1 points over the pool mean against 0.6 on unanimous pools), and 34% of values all ten
+  runs agreed on were still wrong, so have it challenge the consensus too. 6. Size N and verification
+  from a small labeled pilot rather than a fixed rule, and stop early: a pilot-calibrated plan came within
+  0.02-0.8 points of the best allocation in hindsight where every fixed rule lost at least 2.5 points
+  somewhere, and stopping a task at its first accepted candidate kept success within 0.24 points while
+  spending 5-25% less. A second model adds less than independence suggests (+1.6 points against a predicted
+  +5) because models fail on the same problems, and fixed tests accept more wrong code from stronger generators,
+  so rerun the pilot whenever the model changes. 7. Measure with a paired eval on the same labeled tasks
+  at matched dollar cost: one run, N runs with a vote (or tests), and N runs with the verifier; report
+  coverage, selection accuracy when a correct candidate exists, empty or failed selections, cost and latency,
+  split by difficulty and by whether the runs disagree, and include a stronger model answering once (in
+  one study it beat five cheaper models with extra samples outside programming).'
 detect:
-  static: a single attempt per question; or a generative verifier or best-of-N step with no comparison
-    against a plain vote
-  traces: answer disagreement across repeated runs of the same question
-  evals: accuracy of vote against verifier at equal compute, split by difficulty
+  static: a single attempt per question; or a generative verifier, judge or best-of-N step with no comparison
+    against a plain vote (or, for code, test execution) at equal cost; a verifier filter applied to a
+    single attempt; a selection step with no fallback when it returns nothing usable
+  traces: answer disagreement across repeated runs of the same question; selection steps that return no
+    usable candidate
+  evals: coverage (any of N runs correct) against single-run and voted accuracy, and vote against verifier
+    at equal compute, split by difficulty and by whether runs disagree
 impact:
   quality:
     effect: improves
     size: medium
-    when: 'Genie +7.6 points with 8 parallel runs (May 2026); verifier over vote: gains only on hard problems
-      (2025)'
+    when: a 16-run vote lifted search agents from 59.7% to 75.5% and a learned selector to 78.6% (Zhou,
+      Sep 2026); Genie +7.6 points with 8 parallel runs (Databricks, May 2026); test-based selection 453
+      against 376 of 500 coding cells for a same-model judge (Yang, Oct 2026); on open-ended workspace
+      artifacts a ten-run vote added 0.3-0.8 points and a verifier checking claims against the workspace
+      4.1-4.4 (Zhang, Oct 2026); a verifier filter on a single SWE-bench attempt cut resolves from 32.5%
+      to 25.1% (Iyengar, Oct 2026); verifier over vote gains only on hard problems (Singhi, Apr 2025)
     basis: evidence
   cost:
     effect: degrades
     size: large
-    when: 0.23x to 2.13x cost; verifier ensembles far more
+    when: 'N runs cost about N single runs: 0.23x to 2.13x relative cost for 8 Genie runs (Databricks,
+      May 2026); voting cost 12-21% less than a same-model judge on the same pools and test-based selection
+      12-49% less (Yang, Oct 2026); an evidence-checking verifier $1.44-$3.92 per task on top of ten runs
+      (Zhang, Oct 2026); stopping at the first accepted candidate spent 5-25% less (Iyengar, Oct 2026);
+      verifier ensembles far more (Saad-Falcon, Jun 2025)'
     basis: evidence
   performance:
     effect: degrades
-    size: small
+    size: medium
+    when: parallel trajectories with aggregation raised Genie's average runtime from 5.5 to 9.5 min (Opus
+      4.6) and 3.8 to 8.2 min (GPT-5.4) (Databricks, May 2026); LLM aggregators took 12-258x the post-rollout
+      GPU time of a small learned selector (Zhou, Sep 2026)
     basis: evidence
   security:
     effect: unknown
@@ -57,10 +120,20 @@ impact:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: experiment
   tier: 3
-  how: paired eval, N attempts against one, and vote against verifier, at matched compute
+  how: 'paired eval on the same labeled tasks at matched dollar cost with every call charged: one run,
+    N runs with a vote (or test execution for code), and N runs with a judge or verifier; report coverage,
+    selection accuracy when a correct candidate exists, empty selections, cost and latency, split by difficulty
+    and by whether runs disagree, with a stronger model answering once as a reference'
+- method: monitor
+  how: 'in production traces: answer disagreement across parallel runs per task, how often selection returns
+    no usable candidate, the share of tasks stopped at the first accepted candidate, and cost and latency
+    per task; rerun the labeled pilot when the model, prompt or verifier changes'
 evidence:
 - source: 'Singhi et al., "When To Solve, When To Verify: Compute-Optimal Problem Solving and Generative
     Verification for LLM Reasoning", https://arxiv.org/abs/2504.01005'
@@ -425,8 +498,135 @@ evidence:
   direction: supports
   measured: true
   locator: §2.3 Figure 2; §4 Figures 6-7
+- source: Srinivasan Iyengar, "Sample, Mix, or Verify? Allocating Test-Time Compute under Imperfect Verifiers",
+    https://arxiv.org/abs/2610.23255
+  date: '2026-10-16'
+  task: Decide how many samples to draw, from which models, and how much to verify (judge calls, verifier
+    thresholds) from a small labeled pilot, using an exact success formula with task difficulty, shared
+    blind spots across models and correlated verifier calls; tested on public sample and verdict releases
+  effect: 'On unseen tasks the pilot-calibrated plan came within 0.02-0.8 points of the best allocation
+    in hindsight, while every fixed rule lost at least 2.5 points somewhere (''strongest model'' 12.35
+    and an adaptation of Singhi et al.''s exponents 11.95 points of regret on MATH with a simulated verifier;
+    maximum verification, k=9, never best). Majority voting over Llama-3-8B-Instruct samples stayed near
+    43% on MATH while coverage reached 98%. SWE-bench Verified, R2E-Gym rollouts with an LLM patch verifier:
+    with one rollout, filtering at threshold 0.5 lowered the resolve rate from 32.5% to 25.1%; the plan
+    uses no verifier at N=1, a lenient threshold at N=2 and a stricter one from N=4; taking the top-scoring
+    patch beat the best fixed threshold by 1.8 points at N=1 and 4.4 at N=16. Majority of nine judge calls
+    instead of one: verified success changed -0.3 to +0.1 points on MATH-500 (a third of 11,015 wrong
+    answers fooled at least six of eight judges; nine calls lowered the precision ceiling on 61% of tasks)
+    but +1.2, +3.3 and +4.8 points at N=4, 16 and 64 on GPQA. Mixing models: Llama-3-8B-Instruct and Gemma-7B
+    per-problem solve rates correlate at 0.80; independence predicted +5 points from an even mix, the
+    real gain was +1.6. Stopping a task at its first accepted candidate matched the static plan within
+    0.24 points while spending 5-25% less (CodeContests, simulated from measured rates). Fixed-test false-positive
+    rates rose with generator pass@1 (Spearman 0.97 across 17 models on HumanEval+, 1.5% to 31%). Argmax
+    of the Weaver score reached 86-93% on MATH-500 against about 81% for judge selection, but about 43%
+    on GPQA, below a single judge call (46-49%).'
+  conditions: 'Reanalysis of public releases, no new generations: Large Language Monkeys (MATH 128 tasks,
+    CodeContests 140, up to 10,000 samples), Stroebl et al. (HumanEval, MBPP), Weaver (MATH-500, 646 GPQA
+    tasks, Llama-3.1-70B-Instruct candidates, eight judges, 19 reward models), R2E-Gym 32B agent (492
+    SWE-bench Verified issues, 22 rollouts each), 175 SWE-bench submissions; 32-sample pilots on 50% of
+    tasks, 5-10 splits; cost is a parameters-times-tokens proxy with a judge call priced as one generation;
+    single author'
+  direction: mixed
+  measured: true
+  locator: Abstract; §1 Figure 1; §6.1 Tables 2-3; §6.2 Table 4; §6.3 Table 5, Figures 4-5; Appendix Figure
+    14; §7
+- source: Bangji Yang, Jingyuan Li, Jiajun Fan, Yi Evie Zhang, Ruihan Guo, Hongbo Ma et al., "How Much
+    Can Language Models Gain from Test-Time Computation?", https://arxiv.org/abs/2610.01110
+  date: '2026-10-01'
+  task: Compare one attempt with parallel sampling (vote in math, most public examples passed in code,
+    or a same-model judge over three candidates) and self-revision under capped budgets, charging every
+    call in dollars across math, code and agent tasks, then replay choice rules on the saved candidate
+    pools
+  effect: 'Panel mean change against one attempt: Parallel@2 +0.7 pp math, +6.2 code (31 wins, 0 losses);
+    Parallel@4 with a same-model judge +4.0 math (95% interval 0.3 to 7.7), -8.6 code (18 wins, 61 losses);
+    AppWorld workflows, where plans are drafted in parallel and one is executed, -4.2 and -4.6, periodic
+    self-review -7.2; Terminal-Bench 0.0. Same-pool replay on code (500 scheduled cells): judge 376, judge
+    with first-nonempty fallback 437 at unchanged cost (-8.6 to +3.6 pp against one attempt), public-example
+    selection 453 at 12-49% lower API cost; judging only public-score ties still called the judge on 465
+    of 498 pools and gave 452. Math (292 pools): judge with fallback 186 against vote@3 182 (paired +1.4
+    pp, 95% interval -1.4 to 4.1), voting 12.3-21.1% cheaper. Claude Opus 5.5 answering once beat every
+    cheaper configuration in math (57 against 52 of 60), workflows (148 against 82 of 160) and terminal
+    tasks (13 against 3 of 30); in code DeepSeek V4.1 Flash answering once (99 of 100 at $0.013) stayed
+    on the cost frontier.'
+  conditions: Five lower-priced reasoning models (DeepSeek V4.1 Flash, Qwen3-Next-80B-A3B, GLM-5, GPT-OSS-120B,
+    MiniMax M2.5) and Claude Opus 5.5 as reference; 350 sealed tasks (60 APEX and Omni-MATH, 100 LiveCodeBench
+    AtCoder, 160 AppWorld, 30 Terminal-Bench); budgets capped at 1, 2 or 4 times one answer; each cell
+    sampled once; replays are post-hoc on saved pools, not fresh equal-cost trials; workflow losses dominated
+    by stage failures (117 of 160 for GPT-OSS, 159 of 160 for MiniMax)
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.2; §3.2 Tables 3-4; §3.3 Figure 5; §3.4; Appendix J.2 Tables 13-17
+- source: 'Caiqi Zhang, Rujun Han, Zifeng Wang, Zoey CuiZhu, Nigel Collier, Tomas Pfister, "VeriHarness:
+    Scaling Agentic Verification for Long-Horizon Tasks", https://arxiv.org/abs/2610.00972'
+  date: '2026-10-01'
+  task: Select (and optionally revise) one of ten rollouts per task on long-horizon workspace tasks with
+    a same-model verifier that tests disputed and agreed claims against the workspace, against majority
+    voting, a best-of-N judge, a pairwise tournament, LLM-as-a-Verifier and a tool-using judge, all on
+    the same frozen pools
+  effect: 'Five-benchmark average, Gemini 3.5 Flash / Claude Opus 4.8: single rollout 47.2 / 49.6; majority
+    voting 47.5 / 50.4; best-of-N judge 47.3 / 50.6; pairwise tournament 49.1 / 51.3; LLM-as-a-Verifier
+    49.5 / 51.2; tool-using judge with workspace access 49.4 / 51.6; VeriHarness selection 51.6 / 53.7
+    (+4.4 / +4.1), with evidence-backed revision 53.4 / 56.1 (+6.2 / +6.4); selection oracle 62.7 / 63.1.
+    Selection cost $1.44 (Flash) and $3.92 (Opus) per task at list price with 86-91% of input tokens cached
+    ($5.40 and $13.06 uncached); with Opus about half the estimated cost of majority voting and the best-of-N
+    judge, whose prompts re-read all ten rollouts; revision about three times selection. APEX-Agents,
+    Opus ten-rollout pools: 34% of consensus values judged incorrect, 74% of disputed claims had a correct
+    candidate, the most frequent value was correct in 47%; selection scored 0.6 points above the pool
+    mean on 154 consensus pools against 6.1 on 262 disputed pools.'
+  conditions: APEX-Agents v1.0 (480 tasks), Workspace-Bench Lite (100), WorkBuddy Bench (200), SpreadsheetBench
+    2 (321), JobBench (65); N=10 rollouts per task per model, thinking high; generator and verifier the
+    same model; three verifier seeds; equal generation cost, verification cost reported separately; vote
+    and judge costs estimated from call counts, not metered; majority voting picks the rollout most consistent
+    with the others; several graders are LLM judges; the authors' own harness with a human-authored skill
+    library
+  direction: contradicts
+  measured: true
+  locator: Abstract; §2 Figure 2; §4.1; §4.2 Table 2; §6 Figure 5; Appendix D; Appendix K Figure 8
+- source: 'Qisheng Zhou, Zhen Xiong, Qiaoyu Tan, "TRACE: Trajectory Selection for Parallel Scaling of
+    Search Agents", https://arxiv.org/abs/2609.39912'
+  date: '2026-09-30'
+  task: Pick one answer from K completed search-agent runs by majority vote, confidence-weighted vote,
+    fewest tool calls, LLM aggregators (Qwen3-32B SolAgg, SummAgg, AggAgent) or a small selector trained
+    on labeled pools that links runs through shared search evidence
+  effect: 'Long-horizon BrowseComp-Plus, FRAMES and GAIA (average of two backbones): single run 59.7%;
+    majority vote 65.5 / 69.7 / 73.8 / 75.5 at K=2 / 4 / 8 / 16 against coverage (pass@K) 72.2 / 80.1
+    / 86.1 / 90.9; at K=16 weighted vote 76.7, SolAgg 76.6, SummAgg 77.0, AggAgent 68.9, TRACE 78.6 (+3.1
+    over the vote; 66.0 to 74.3 on gpt-oss-120B BrowseComp-Plus); without cross-run evidence links TRACE
+    fell to 72.7. WebQA (3,125 questions, Qwen2.5-14B Base pools): single run 29.5, vote 42.6, best aggregator
+    43.9, TRACE 45.2 at K=16; TRACE with 8 runs 43.3 against the vote with 64 runs 43.6. Post-rollout
+    compute on 3,125 WebQA questions: TRACE 0.271 H20 GPU-hours against 3.28, 32.96 and 69.93 for the
+    three aggregators (12x to 258x).'
+  conditions: Rollouts from OpenResearcher-30B-A3B and gpt-oss-120B (long-horizon) and Qwen2.5-7B/14B
+    Base, SFT and RL policies (WebQA); long-horizon correctness from saved Qwen3-32B judgments, WebQA
+    by exact match; selector trained on 2,655 labeled long-horizon questions (16-run OpenResearcher pools)
+    and 101,323 WebQA questions; FRAMES 500-question subset; one run per configuration; the authors' own
+    method
+  direction: supports
+  measured: true
+  locator: Abstract; §4.2 Tables 1-2; §4.3 Table 3; §4.4 Table 4; Appendix C Table C.1
+- source: King Zhu, Hanhao Li, Siwei Wu, Tianshun Xing, Dehua Ma, Xiangru Tang, Minghao Liu, Jian Yang,
+    et al., "Scaling Test-time Compute for LLM Agents", https://arxiv.org/abs/2506.12928
+  date: '2025-06-15'
+  task: Pick among four whole-run attempts of one agent by majority vote, verifier scoring or a list-wise
+    LLM selector that compares all candidates, against step-wise and tree-shaped parallel sampling
+  effect: 'GAIA validation average: baseline 55.76; best-of-N over whole runs 63.03 with list-wise selection,
+    59.39 with scoring and 56.8 with majority voting; beam search 56.97 / 53.94 / 54.55 (list-wise / scoring
+    / voting); step-wise best-of-N 58.79, DVTS 55.76, tree search 55.76 list-wise and 50.91 scoring. Mixing
+    rollouts from four models raised pass@4 (oracle selection) to 74.55.'
+  conditions: GPT-4.1 in a smolagents CodeAgent; GAIA validation, 165 tasks; sampling width 4; one run;
+    selection compute not reported or matched
+  direction: mixed
+  measured: true
+  locator: §3.1; §4.1 Table 1; §4.3 Tables 3-4; §4.4 Table 5
 related:
 - 9.c.iii
+- 9.a.i
+- 9.b.iii
+- 7.c.v
+- 7.c.vi
+- 6.a.i
+- 1.b.i
 absorbs:
 - legacy_id: P05
   name: Self-consistency voting
@@ -606,3 +806,13 @@ provenance:
   sub_type: parallelization
   harness_role: control_loop
   action: tune
+caveats: 'Most of the evidence is math, code and question answering, and the agent results come from single
+  runs or replays of fixed candidate pools, several by the authors of the selector or verifier being tested
+  (a learned search selector, a workspace verifier) and one a single-author reanalysis of public releases.
+  A vote needs comparable final answers: on open-ended artifacts it barely helped and 34% of values all
+  ten runs agreed on were wrong, and any selector is capped by coverage (a 16-run search vote reached
+  75.5% against 90.9% coverage). Parallel whole runs need a resettable environment, learned selectors
+  need labeled pools (2,655 questions in one study), and fixed tests accept more wrong code from stronger
+  generators (Spearman 0.97 across 17 models on HumanEval+), so results do not carry across models without
+  re-measuring. In one sealed study a stronger model answering once beat five cheaper models given extra
+  samples everywhere except programming (math 57 against 52 of 60, workflows 148 against 82 of 160).'

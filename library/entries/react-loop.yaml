@@ -23,32 +23,57 @@ evidence_domains:
 - code-generation
 - retrieval
 - planning
+- decisioning
 categories:
 - orchestration.loop
 summary: 'Run the agent as a loop: the model reasons, calls a tool, reads the result and picks the next
-  step, until it answers or hits a cap. The loop is the common default for tasks that need several dependent
-  tool calls; the 2022 text template (Thought/Action/Observation lines in a few-shot prompt) is not. On
-  current models, use native tool calling, carry the model''s reasoning across tool calls, bound the whole
-  feedback path, and keep the per-step preamble small: with the model fixed, the harness around the loop
-  moved cost per task by up to 3x and pass rate by less than the noise.'
-how: '1. Use the provider''s native tool calling, not a text Thought/Action/Observation template. 2. Loop:
-  call the model, run every tool call it returns, append each result to the history (errors included,
-  as observations), and call again; stop on a final answer or an explicit finish tool. 3. Let the model
-  reason before each action (interleaved or adaptive thinking; a think tool on models without it), and
-  pass its reasoning back unchanged across tool calls. 4. Cap steps, cost and wall time on the whole feedback
-  path, retries and handoffs included; count a cap hit as a failure (7.b.iii sizes the caps, 7.b.i catches stalls).
-  5. Keep the per-step preamble (system prompt and tool schemas) small; it is re-sent every step. 6. Paired
-  eval against the current design (one call or a fixed workflow), per model: success, steps, cost per
-  task, cap-hit rate.'
+  step, until it answers or hits a cap. It pays where the agent has to find its own path and recover from
+  wrong steps: with the same lightweight models, each model''s best loop harness resolved 51 to 63 of
+  100 SWE-bench tasks against 17 to 39 for a fixed repair pipeline (the loops used 4.3 to 87.8 million
+  tokens per resolved task against 0.1 to 0.2 million), and on goal-only Google Maps tasks generic loops
+  that kept the full history beat a fixed-step loop by 9 to 28 points. Where the lookups or steps are
+  known in advance it buys little: a one-decision pipeline matched a tool loop on banking cases (90.5%
+  against 88.8% correct), a fixed-step loop matched generic ones on stepwise tests at 2.6 to 10.7 times
+  lower cost, and on web tasks with a trusted API, compiling a program before reading any page beat ReAct
+  by 11.1 points and kept injected content from steering its steps, at 2.0 to 4.4 times the cost. On current
+  models use native tool calling, carry the model''s reasoning across tool calls, bound the whole feedback
+  path, keep the per-step preamble small, and test per model and harness: with the model fixed, cost per
+  task differed up to 3x across production harnesses, and for lightweight models success differed 28 to
+  44 points across harnesses.'
+how: '1. Start from the cheapest design that could work and make the loop beat it. If every lookup can
+  be run in advance, a pipeline that gathers them and asks for one decision may match it (90.5% against
+  88.8% correct on banking cases); if the steps are prescribed, a tight fixed-step loop may match a generic
+  one (same success on stepwise GUI tests at 2.6 to 10.7 times lower cost). Use the generic loop where
+  the agent must pick its next step from what it finds or recover from wrong steps; where it reads untrusted
+  content and a trusted API covers the actions, also test compiling the plan before any content is read
+  (6.c.i, 6.c.ii). 2. Use the provider''s native tool calling, not a text Thought/Action/Observation template.
+  3. Loop: call the model, run every tool call it returns, append each result to the history (errors included,
+  as observations), and call again; stop on a final answer or an explicit finish tool. Keep the accumulated
+  history rather than rebuilding a compact prompt each step: on goal-only Google Maps tasks, runs with
+  a wrong tool call still succeeded 78% to 83% of the time in generic loops that kept it, against 24%
+  to 53% in a fixed-step loop that rebuilt its prompt from a step log. 4. Let the model reason before
+  each action (interleaved or adaptive thinking; a think tool on models without it), and pass its reasoning
+  back unchanged across tool calls. 5. Cap steps, cost and wall time on the whole feedback path, retries
+  and handoffs included; count a cap hit as a failure (7.b.iii sizes the caps, 7.b.i catches stalls).
+  6. Keep the per-step preamble (system prompt and tool schemas) small: it and the growing history are
+  re-sent every step, and with the model fixed, cost per task differed up to 3x across production harnesses,
+  set by the preamble (16k tokens to under a thousand) times the step count. 7. Paired eval against the
+  step 1 baseline, per model and harness and separately for prescribed and goal-only tasks, several runs
+  per arm: success scored from the executed actions, not the final message (in one banking study, across five harnesses, 26.1%
+  of violations came with a message denying the executed action), steps, cost and tokens per task, latency,
+  cap-hit rate, and success after a wrong tool call.'
 detect:
   static: A loop that alternates model call and tool dispatch, feeds results back, and has a max-iteration
     guard; check that the guard bounds the whole feedback path (retries, handoffs), not just the outer
     loop.
-  traces: Thought before each action; observations used in the next thought; loops that ignore results.
-  evals: Success on tool-use tasks; steps per task; tool error rate.
+  traces: Thought before each action; observations used in the next thought; loops that ignore results;
+    final messages that contradict the executed actions.
+  evals: Success on tool-use tasks, scored from the executed actions; steps per task; tool error rate;
+    success after a wrong tool call; tokens per resolved task.
   judge: Do thoughts inform the next action or are they boilerplate.
   probes:
-    what: Tasks needing two to four dependent tool calls.
+    what: Tasks needing two to four dependent tool calls, each in a prescribed-step version and a goal-only
+      version.
     construct: 'Chain lookups: find X, then use X to fetch Y; the second call cannot be guessed.'
   primary:
   - static
@@ -57,52 +82,72 @@ impact:
   quality:
     effect: improves
     size: large
-    when: 'tasks that need several dependent tool calls: text-to-SQL 45.9 to 72.2 on EHR-SQL over a single
-      shot, but 78.5 to 79.1 on BIRD (Lu, Aug 2026); ALFWorld 71 against 45 for acting without reasoning
-      (Yao, 2022)'
+    when: 'tasks that need several dependent calls or recovery from wrong steps: each model''s best loop
+      harness 51 to 63 of 100 SWE-bench tasks against 17 to 39 for a fixed repair pipeline (Zhao, Oct
+      2026); EHR-SQL 45.9 to 72.2 over a single shot, BIRD 78.5 to 79.1 (Lu, Aug 2026); goal-only Google
+      Maps tasks +9 to +28 points for loops keeping the full history (Khoee, Oct 2026). No gain over a
+      one-decision pipeline when lookups can be precomputed (88.8% against 90.5%, Huyut, Nov 2026); a
+      compiled plan beat ReAct by 11.1 points on web tasks with a trusted API (Chow, Nov 2026)'
     basis: evidence
   cost:
     effect: degrades
-    size: medium
-    when: one model call per step, each re-sending the preamble and history; with the model fixed, cost
-      per task differed by up to 3x across harnesses (Liu and Han, Oct 2026)
+    size: large
+    when: 'one model call per step, each re-sending the preamble and the growing history: 4.3 to 87.8
+      million tokens per resolved SWE-bench task in loop harnesses against 0.1 to 0.2 million for a fixed
+      pipeline (Zhao, Oct 2026); generic loops 1.9 to 10.7 times the cost per task of a compact fixed-step
+      loop (Khoee, Oct 2026); up to 3x across harnesses with the model fixed (Liu and Han, Oct 2026);
+      but ReAct cost 2.0 to 4.4 times less than a compiled plan (Chow, Nov 2026)'
     basis: evidence
   performance:
-    effect: degrades
-    size: medium
-    when: serial round trips, one per step
-    basis: evidence
-  security:
     effect: mixed
     size: medium
-    when: Autonomous tool actions need scoping.
-    basis: assessment
+    when: 'serial calls, one per step: median 23 to 169 model calls per SWE-bench run in loop harnesses
+      against 4 for a fixed pipeline (Zhao, Oct 2026); yet faster than heavier designs: 60 to 87 s per
+      web task against 327 s for a compiled plan (Chow, Nov 2026), up to 8x faster than elaborate text-to-SQL
+      pipelines (Lu, Aug 2026), and generic loops 3 to 57 s faster per task than a fixed-step loop that
+      observed the screen every step (Khoee, Oct 2026)'
+    basis: evidence
+  security:
+    effect: degrades
+    size: medium
+    when: 'every tool result feeds the next action: injected page content steered a ReAct web agent''s
+      intermediate steps in a mean 16.2% (with the site''s API) to 25.5% (browser only) of attacks, up
+      to 52.8% for one model and site, though it reached the attacker''s goal in only one of 12 model-site
+      cells (5.6%); a compiled plan 0% (Chow, Nov 2026)'
+    basis: evidence
   governance:
     effect: mixed
     size: medium
-    when: Every action must be logged to be auditable.
-    basis: assessment
+    when: 'each action is a tool call in the trace, and the trace, not the transcript, is the record to
+      audit: in one banking study, across five harnesses, 26.1% of rule violations came with a customer message denying the action
+      just executed (Huyut, Nov 2026); with a vendor-maintained loop the team controls less of what the
+      model receives and must keep its own run records (Khoee, Oct 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
   primary:
   - quality
-  - performance
+  - cost
 measure:
 - method: experiment
   tier: 4
-  how: 'paired eval of the loop against the current design, per model: success, steps, cost per task,
-    cap-hit rate; use the full task pool, since 45 tasks catch a 12.9-point gap only half the time'
+  how: 'paired eval of the loop against the cheapest design that could work (one call, a precomputed pipeline,
+    a fixed-step loop, or a compiled plan where untrusted content is read), per model and harness and
+    separately for prescribed and goal-only tasks, several runs per arm: success scored from the executed
+    actions, steps, cost and tokens per task, latency, cap-hit rate, and success after a wrong tool call;
+    use the full task pool, since 45 tasks catch a 12.9-point gap only half the time'
 - method: monitor
-  how: steps per task, cap-hit rate, tool error rate, cost per task
+  how: steps per task, cap-hit rate, tool error rate, preamble tokens per call, cost and tokens per resolved
+    task, and final messages that contradict the action log
 evidence:
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Prompting Strategies group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Prompting Strategies group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file master-agent-optimization-cookbook.md"
+  locator: pattern library file master-agent-optimization-cookbook.md
 - source: 'Yao et al., "ReAct: Synergizing Reasoning and Acting in Language Models", https://arxiv.org/abs/2210.03629'
   date: '2022-10-06'
   task: Interleave reasoning traces with actions, against acting only, chain-of-thought, and imitation
@@ -170,7 +215,7 @@ evidence:
   direction: supports
   measured: true
   locator: Responses API paragraph
-- source: 'Lu, Yu, Xiong, Zhang, "Iteration Without Elaboration: A Simple ReAct Architecture Suffices
+- source: 'Lu, Yu, Xiong, Zhang, Zhuo, "Iteration Without Elaboration: A Simple ReAct Architecture Suffices
     for Text-to-SQL Generation", https://arxiv.org/abs/2608.22651'
   date: '2026-08-23'
   task: Add a ReAct loop (SQL actions with execution feedback) to a zero-shot single-shot baseline, then
@@ -186,10 +231,11 @@ evidence:
   task: 'Hold the model fixed and swap the harness around the loop: Claude Code, OpenCode, and the bash-only
     mini-SWE-agent'
   effect: Claude Code and mini-SWE-agent "are equivalent within five points" (-1.8 and -1.4 points on
-    two models). Cost per task differed by up to 3x across harnesses, set by the per-step preamble (16k
-    tokens in Claude Code, 7k in OpenCode, under a thousand in mini-SWE-agent) times the number of steps.
-    Switching thinking off cost mini-SWE-agent 11 points on one model and moved the other two by less
-    than the noise.
+    two models); OpenCode trailed by up to 9.2 points (Qwen3.8-27B, behind mini-SWE-agent, 95% interval
+    5.5 to 12.9), half of that gap in runs its output cap cut short. Cost per task differed by up to 3x
+    across harnesses, set by the per-step preamble (16k tokens in Claude Code, 7k in OpenCode, under a
+    thousand in mini-SWE-agent) times the number of steps. Switching thinking off cost mini-SWE-agent
+    11 points on one model and moved the other two by less than the noise.
   conditions: SWE-bench Verified, 447 tasks, two models; a 45-task hard subset, five models
   direction: supports
   measured: true
@@ -215,6 +261,101 @@ evidence:
   direction: contradicts
   measured: false
   locator: Abstract
+- source: Annabella Chow, Jinhao Zhu, Sylvie Venuto, Abdulaziz Alharbi, Basel Alomair, Raluca Popa, David
+    Wagner, Julien Piet, "Securing Web Agents with the Compile-Then-Execute Paradigm", https://arxiv.org/abs/2611.06039
+  date: '2026-11-04'
+  task: Compile the user's request into a Python program against a trusted website API before any page
+    is read (the planning model never sees live content; up to three replans on API error diagnostics
+    only), against ReAct agents that pick one action per step from what they observe, using browser actions
+    only or browser actions plus the same APIs and site guidance
+  effect: 'Utility on 581 WebArena Verified tasks, mean over three models: 77.8% for compile-then-execute
+    against 66.7% for ReAct with web and API and 55.1% for ReAct with web only; with Claude Sonnet 4.6,
+    81.9% against 59.0% and 52.3%; its lead over the stronger ReAct was 2.4 points with GPT-5.6 Luna,
+    and ReAct with API won 3 of 12 model-site cells. WASP prompt injection (84 attack instances per model):
+    compile-then-execute 0% intermediate and end-to-end attack success; ReAct mean intermediate attack
+    success 16.2% (web and API) and 25.5% (web only), up to 52.8% in one model-site cell; ReAct end-to-end
+    attack success 0% in 11 of 12 cells and 5.6% in one. Per task: ReAct 59.9 s and $0.16 (web) or 86.6
+    s and $0.34 (web and API) against 327.2 s and $0.70 for compile-then-execute (2.0 to 4.4 times the
+    cost, 3.8 to 5.5 times the latency).'
+  conditions: Claude Sonnet 4.6, Gemini 3.5 Flash and GPT-5.6 Luna (security runs use DeepSeek V4 Flash
+    in place of GPT-5.6 Luna); WebArena Verified GitLab, Shopping, Shopping Admin and Postmill, vague
+    or unscorable tasks excluded, scored by outcome; WASP with 12 GitLab and 9 Postmill attack templates;
+    the compiler ran inside Claude Code (high effort), Antigravity and Codex (medium) while ReAct called
+    the API directly with a 30-step cap, so budgets are not matched; needs a trusted API per site; the
+    authors' own system, by the lead author of the plan-then-execute position paper also cited here
+  direction: contradicts
+  measured: true
+  locator: Abstract; Table 1; §5.2; §5.3 Table 2; §5.4 Table 3; §5.6 Table 6; §9.2
+- source: 'Mehmet Murat Huyut, "The Harness Is the Model: Agent Scaffolding Changes a Fixed LLM''s Compliance
+    with Banking Conduct Rules, Unevenly Across Models", https://arxiv.org/abs/2611.06116'
+  date: '2026-11-04'
+  task: Hold the model fixed and run the same bank-conduct cases through a pipeline that runs every lookup
+    in advance and asks for one structured decision, a ReAct tool loop (one tool per step, up to 20 steps,
+    the full manual in the prompt), and three loop variants (policy only through search, a long customer
+    memory, a same-model reviewer); score violations and over-refusals from the executed tool trace
+  effect: 'Correct-case rate, pipeline against ReAct loop: 88.5% against 84.6% (deepseek-v4-flash), 88.5%
+    against 88.5% (deepseek-v4.1-flash), 91.7% against 89.7% (qwen3.8-flash-next), 93.6% against 92.3%
+    (gemma-4-31b); pooled 90.5% against 88.8%, per-model intervals overlapping. Across all five harnesses
+    the pooled rate ran 87.3% to 92.1%, and one model''s spread was 11.5 points. Loops did not break step-order
+    rules: no violations in 144 paired order-dependent episodes for the pipeline, the loop or the memory
+    loop. Of 287 episodes with a violation, both judges agreed the customer message denied the action
+    the agent had executed in 26.1% (41.3% by the more liberal judge); claimed actions that were not executed
+    appeared in 0.1% of episodes.'
+  conditions: Four open-weight models at temperature 0, fixed seed, reasoning disabled; 156 pre-registered
+    two-turn cases per cell in a simulated retail bank (11 rule families paraphrasing EU consumer-credit,
+    payments, investor-protection, data-protection and anti-money-laundering rules), 3,120 episodes; deterministic
+    scoring from the executed trace; the denial analysis is exploratory, by two LLM judges checked by
+    one blind human coder on 100 episodes; single author; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; Method (Harnesses, Scoring); Results Table 1, Table 3; Stated versus executed
+- source: Arsham Gholamzadeh Khoee, Ruyu Fu, Jiaqi Wei, Ruikun Deng, Robert Feldt, Dhasarathy Parthasarathy,
+    Yinan Yu, "Build or Adopt? Custom-Built vs. General-Purpose LLM Agent Harnesses for Automotive GUI
+    Testing", https://arxiv.org/abs/2610.33636
+  date: '2026-10-24'
+  task: 'Keep the tools (over MCP) and the model fixed and swap the loop: Volvo''s production harness,
+    a ReAct loop of four fixed steps that takes one action per iteration, returns a typed decision with
+    a checklist, reports completion in a dedicated field and rebuilds its prompt every step from a step
+    log, against Claude Code and OpenCode, whose generic loop lets the model call the tools it chooses,
+    keeps every call and result in the conversation and decides when it is done'
+  effect: 'Stepwise in-vehicle tests (66 tasks): all configurations succeeded in 55% to 61% of runs; the
+    generic loops differed by -4.5 to -0.8 points with the same model (p >= 0.17) and gave inconsistent
+    outcomes on 3 to 6 tasks against 1 to 2. Goal-only Google Maps tasks (40): generic loops ahead by
+    28 points (GPT-5.4), 17 to 19 (Sonnet 4.6) and 9 to 11 (Opus 4.6); their tool calls were less often
+    correct (88% to 89% against 93% to 98%), but runs with a wrong call still succeeded in 78% to 83%
+    against 24% to 53%, which the authors attribute to the accumulated context. Booking.com (16 tasks):
+    ahead but not significant, milestone reach 72% to 78% against 56% to 59%. Inference cost per task
+    1.9 to 10.7 times higher for the generic loops (2.6 to 10.7 on the stepwise tests); mean latency 3
+    to 57 s lower.'
+  conditions: GPT-5.4, Claude Sonnet 4.6 and Claude Opus 4.6 (Opus on Google Maps only), the production
+    harness also with GPT-5.1; Claude Code with Anthropic models only; Volvo test rig (two runs per configuration)
+    and AMEX tasks on Android phones (three runs); success judged by GPT-5.6 Sol from traces and screenshots
+    (93.4% agreement with Claude Opus 4.8, kappa 0.85; checked against manual labels on one Booking.com
+    repetition); exact paired Wilcoxon tests; the generic harnesses also differ in system prompt, subagents
+    and compaction; independent
+  direction: supports
+  measured: true
+  locator: Abstract; §III-A, §III-B; §IV-A; §IV-B Fig. 2, Table I; §IV-C Table III; §IV-D Table II
+- source: 'Lu Zhao, Christopher M. Poskitt, David Lo, "Pairing Matters: Performance, Failures, and Efficiency
+    in Lightweight Coding Agents", https://arxiv.org/abs/2610.32131'
+  date: '2026-10-23'
+  task: 'Run three lightweight open-weight coding models through six harnesses on the same 100 SWE-bench
+    Verified tasks: four model-directed loops (OpenCode, OpenHands, mini-SWE-agent, SWE-agent), a phased
+    retrieve-and-repair harness (AutoCodeRover) and a fixed repair pipeline (Agentless)'
+  effect: 'Tasks resolved of 100 (Qwen3-Coder-Next / GLM-4.7-Flash / Devstral-Small): OpenCode 61/51/44,
+    OpenHands 63/42/54, mini-SWE-agent 57/49/22, SWE-agent 22/51/31, AutoCodeRover 19/28/27, Agentless
+    39/23/17; same-model spread across harnesses 28 to 44 points. Median model calls per run 23 to 169
+    in the loops, 20 to 86 for AutoCodeRover, 4 for Agentless; charged tokens per resolved task 4.3 to
+    87.8 million in the loops (more than 20-fold), 1.1 to 4.8 million for AutoCodeRover, 0.1 to 0.2 million
+    for Agentless. Loop or budget exhaustion caused 95% of SWE-agent''s failures with Qwen3-Coder-Next.'
+  conditions: Qwen3-Coder-Next (80B, 3B active), GLM-4.7-Flash (thinking on) and Devstral-Small (24B)
+    on vLLM, one H100, prefix caching on; stratified 100-task SWE-bench Verified subset; one run per pairing
+    (1,800 runs); shared cap of 262,144 completion tokens per run, other limits harness-specific and adjusted
+    during the study; Agentless ran with one candidate patch and without its own test-based validation;
+    official SWE-bench grader; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §II-A Table I; §II-D; §III Table III; §IV Finding 4; §V Table V, Findings 5 and 6
 assessment:
   qa:
     unit: Loop terminates; max_turns respected; tool result is appended to the next prompt.
@@ -257,7 +398,10 @@ related:
 - 7.b.i
 - 2.a.iii
 - 6.c.ii
+- 6.c.i
 - 10.c.i
+- 7.d.ii
+- 7.a.ii
 provenance:
   layer: target
   origin: observed
@@ -265,9 +409,15 @@ provenance:
   sub_type: control_flow
   library_group: Prompting Strategies
   library_source: master
-caveats: 'The 2022 gains came from few-shot text prompting on PaLM-540B, and ReAct alone trailed chain-of-thought
-  on HotpotQA; a 2024 study found the interleaved reasoning in that template mattered little next to the
-  choice of examples. Whether reasoning between calls helps depends on the model and harness: switching
-  thinking off cost one harness 11 points and moved two others by less than the noise. Every tool result
-  feeds the next action, so untrusted content can steer the loop: contain it (10.c.i) or commit to a plan
-  before reading it (6.c.ii). Harness comparisons need large task pools.'
+caveats: 'The 2022 gains came from few-shot text prompting on PaLM-540B, and a 2024 study found the interleaved
+  reasoning in that template mattered little next to the choice of examples. The newer comparisons are
+  single studies with limits: the pipeline that matched the loop on banking cases ran four open models
+  with reasoning off, the fixed pipeline the loops beat on SWE-bench ran without its own test validation
+  and with one run per pairing, and the compiled plan that beat ReAct needs a trusted API per site, ran
+  its compiler inside coding-agent harnesses at high or medium reasoning effort while ReAct called the
+  models directly, and cost 2.0 to 4.4 times more. Harness and reasoning effects depend on the model:
+  two of three production harnesses were within 5 points on 447 tasks while the third trailed by up to
+  9.2, six harnesses spread 28 to 44 points on lightweight models, and switching thinking off cost one
+  harness 11 points and moved two others by less than the noise. Every tool result feeds the next action,
+  so untrusted content can steer the loop: contain it (10.c.i) or commit to a plan before reading it (6.c.i,
+  6.c.ii), and compare harnesses only on large task pools.'

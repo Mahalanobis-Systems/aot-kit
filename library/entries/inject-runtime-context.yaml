@@ -19,33 +19,56 @@ evidence_domains:
 - conversation
 - reasoning
 - code-generation
+- web-research
 categories:
 - prompts.structure
-summary: 'Put the runtime facts the model cannot know into its context each run: today''s date and timezone,
-  the working directory, OS and git state, the tools available, the user and locale. Inject them after
-  the cached prefix, as a date rather than a timestamp, and refresh them when they change. The measured
-  gains are on time-sensitive work: absolute dates beat relative ones, and stating the time remaining
-  each turn raised deal closure under deadlines. On tasks that do not depend on time, the date only adds
-  variance.'
-how: '1. List the runtime facts your tasks depend on: date and IANA timezone, working directory, OS and
-  shell, git status, the tools or skills available, the user and locale. 2. Inject them after the cached
-  prefix, in a trailing block or a message in the conversation, never under a cache breakpoint; keep the
-  date to the day, and serve time of day through a clock tool or the shell. 3. State dates as absolute
-  values, and resolve relative dates ("last quarter") to absolute ones before the model sees them. 4.
+summary: 'Tell the model the runtime facts it cannot know: today''s date and timezone, the working directory,
+  OS and git state, the tools available, the user and locale. Inject them after the cached prefix, as
+  a date rather than a timestamp, refresh them when they change, and when an answer depends on the date,
+  state it in the question as well. The measured gains are on time-sensitive work: absolute dates beat
+  relative ones, stating the time remaining each turn raised deal closure under deadlines, injecting vetted
+  package versions cut code tasks with a known vulnerability from 36.70-55.70% to 10.90-27.60% across
+  ten models, and instructions to resolve relative dates against the injected one took one search agent
+  from 16.0% to 30.6%. The limits: in one study, with reasoning off, a date in the system prompt, an earlier
+  turn or a date tool left most answers about a changed fact outdated, a stated past date does not hide
+  what a model knows, and on tasks that do not depend on time the date only adds variance.'
+how: '1. Start from the baseline: with the date fixed, run a slice of time-, environment- and user-sensitive
+  tasks with no injected block, including facts that changed after the model''s cutoff, and record outdated
+  answers, stale dates in queries, questions asking the user for facts the system holds, tool calls spent
+  discovering the environment, and cache-read tokens per call. 2. List the runtime facts your tasks depend
+  on: date and IANA timezone, working directory, OS and shell, git status, the tools or skills available,
+  the user and locale, and for code that names dependencies the versions to use. In one study, injecting
+  a vetted version for each library cut tasks with a known vulnerability from 36.70-55.70% to 10.90-27.60%
+  across ten models, where an instruction to avoid vulnerable versions moved it by -2.2 to +4.3 points.
+  3. Inject them after the cached prefix, in a trailing block or a message in the conversation, never
+  under a cache breakpoint; keep the date to the day, and serve time of day through a clock tool or the
+  shell, with an instruction to call it. Where the answer depends on the date, also state it in the request
+  itself ("as of <date>"): in one study, with reasoning off, today''s date in the system prompt left 68-100%
+  outdated answers about a changed fact for 10 of 12 models, five of six models never called an offered
+  date tool, and the date in an earlier turn or a tool result left 69-99% outdated, while "as of" in the
+  question left none for seven of eight models with reasoning on. 4. State dates as absolute values, and
+  resolve relative dates ("last quarter") to absolute ones before the model sees them; tell a search agent
+  to resolve relative dates against the injected date before calling tools and to keep dates it retrieves
+  apart from the current one (one agent went from 16.0% to 30.6% as these instructions were added). 5.
   Refresh on change: resend the block when a value changes and after compaction or resume; if the run
-  has a deadline, inject the time remaining each turn. 5. Fix the date in evals and report it; run a time-sensitive
-  slice with and without the injection, and watch cache-read tokens.'
+  has a deadline, inject the time remaining each turn. 6. Fix the date in evals and report it, and check
+  the chat template and the provider for a date you did not add. Do not rely on a stated past date to
+  hide later knowledge in backtests: GPT-5 kept 0.75 accuracy against 0.76 with the date declared, while
+  its claims of prior knowledge fell from 39% to 1%. Run the baseline slice with and without the injection,
+  and with the date in the system prompt against the question, and watch cache-read tokens.'
 detect:
   static: Prompt templates contain runtime placeholders (date, time, user, locale, tool availability).
     Absence where tasks are time- or user-sensitive is the signal.
   traces: Model guesses the date or year, asks the user for information the system already has, builds
-    queries with stale dates.
+    queries with stale dates, takes a retrieved past date as today, gives a fact as it was before a known
+    change (or names the old value first), never calls an offered clock or date tool.
   evals: Failures concentrated on time-sensitive or user-specific items.
   judge: Flag outputs that assume stale state.
   probes:
     what: Tasks whose answer depends on today's date, relative dates, locale or the current user.
     construct: Take a template task and parametrize it on 'today', 'last quarter', user timezone and defaults;
-      the correct answer changes with the injected value.
+      the correct answer changes with the injected value. Add questions about facts that changed after
+      the model's cutoff, with the date in the system prompt and, separately, in the question.
   primary:
   - static
   - probes
@@ -54,9 +77,12 @@ impact:
     effect: mixed
     size: medium
     when: 'time-sensitive work: deal closure 0.04 to 0.32 with the time remaining stated each turn (Sehgal,
-      Jan 2026); answers 24-35% worse with relative than with absolute dates (Wallat, 2024). On tasks
-      that do not depend on time, the date moved scores by up to 14% with no good date to fix (Sanz-Guerrero,
-      Sep 2026)'
+      Jan 2026); answers 24-35% worse with relative than with absolute dates (Wallat, 2024); a search
+      agent 16.0% to 30.6% with instructions to resolve dates against the injected one (Zhou, Mar 2026).
+      Today''s date in the system prompt left 68-100% outdated answers for 10 of 12 models with reasoning
+      off, where "as of" in the question left none for seven of eight with reasoning (Phan, Nov 2026).
+      On tasks that do not depend on time, the date moved scores by up to 14% with no good date to fix
+      (Sanz-Guerrero, Sep 2026)'
     basis: evidence
   cost:
     effect: none
@@ -65,12 +91,16 @@ impact:
     basis: evidence
   performance:
     effect: none
-    basis: evidence
-  security:
-    effect: mixed
     size: small
-    when: Injected state is a small injection surface.
+    when: a short block after the cached prefix; no source measures latency
     basis: assessment
+  security:
+    effect: improves
+    size: medium
+    when: 'for code that pins dependencies: injected vetted versions cut tasks with a known vulnerability
+      from 36.70-55.70% to 10.90-27.60% across ten models (Wang, May 2026). Injected state is also a small
+      injection surface (not measured)'
+    basis: evidence
   governance:
     effect: mixed
     size: small
@@ -86,10 +116,13 @@ impact:
 measure:
 - method: before-after
   tier: 3
-  how: run a time-sensitive slice with and without the injected block, with the date fixed; compare cache-read
+  how: with the date fixed, run a time-sensitive slice (including facts that changed after the model's
+    cutoff) with and without the injected block, and with the date in the system prompt against in the
+    question; count outdated answers, including answers that name the old value first, and compare cache-read
     tokens per call before and after
 - method: monitor
-  how: questions asking the user for facts the system holds, date errors in outputs, cache-hit rate
+  how: questions asking the user for facts the system holds, date errors and outdated answers in outputs,
+    stale dates in search queries, calls to any clock or date tool, cache-hit rate
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -173,6 +206,78 @@ evidence:
   direction: supports
   measured: false
   locator: PR description
+- source: 'Phan Binh Nguyen Lam, Nguyen Thai Anh, "ViAdminShift: A Vietnamese Benchmark for Event-Level
+    Knowledge Updates Built from the 2025 Administrative Reform", https://arxiv.org/abs/2611.03171'
+  date: '2026-11-02'
+  task: Give the same current date in different places (today's date in the system prompt, "as of <date>"
+    in the question, an earlier turn, a prior get_current_date result, an offered date tool) and ask about
+    addresses whose province changed in a 2025 reform the models know about
+  effect: With a plain system prompt, 78-100% of answers were old-only (outdated). With reasoning off,
+    today's date in the system prompt left 68-100% old-only answers for 10 of 12 models; with reasoning
+    on, it still left 70-78% for GPT-6 and Kimi-K3. Without reasoning, "as of" in the question lowered
+    the old-only rate against the system-prompt date for all eight models shown (GPT-6 -74 points), though
+    10-86% stayed old-only for all but one; with reasoning, it left no old-only answer for seven of eight
+    models. Offered a get_current_date tool without a call instruction, five of six models without reasoning
+    never called it; with the date as a tool result or in an earlier turn, 69-99% of answers stayed old-only.
+    Having a model told the date rewrite each question first lowered old-only answers but inserted the
+    old province as a premise into 7 of 80 questions (9%).
+  conditions: Post hoc; 80 absorbed province-free addresses (T1np), single runs, plus a check on 300 units
+    for six models with reasoning off; GPT-6, GPT-6-Luna, Kimi-K3, Claude Opus and Sonnet models, GLM-5.3,
+    HY4, Muse-Glimmer and others; Vietnamese; repeats varied aggregate rates by up to 10 points
+  direction: mixed
+  measured: true
+  locator: Abstract; Sec. 4.3; Sec. 5.3, Fig. 7; Sec. 6
+- source: 'Lingfei Qian, Yan Wang, Xueqing Peng, Yupeng Cao, Yuechen Jiang, Zhuohan Xie, Anke Xu, Wenbo
+    Cao, Jiarui Chen, Zehan Li, Jimin Huang, Alejandro Lopez-Lira, Yuehua Tang, Sophia Ananiadou, Jian-Yun
+    Nie, "LLMs Don''t Know What They Know: Benchmarking Temporal Self-Knowledge for Financial Backtesting",
+    https://arxiv.org/abs/2611.06808'
+  date: '2026-11-04'
+  task: Instruct the model to answer as of a declared historical date and compare with the same prediction
+    question without a date, on dated U.S. financial facts
+  effect: With the date declared, claims of prior knowledge fell from 0.39 to 0.01 for GPT-5, 0.33 to
+    0.04 for GPT-4o and 0.63 to 0.00 for Llama-3.3-70B (DeepSeek-V3.2 rose, 0.37 to 0.46), while accuracy
+    stayed level (GPT-5 0.76 to 0.75, GPT-4o 0.43 to 0.44, Llama-3.3-70B 0.41 to 0.41, DeepSeek-V3.2 0.44
+    to 0.43). Inside its knowledge window GPT-5 labeled 99% of dated answers as predictions at 0.82 accuracy,
+    against 0.39 after its boundary.
+  conditions: FinDendro, 2,226 facts 1999-2026 (1,340 controlled, chance about 0.27); GPT-5, DeepSeek-V3.2,
+    GPT-4o, Llama-3.3-70B, Qwen3-8B, Qwen3.5-9B; one run per prompt, temperature 0 where supported
+  direction: mixed
+  measured: true
+  locator: Abstract; Sec. 1; Table 4; Sec. 4.5, Table 7
+- source: 'Chengjie Wang, Jingzheng Wu, Xiang Ling, Tianyue Luo, Chen Zhao, "Correct Code, Vulnerable
+    Dependencies: A Large Scale Measurement Study of LLM-Specified Library Versions", https://arxiv.org/abs/2605.06279'
+  date: '2026-05-07'
+  task: Inject a precomputed version for each third-party library (the newest release with no known CVE,
+    else the one with fewest, from OSV and PyPI data as of Feb 2026) into the code-generation prompt,
+    against a plain prompt and a natural-language instruction to avoid vulnerable versions
+  effect: Tasks with at least one known CVE fell from 36.70-55.70% to 10.90-27.60% across ten models with
+    the injected versions; the instruction alone moved it by -2.2 to +4.3 points (Claude Sonnet 4.6 rose
+    from 50.50% to 54.80%). Static compatibility rose from 15.88-77.35% to 78.57-92.22% and the BigCodeBench
+    pass rate from 6.49-48.62% to 32.38-52.22% (GPT-5.4 fell from 48.62% to 46.67%). Adding retrieved
+    API signatures to the injected versions changed static compatibility by -1.11 to +2.38 points.
+  conditions: PinTrace, 1,000 Stack Overflow tasks; BigCodeBench for execution; GPT-5.4, Claude Sonnet
+    4.6, Gemini 3.1 Pro, DeepSeek-V3.2, Kimi-K2.5, Qwen3.5-397B, Qwen3-235B, Qwen3-30B, MiniMax-M2.5,
+    Llama-4-Scout
+  direction: supports
+  measured: true
+  locator: Sec. 6.3, Tables 10 and 11
+- source: Wenjie Zhou, Yuan Gao, Xin Zhou, Hao Fu, Zhongjian Miao, Wei Chen, Bo Chen, Xiaobing Zhao, "Benchmarking
+    Real-Time Question Answering via Executable Code Workflows", https://arxiv.org/abs/2604.16349
+  date: '2026-03-16'
+  task: Inject the current timestamp into a search agent's system prompt and add instructions to anchor
+    on it, resolve relative dates before tool calls and keep retrieved dates apart from the current one,
+    on questions whose answers change daily
+  effect: With Qwen3-235B and only the system prompt varied, accuracy rose from 16.0% (original DeepResearch
+    prompt) to 24.6% with real-time awareness, 28.2% with time anchoring and relative-time resolution,
+    and 30.6% after distinguishing retrieved historical dates from the current time. "Temporal Confusion",
+    where agents take a retrieved past date as the current time, was a main failure mode. Best models
+    reached about 46%.
+  conditions: RT-QA, 320 Chinese questions in 12 domains, ground truth computed at inference time; prompt
+    study on one model; eight models in the main runs (GPT-5.2, Gemini-3-Pro, Claude-4.5, GLM-4.7 and
+    others), Jan 10-15, 2026; GPT-5.2 judge (108-109 of 109 agreement with humans)
+  direction: supports
+  measured: true
+  locator: Sec. 4.1 (Prompt Optimization); Sec. 4.2, Table 3; App. A.3
 assessment:
   qa:
     unit: Template renders with injected values; no placeholder text survives.
@@ -211,6 +316,10 @@ assessment:
     - quality
 related:
 - 3.b.i
+- 3.a.iv
+- 7.b.iii
+- 7.b.iv
+- 10.c.i
 provenance:
   layer: target
   origin: observed
@@ -218,8 +327,13 @@ provenance:
   sub_type: context
   library_group: Context Engineering
   library_source: master
-caveats: 'Few studies isolate the date on agent tasks; the measured support is indirect: a stated year,
-  absolute against relative dates, the time remaining in a negotiation. On tasks that do not depend on
-  time the date only adds variance, and chain-of-thought amplifies it, so fix the date in evals. Some
-  providers already add a date server-side, so check the model is not seeing two. Any per-request value
-  placed before the cached prefix turns every call into a cache write (3.b.i).'
+caveats: 'Few studies isolate the date on agent tasks, and the newest are small: the placement results
+  are post hoc, on 80 Vietnamese addresses in single runs, and the search-agent gain is one model on 320
+  questions with instructions added on top of the date. Models fall back on their training prior: with
+  reasoning off, a date in the system prompt, an earlier turn or a date tool left most answers about a
+  changed fact outdated, having a model rewrite each question with the date inserted the old fact as a
+  premise into 9% of them, and a declared past date changed what GPT-5 claimed to know (39% to 1%) but
+  not its accuracy (0.76 to 0.75). On tasks that do not depend on time the date only adds variance, and
+  chain-of-thought amplifies it, so fix the date in evals; some chat templates and providers already add
+  a date, so check the model is not seeing two. Any per-request value placed before the cached prefix
+  turns every call into a cache write (3.b.i).'

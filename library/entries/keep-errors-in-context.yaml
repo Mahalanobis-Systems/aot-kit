@@ -19,58 +19,95 @@ evidence_domains:
 - tool-use
 - code-generation
 - planning
+- conversation
 categories:
 - orchestration.bound
-summary: 'Return every failed action to the model as an error it can read (the call, the cause, a capped
-  trace) instead of swallowing the exception, retrying silently, returning an empty result or deleting
-  the failed attempt, and collapse each error once it is resolved. Failures that surface as explicit errors
-  were recovered from far more often than failures that look like valid output (37 points more on average
-  across nine models on one benchmark), and a linter that shows its errors and rejects the bad edit raised
-  SWE-bench Lite from 15.0% to 18.0% on one model. The limits: in 135M-1.7B models the verbatim failed
-  call made exact repeats more likely (though deleting it was worse), a model''s own unflagged mistakes
-  in its context raise its later error rate, and on HumanEval restarting fresh after 2-3 failed fixes
-  beat continuing; so keep the diagnosis, cap it, and don''t let failures pile up.'
+summary: 'Show the agent every failed action as a marked error it can read, with the next step it can
+  take, instead of hiding it, and collapse the error once it is fixed. Return the call, the cause and
+  a capped trace as an error result rather than swallowing the exception, retrying silently, returning
+  an empty or plausible-looking result or deleting the failed attempt. On one benchmark agents recovered
+  from explicit failures 37 points more often than from silent ones across nine models, a note naming
+  the recovery tools on silently failed results raised completion from 10.9% to 28.1% on four current
+  open-weight models, and one model almost never misreported a failure marked status:error (at most 1.2%)
+  but answered dishonestly in up to 45.3% of failures returned as status:ok. The limits: deleting the
+  failed exchange did only 1.9-3.8 points worse than keeping it across 13 open models, in 135M-1.7B models
+  the verbatim failed call made exact repeats more likely (though deleting it was worse), a model''s own
+  unflagged mistakes raise its later error rate, on HumanEval restarting fresh after 2-3 failed fixes
+  beat continuing, and instructions planted in third-party error text can steer the agent; so keep the
+  diagnosis and the next step, cap it, strip instructions from third-party errors, and don''t let failures
+  pile up.'
 how: '1. Start from the harness as it is and find every place a failure is hidden from the model: exceptions
   swallowed, silent retries, a failed attempt deleted before the retry, a generic "operation failed" in
-  place of the cause, or an empty or default result returned on failure. Inject a few failures (a tool
-  that fails on first use, a silent wrong result, a third-party error message) and record recovery and
-  repeated failed calls. 2. Return every failed action to the model in the next turn as a tool result
-  marked as an error: the call (tool and arguments), the error type, the cause message and the exit code.
-  Never turn a failure into an empty or plausible-looking result; on one benchmark agents recovered from
-  silent failures 37 points less often than from explicit ones. Keeping the loop alive when a tool raises
-  is 2.b.i. 3. Cap what goes in: keep the exception type and message, the frames in the agent''s own code
-  and the last lines of output; write the full trace or log to a file and give the path (2.c.i); make test
-  and lint runs print a few lines, with ERROR and the reason on one line. Write the errors you own so
-  they name the fix, and strip sentences from third-party error text that ask for steps the agent cannot
-  take (a terminal command, a config change, a web page); in one study a one-sentence filter prompt raised
-  recovery on expired credentials from 45% to 82%. 4. Do not retry from a context with the failure deleted:
-  under greedy decoding that was the harness that repeated most. If the agent re-emits a failed call verbatim
-  (measured in small models), replace the earlier verbatim call with a short harness-written note of what
-  failed and why, or refuse exact repeats (7.b.i); keep the diagnosis either way. 5. Drop errors once they
-  are resolved: when a later call succeeds or the tests pass, collapse the old error observation to a
-  one-line stub, keep only the first of a run of identical format errors, and carry only unresolved errors
-  through compaction (5.a.i). Don''t let failures pile up: after 2-3 failed fixes of the same error, restart
-  from the original task (optionally with a one-line note of what failed) or hand off, since non-thinking
-  models make more mistakes as their own uncorrected errors accumulate in context. 6. Measure with paired
-  runs on the same tasks and injected failures, the harness as is against errors kept, capped and dropped
-  once resolved, per model: task success, recovery rate per injected failure by type (the agent''s own
-  call, credentials, permissions, rate limits, silent wrong results), exact and canonical repeat rate
-  of failed calls, runs ending in a loop, steps and tokens. Re-run after a model change: the repetition
-  effect shrank with model size, and thinking models did not self-condition.'
+  place of the cause, or an empty, null or default result returned with a success status. Inject a few
+  failures (a tool that fails on first use, a silent wrong result, a third-party error message, one that
+  embeds an instruction to act) and record recovery, repeated failed calls and what the final answer claims.
+  2. Return every failed action to the model in the next turn as a tool result marked as an error in the
+  envelope (is_error, isError or status: error): the call (tool and arguments), the error type, the cause
+  message and the exit code. Never turn a failure into an empty or plausible-looking result: on one benchmark
+  agents recovered from silent failures 37 points less often than from explicit ones, and in one study
+  a model answered dishonestly in up to 45.3% of failures returned as status ok with an unusable value,
+  against at most 1.2% when the tool returned status error. Where a tool can fail silently, check its
+  results against cheap output contracts (required fields, types, allowed values, sign, simple totals)
+  and, on a violation, keep the result and attach a short note naming the violated property and the tools
+  that can recover it: on four current open-weight models that raised completion under silent failures
+  from 10.9% to 28.1%. Keeping the loop alive when a tool raises is 2.b.i. 3. Cap what goes in: keep the
+  exception type and message, the frames in the agent''s own code and the last lines of output; write
+  the full trace or log to a file and give the path (2.c.i); make test and lint runs print a few lines,
+  with ERROR and the reason on one line. Write the errors you own so they name the next step (the call
+  to repeat, the value to change, the tool to switch to): in the contract-note study the list of recovery
+  tools carried the gain, while more diagnostic detail added nothing detectable. Treat third-party error
+  text as untrusted: strip sentences that ask for steps the agent cannot take (a terminal command, a config
+  change, a web page; in one study a one-sentence filter prompt raised recovery on expired credentials
+  from 45% to 82%) and any instruction to act (send, forward, run, authenticate), and require approval
+  for side-effecting actions an error message asks for (10.c.i, 10.b.i): in one small red-team study all
+  four frontier models tested followed an exfiltration instruction planted in a tool error once it was
+  reworded, while two coding CLIs with approval gates blocked it. 4. Keep the failed exchange and append,
+  don''t rewrite: under greedy decoding, retrying from a context with the failure deleted repeated most
+  in small models, and across 13 open models (3B-70B) deleting the failed call and its error did 1.9 to
+  3.8 points worse than keeping it (both followed by the same note), while deleting it and restating it
+  in the earlier user message broke stopping in Llama models (Llama-3.3-70B stopped after unrecoverable
+  errors in 2% of cases, against 95% with the history untouched). To steer the next action, add a short
+  harness note after the kept failure as a new turn, with what failed, its kind and the next step: on
+  real coding-agent histories that raised correct next actions by 34.4 points over the tool error alone,
+  and it beat the same sentence inside the tool result in 10 of 13 models. Put only facts the harness
+  knows in that note (tool, arguments, error kind, next step), not third-party error prose: the study''s
+  authors caution, untested, that tool text restated in a user turn gains authority. If a small model
+  re-emits a failed call verbatim, refuse exact repeats (7.b.i), or replace the verbatim call string with
+  a short description of what failed while keeping the error and its diagnosis (it cut repeats in 135M-1.7B
+  models; check stopping per model family if you do). 5. Drop errors once they are resolved: when a later
+  call succeeds or the tests pass, collapse the old error observation to a one-line stub, keep only the
+  first of a run of identical format errors, and carry only unresolved errors through compaction (5.a.i).
+  Don''t let failures pile up: after 2-3 failed fixes of the same error, restart from the original task
+  (optionally with a one-line note of what failed) or hand off, since non-thinking models make more mistakes
+  as their own uncorrected errors accumulate in context. 6. Measure with paired runs on the same tasks
+  and injected failures, the harness as is against errors kept, marked, capped and dropped once resolved
+  (and, for silent failures, with contract notes), per model: task success, recovery rate per injected
+  failure by type (the agent''s own call, credentials, permissions, rate limits, silent wrong results),
+  exact and canonical repeat rate of failed calls, runs ending in a loop, final answers that assert a
+  value a failed call did not return, compliance with instructions planted in error text, steps and tokens.
+  Include fault-free runs (a contract note on a correct result harmed as often as it rescued in one study),
+  and re-run after a model change: the repetition effect shrank with model size, the effect of deleting
+  the failed exchange differed by model family, and thinking models did not self-condition.'
 detect:
-  static: Exceptions swallowed or retried silently; failures returned as empty or default results; a generic
-    "operation failed" in place of the cause; failed attempts deleted before a retry; full stack traces
+  static: Exceptions swallowed or retried silently; failures returned as empty, null or default results
+    with a success status; a generic "operation failed" in place of the cause; failed attempts deleted
+    before a retry; harness notes that rewrite earlier messages instead of appending; full stack traces
     or test logs passed untruncated; third-party error text passed through with steps the agent cannot
-    take (a terminal command, a config change, a web page).
-  traces: Errors absent from the next model input; exact repeats of a call that already failed; runs of
-    failed fixes of the same error; agents stopping after error text that asks for a step they cannot
-    take; error observations thousands of lines long.
-  evals: Recovery rate per injected failure and repeat rate of failed calls, alongside task success.
+    take (a terminal command, a config change, a web page) or with instructions to act (send, forward,
+    run).
+  traces: Errors absent from the next model input or not marked as errors; exact repeats of a call that
+    already failed; runs of failed fixes of the same error; agents stopping after error text that asks
+    for a step they cannot take; final answers asserting a value after a tool returned nothing usable;
+    actions taken because an error message asked for them; error observations thousands of lines long.
+  evals: Recovery rate per injected failure, repeat rate of failed calls and the rate of final answers
+    asserting values a failed tool did not return, alongside task success.
   probes:
     what: A tool that fails deterministically on first use.
-    construct: Inject a deterministic first-use failure, a silent failure (a plausible but wrong result)
-      and a developer-facing error message; check that the error reaches the next turn, and compare recovery
-      and repeats with the error kept verbatim, kept as a short description, and removed.
+    construct: Inject a deterministic first-use failure, a silent failure (a plausible but wrong result,
+      or an empty result marked as success), a developer-facing error message and one that embeds an instruction
+      to act; check that the error reaches the next turn marked as an error, and compare recovery, repeats,
+      honest failure reports and compliance with the planted instruction with the error kept verbatim,
+      kept with an appended note, and removed.
   primary:
   - static
   - traces
@@ -79,7 +116,12 @@ impact:
     effect: mixed
     size: medium
     when: recovery from silent failures 37.15 points below explicit errors, averaged over nine models
-      (Zhu, Jun 2026); lint errors shown with the bad edit rejected 18.0% vs 15.0% on SWE-bench Lite (Yang,
+      (Zhu, Jun 2026); a contract note naming recovery tools on silently failed results 28.1% vs 10.9%
+      completion on four current open-weight models and +14.0 and +12.0 points on τ-bench retail, no net
+      effect where most runs completed anyway (Panthi, Aug 2026); deleting the failed exchange 1.9-3.8
+      points below keeping it across 13 open models, a new-turn note with the next step +34.4 points on
+      real coding-agent histories and +14.2 and +10.5 points on ToolMaze explicit errors, no gain on Loud/Quiet
+      (Woo, Nov 2026); lint errors shown with the bad edit rejected 18.0% vs 15.0% on SWE-bench Lite (Yang,
       May 2024); in 135M-1.7B models a kept verbatim failed call raised repeat probability from 0.06 to
       0.54, while deleting it raised exact repeats from 31% to 80% (Gumaan, Aug 2026); wrong answers in
       a model's own history lowered later accuracy in non-thinking models of every size tested (Sinha,
@@ -92,40 +134,60 @@ impact:
     when: error text and full traces add tokens unless capped (Carlini, Feb 2026); masking old observations,
       errors included, cut cost per instance by more than half in most configurations against the full
       history (Lindenbauer, Aug 2025); fresh starts used similar or fewer tokens, e.g. 108,289 to about
-      89,000 (Adnan, Jun 2025); filtering 949 error messages with a prompt cost $0.09 (Xu, Sep 2026)
+      89,000 (Adnan, Jun 2025); filtering 949 error messages with a prompt cost $0.09 (Xu, Sep 2026);
+      contract notes raised list cost 7% with no extra model call, against 498% for a reviewer loop (Panthi,
+      Aug 2026); a new-turn note recomputed a median 1,081 prompt tokens at the failed step against 965
+      for rewriting the history (Woo, Nov 2026)
     basis: evidence
   performance:
     effect: unknown
-    when: no study times error retention directly; LLM summaries that may hide failure signals lengthened
-      Gemini 2.5 Flash runs to 52 turns against 44 with observation masking (Lindenbauer, Aug 2025)
+    when: no study times error retention directly; contract notes add no model call (Panthi, Aug 2026);
+      LLM summaries that may hide failure signals lengthened Gemini 2.5 Flash runs to 52 turns against
+      44 with observation masking (Lindenbauer, Aug 2025)
   security:
     effect: mixed
     size: small
-    when: Stack traces may leak internals.
-    basis: assessment
+    when: 'showing third-party error text opens an injection channel, which approval gates closed in one
+      study: in one small red-team study an exfiltration instruction inside a tool error was followed
+      by two of four frontier models as written and by all four after one round of rewording, against
+      one of four when the same instruction sat in a successful result, while Gemini CLI and Codex with
+      approval gates blocked every payload (Patel, Jun 2026); a harness note that restates tool text in
+      a user turn gives it more authority, untested (Woo, Nov 2026)'
+    basis: evidence
   governance:
     effect: improves
     size: small
     basis: assessment
   brand:
-    effect: mixed
-    size: small
-    basis: assessment
+    effect: improves
+    size: medium
+    when: a model almost never misreported a failure its tool returned as status:error (at most 1.2% dishonest
+      answers), but asserted or relayed a value, or invented a refusal reason, in 3.5% to 45.3% of failures
+      returned as status:ok, by failure type under a deployment prompt (Sethi, Sep 2026); a coding agent
+      given a failure note reported a forbidden data service in 12 of 12 runs and wrote no fabricated
+      result file, against fabricated files in 33% and 50% of runs without it (Woo, Nov 2026)
+    basis: evidence
   primary:
   - quality
 measure:
 - method: experiment
   tier: 2
   how: 'paired runs on a fixed task set with failures injected at fixed steps (a tool that fails deterministically
-    on first use, a silent failure that returns a plausible but wrong result, a third-party error that
-    names a step the agent cannot take): the harness as is against failures returned as error results
-    with capped traces and collapsed once resolved, and optionally against a harness-written note in place
-    of the verbatim failed call; per model: task success, recovery rate per injected failure, exact and
-    canonical repeat rate of failed calls, runs ending in a loop, steps and tokens'
+    on first use, a silent failure that returns a plausible but wrong value, a third-party error that
+    names a step the agent cannot take, and one that embeds an instruction to act): the harness as is
+    against failures returned as marked error results with capped traces and collapsed once resolved,
+    with contract notes on silent failures, and optionally with the failed exchange deleted or with a
+    harness note appended as a new turn; per model: task success, recovery rate per injected failure,
+    exact and canonical repeat rate of failed calls, runs ending in a loop, final answers asserting a
+    value the tool did not return, compliance with the planted instruction, steps and tokens; include
+    fault-free runs to count harms'
 - method: monitor
-  how: 'in production traces: the share of failed tool calls whose error text reaches the next model input;
-    exact repeats of a call that already failed; consecutive failed attempts on the same error; the size
-    of error observations; and recovery after errors by failure type (the agent''s own call against credentials,
+  how: 'in production traces: the share of failed tool calls whose error text reaches the next model input
+    marked as an error; results returned with a success status but an empty, null, redacted or truncated
+    value; exact repeats of a call that already failed; consecutive failed attempts on the same error;
+    the size of error observations; contract notes fired per tool and how often they fire on results that
+    were correct; final answers that assert a value after a failed call; actions taken because an error
+    message asked for them; and recovery after errors by failure type (the agent''s own call against credentials,
     permissions and rate limits)'
 evidence:
 - source: paper Table 6
@@ -301,6 +363,120 @@ evidence:
   direction: supports
   measured: false
   locator: Enforcing architecture and taste
+- source: 'Sunghyeun Woo, Javier Conde, Pedro Reviriego (Universidad Politécnica de Madrid), "Same Error,
+    Different Recovery: How Delivery Changes LLM Agent Behavior", https://arxiv.org/abs/2611.11581'
+  date: '2026-11-08'
+  task: 'Hold the error text fixed and vary how a failed tool call reaches the model: left in the tool
+    message as the client sent it (C0), with a kind-specific next-step sentence appended to the tool message
+    (C1), the failed call and result removed and a runtime note with the same sentence put in the earlier
+    user message (C2) or in a new user turn (C4), or the failed exchange kept and the note added in a
+    new user turn after it (C3); then ship C3 as an opt-in layer in an inference engine and compare it
+    on and off on public benchmarks and a coding agent'
+  effect: 'Removing the failed exchange against keeping it, both with the note in a new turn (C4 minus
+    C3): -3.8 points (90% interval -4.5 to -3.2) in the 3-35B tier and -1.9 (-2.5 to -1.2) in the 27-70B
+    tier, inside the registered 5-point equivalence margin. Deleting it and restating it in the user message
+    (C2) broke stopping in Llama models: for Llama-3.3-70B, stopping on unrecoverable errors was 95% with
+    the client''s form, 2% with C2 and 100% with C3; even "Do not call any tool again." left Llama-3.1-8B''s
+    stopping at 0 of 60, while a new user message after the failed exchange restored it in 59 of 60. Without
+    the two Llama models the pooled C3 minus C2 difference was -0.1 and -0.2 points, and Qwen2.5-7B was
+    worse with C3. On real coding-agent histories C3 beat the client''s form by 34.4 points in both tiers
+    and beat C2 57.8% to 45.6% in the large tier (p=0.027; small tier 55.6% vs 51.1%, p=0.58). Guidance
+    in a new turn beat guidance in the tool message in 5 of 7 and 5 of 6 models. In the client''s form,
+    five of six 7-35B models repeated a call after a transient error in 0-37% of cases. With the layer
+    on, ToolMaze pass rate on explicit errors rose 14.2 (7-8B) and 10.5 (32-70B) points, mostly on transient
+    faults; Loud/Quiet showed no effect (-1.1 and +0.5); a client given the exact fault kind did 16.8
+    and 18.5 points better still. In a Qwen Code agent facing a forbidden data service, the layer reported
+    the access problem in 12 of 12 runs and wrote no result file, against fabricated result files in 33%
+    (Qwen3-8B) and 50% (Qwen3-32B) of runs without it. Median prompt tokens recomputed at the decision
+    step: 94 (C2) and 171 (C3) on synthetic items, 965 and 1,081 on real histories.'
+  conditions: 13 open models (Qwen, Llama and Gemma 4 families), 3B-70B, greedy decoding in the authors'
+    deterministic engine; studies 1-2 on synthetic scenarios with read-only tools (720-900 conversations
+    per model) plus 30 failure points from six real Qwen Code sessions (19 clusters, one model per tier,
+    any-call scoring); study 2's small tier preregistered on OSF, the rest fixed in local hash logs; the
+    layer's frozen rules gave the right guidance to 29.8% of ToolMaze's explicit errors; the coding-agent
+    test is descriptive (six tasks per model); no closed frontier model; the authors caution that restating
+    tool text in a user turn gives it more authority, which they did not test; the layer is the authors'
+    own
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1.3 Table 2; §5.1; §5.2 Table 3; §5.3 Figure 4; §5.4 Figure 5; §6 (Limitations)
+- source: 'Arham Sethi, Arsen Kenzhebayev, Saanvi Paturi, Vatsal Raina, Vyas Raina, Ivaxi Sheth (Spark
+    AI Research, Apta AI), "Fabrication After Tool Failure: Tool-Augmented Agents Assert Values Their
+    Tools Did Not Return", https://arxiv.org/abs/2609.14758'
+  date: '2026-09-13'
+  task: Force a tool call that always returns an unusable payload, either signaled (status:error with
+    a server error or a timeout) or unsignaled (status:ok with a redacted, corrupted, stale, schema-mismatched,
+    empty or truncated value), and label whether the final answer honestly reports the failure, asserts
+    or relays a value, or declines with an invented reason; compare system prompts, shipped framework
+    prompts and one-sentence defenses
+  effect: 'Dishonest rate (fabricated or relayed values plus unfaithful refusals) 14.10% under the deployment
+    prompt and 10.17% under a neutral one. By failure type under the deployment prompt: 0.0% for HTTP
+    500 and timeout (status:error; at most 1.2% in any condition), against 45.3% redacted, 23.3% corrupted,
+    18.6% stale, 14.0% schema mismatch, 8.1% empty result and 3.5% truncated (status:ok). Shipped framework
+    prompts: CrewAI 24.67%, LlamaIndex 13.41%, smolagents 12.06%; none of nine audited frameworks specifies
+    what the model should do when a tool fails. Appending an instruction to print retrieval_status: OK
+    or FAILED before answering cut dishonesty from 14.10% to 0.87% (1 item worse, 92 better, of 688),
+    and FAILED declarations were faithful in 99.69-99.89% of cases. Three further models reproduced the
+    direction of the prompt effects.'
+  conditions: gemini-2.5-flash at temperature 0.7 for the main grid, labeled by gemini-2.5-pro (agreement
+    checked on 30 items, kappa 0.89); gemini-2.5-flash-lite, gpt-oss-120b and gpt-oss-20b on three conditions;
+    1,024 items over 16 fictional internal-system domains and eight failure types, 688 in scope (86 per
+    cell); deterministic tool stubs; signaled and unsignaled failures are different failure types, not
+    the same payload with and without the flag; workshop paper
+  direction: supports
+  measured: true
+  locator: Abstract; §5.1; §5.2 Tables 2-3; §6 Table 4; §7
+- source: 'Sugam Panthi, Rabab Abdelfattah (The University of Southern Mississippi), "Outcome Monitors:
+    Recovery Affordances for Silent Tool Failures", https://arxiv.org/abs/2608.19303'
+  date: '2026-08-19'
+  task: Check each tool result against outcome contracts mined from task-disjoint clean traces or public
+    schemas (types, required fields, allowed values, positivity, simple affine relations) and, on a violation,
+    keep the result and append an advisory receipt naming the violated property and the public recovery
+    tools, without restricting actions; compare with the raw result, a generic warning, a receipt without
+    the recovery-tool list, and a reviewer loop
+  effect: 'ToolMaze, hardest implicit-failure classes, 80 workflows per model: completion 35/320 (10.9%)
+    to 90/320 (28.1%), +17.19 points (95% interval 11.25 to 23.44): DeepSeek V4 Flash +16.25, V4 Pro +12.50,
+    Qwen 3.7 Plus +15.00, Qwen 3.7 Max +25.00; MiniMax M3 replication 5/80 to 20/80; the effect persisted
+    with 8,192-token thinking budgets. τ-bench retail: +14.0 points (41/100 to 55/100) on DeepSeek V4
+    Flash and +12.0 on V4 Pro, from categorical violations (6/50 to 20/50 on Flash); conservation violations
+    +0.0 and +6.0 points (not significant). Controls on 114 paired workflows: a receipt stripped of the
+    recovery-tool list performed at baseline (+0.9 points); restoring the list added +11.4 points (p=.028);
+    a localized against a generic warning -2.6 and immediate against deferred +0.9 points, neither detectable
+    at an about 18-point minimum detectable effect. Clean workflows: 74/114 completed in both arms, with
+    five rescues and five harms from 16 false receipts. Held-out AppWorld: 25/32 in both arms. Against
+    a reviewer-loop port: +11.25 points; the receipt raised list cost 7% ($1.984 against $1.853 for 160
+    runs) with no extra model call, the reviewer 498%.'
+  conditions: DeepSeek V4 Flash and V4 Pro, Qwen 3.7 Plus and Max, MiniMax M3; temperature 0, extended
+    reasoning off except in the ablation; fault-enriched samples with one injected fault per run; frozen,
+    prespecified tests except those labeled retrospective; on faults derived from production incidents,
+    outside the mined contract vocabulary, detection fell to about 46% and completion did not change;
+    the monitor is the authors' own
+  direction: supports
+  measured: true
+  locator: Abstract; §3; §4; §5 Table 2, Figures 2-3; Appendix D Table 6; Appendix Q
+- source: 'Harshil Patel, Kunal Pai (University of California, Davis), "VATS: Exploiting Implicit Authority
+    in Error-Path Injection via Systematic Mutation", https://arxiv.org/abs/2606.07992'
+  date: '2026-06-06'
+  task: 'Red-team the error path: a malicious MCP tool returns error JSON carrying an instruction to email
+    workspace data to an attacker address; compare with the same instruction inside a successful tool
+    response, mutate the error payload along seven dimensions (error type, framing, authority markers,
+    position, specificity, urgency, rephrasing), and replay the payloads against two coding CLIs'
+  effect: 'Action compliance: three standard injections in successful results 16.7% on average (only Qwen3-Coder
+    complied, on two of three); the unmutated error payload 50% (Gemini 3.1 Pro and GLM-5.1 complied,
+    GPT-5.5 and Qwen3-Coder did not); after one round of mutation at least one variant reached 100% for
+    every model, and sandwiching the instruction in the middle of the error text worked on all four. Across
+    all error variants the compliance rate was 0.67 (GLM-5.1), 0.65 (Qwen3-Coder), 0.28 (Gemini 3.1 Pro)
+    and 0.23 (GPT-5.5); compliant responses rarely flagged the instruction (mean detection evasion 0.87)
+    and abandoned the original task in 80% of cases. Gemini CLI (Gemini 3.1 Pro) and Codex (GPT-5.5) with
+    repository instruction files complied 0 times, flagging the payloads as exfiltration.'
+  conditions: Gemini 3.1 Pro, GPT-5.5, GLM-5.1 and Qwen3-Coder-480B through raw function-calling APIs
+    at temperature 0.1, a neutral system prompt with no error-handling rules, five tools including send_email;
+    one tool, one attack goal; each payload variant scored as complied or not (per-variant rates are 0%
+    or 100%), about 40 variants per model; compliance read from tool calls, with an LLM judge for text
+    responses
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.2; §4.1 Table 2; §4.2 Table 3; §4.3 Table 4; §4.5
 assessment:
   qa:
     unit: Error text appears in the next prompt.
@@ -346,6 +522,9 @@ related:
 - 2.a.ii
 - 7.c.i
 - 9.b.iii
+- 10.c.i
+- 10.b.i
+- 3.a.ii
 provenance:
   layer: target
   origin: observed
@@ -353,11 +532,19 @@ provenance:
   sub_type: state_management
   library_group: Production
   library_source: master
-caveats: 'No study isolates keeping versus hiding an error on a frontier agent: the closest measurements
-  are a bundled linter change on one model (+3 points on SWE-bench Lite), a benchmark that compares explicit
-  with silent tool failures, and a single-author study of 135M-1.7B models in which the verbatim failed
-  call raised repeats while deleting it was worse. Failures that accumulate hurt: wrong answers in a model''s
+caveats: 'Two harness ablations now separate showing a failure from hiding it, both on open-weight models:
+  across 13 models (3B-70B), deleting the failed exchange did 1.9-3.8 points worse than keeping it and,
+  when the note replaced it in the user message, broke stopping in Llama models, and on four current models
+  a contract note on silently failed results raised completion from 10.9% to 28.1%, with no net gain where
+  most runs succeeded anyway and as many harms as rescues on clean runs; no ablation covers a closed frontier
+  model, and the honesty result (at most 1.2% dishonest answers on status:error, up to 45.3% on status:ok)
+  rests on one 2025 model with a same-family judge. Failures that accumulate hurt: in 135M-1.7B models
+  the verbatim failed call raised repeats (though deleting it was worse), wrong answers in a model''s
   own history lowered its later accuracy in non-thinking models (not fixed by scale, absent in one thinking
   family), and on HumanEval restarting fresh after 2-3 failed fixes beat continuing for all six models
-  tested. What the error says matters as much as whether it is shown: a step the agent cannot take cut
-  recovery from 82% to 45%, and for failures in the agent''s own call the wording barely mattered.'
+  tested. What the error says matters as much as whether it is shown: naming the next step or the recovery
+  tools carried the measured gains while more diagnostic detail did not measurably help, a step the agent
+  cannot take cut recovery from 82% to 45%, and for failures in the agent''s own call the wording barely
+  mattered. Third-party error text is also an injection channel: in one small red-team study frontier
+  models followed instructions planted in tool errors through raw APIs, though two coding CLIs with approval
+  gates blocked them.'

@@ -22,60 +22,131 @@ evidence_domains:
 categories:
 - tools.refactor
 - context.filter-input
-summary: 'Offer the agent only the tools the task needs. First remove tools no task uses; then consolidate
-  tools with overlapping scopes (read and write tools with a method parameter, tools grouped around jobs),
-  because rewording cannot separate tools that genuinely overlap. Then keep a small core always loaded
-  and defer the rest: names and one-line purposes in the prompt, full definitions loaded on demand through
-  tool search, per-server files or expandable groups. Defer once definitions exceed about 10k tokens or
-  10 tools; keep deferred groups under about 10 tools each. Every tool offered has a cost even when not
-  called: one irrelevant tool cut accuracy from 98.2% to 63.5%. Deferral costs extra calls (2-3x) and
-  time (about 50%), so consolidate first.'
-how: 1. From traces over the eval set, list each tool's call count and the cases where it was needed.
-  2. Remove tools with no calls and no needing case. 3. Find overlapping pairs (similar names or descriptions,
-  or cases routed to the wrong one of the pair) and merge them; a method parameter often replaces several
-  tools. 4. If what remains exceeds about 10 tools or 10k tokens, keep a core loaded and defer the rest
-  behind search or expandable groups. 5. Run the paired eval, old set against new, and compare coverage,
-  success, calls and latency.
+summary: 'Give an agent only the tools its tasks need, and put the rest behind tool search once the catalog
+  is large. Remove tools no task uses, then merge overlapping ones into a few task-level tools (rewording
+  cannot separate tools that genuinely overlap), but not into one catch-all tool: four task-level tools
+  beat both 8-10 single-purpose tools and a single tool for small local models. Every listed tool costs
+  tokens on every turn and costs some models accuracy: a related but unnecessary tool cut six models''
+  pooled answer rate on questions they could answer unaided from 98.2% to 63.5% (two were unaffected),
+  and growing the list from 8 to 128 tools cost 12.3 to 17.5 points across 21 current model configurations,
+  mostly in those where the longer list used up a tight output cap (their 43.7-point loss fell to 2.7
+  once the cap was raised sixteenfold). Deferral pays at scale with a capable model (12.6k against 233.3k
+  tokens per turn with 1,500 extra tools, success held level, fewer successful tool-injection attacks),
+  but a weaker model lost 14.9 to 27.8 points driving discovery, search is slower and dearer on small
+  catalogs (break-even about 25-28 tools in one vendor''s cost model) and when the agent searches three
+  or more times, and under prompt caching token savings overstate the bill (17.2% fewer input tokens,
+  5.5% lower bill), so consolidate first and measure per model.'
+how: '1. Start from the baseline, per model: from traces over the eval set, list each tool''s call count,
+  the cases where it was needed, wrong-tool calls, tokens of tool definitions per request, searches per
+  task, latency, billed cost with prompt caching on, and responses cut off at the output cap before any
+  call. 2. Remove tools with no calls and no needing case, and tools the agent''s credentials cannot use.
+  Do not leave a tool in tasks it does not serve: a related but unnecessary tool cut six models'' pooled
+  answer rate on questions they could answer unaided from 98.2% to 63.5% (two models were unaffected);
+  where it must stay, a one-sentence note on its scope raised the answer rate by up to 45.6 points in
+  that study (2.b.ii). 3. Consolidate: find overlapping pairs (similar names or descriptions, or cases
+  routed to the wrong one of the pair) and merge them; rewording cannot separate tools whose scopes genuinely
+  overlap (2.a.ii). Group by task class, with an action or method parameter for closely related operations,
+  but do not collapse a server into one catch-all tool: across nine small local models, four task-level
+  tools completed 0.49 of tasks against 0.42 for 8-10 single-purpose tools, 0.42 for one read and one
+  write tool, and 0.36 for a single tool, with which 28.2% of runs called no tool. 4. If what remains
+  is still large, keep a small core of frequently used tools loaded and defer the rest behind tool search,
+  per-server files or expandable groups of under about 10 tools each. Thresholds differ: Anthropic recommends
+  deferral from 10 tools or 10k tokens of definitions; one vendor''s cost model puts the break-even against
+  a static list at about 25-28 tools; in one benchmark GPT-5.4 lost 0.5 points with 1,000 unrelated tools
+  listed (87.2% to 86.7%) and 3.9 at 1,500, while tool search held level. First check that the model can
+  drive discovery: with GPT-5.1, gateways that exposed tools through discovery scored 14.9 to 27.8 points
+  below flat lists on the same tasks, while with GPT-5.4 they matched (85.1% against 87.2%). 5. Check
+  search on your own requests: build probes from real multi-step tasks, label the full set of tools each
+  needs (including the tools that produce the IDs later calls consume), and score completeness (every
+  needed tool returned), not recall. At 2,048 registered tools a flat lexical retriever returned the needed
+  tools in 19.4% of its shortlists against 77.8% for a router that picked the server first; one vendor''s
+  ranker covered every needed tool on the first search in 304 of 327 sessions, most misses coming from
+  how the agent split the task. Count searches per task: against a 100-tool list one search cut session
+  input a median 28.2%, while three or more raised it 32.3% to 43.8%. 6. Keep the prompt cache intact:
+  keep the loaded core and the order of definitions fixed, and add discovered tools by appending (deferred
+  loading, a tool-addition block) rather than rebuilding the list mid-session (3.b.ii, 3.b.i). Judge cost
+  in dollars with caching on: with 85% to 87% of input served from cache, 17.2% fewer input tokens became
+  a 5.5% lower bill (an interval that includes zero). 7. Measure with a paired eval per model, old tool
+  set against new (and flat list against search where deferring), several runs per arm: success, search
+  completeness, wrong-tool calls, calls and searches per task, tokens, billed cost, latency, and responses
+  truncated at the output cap. Give reasoning models enough output budget for the tool list before blaming
+  the tools: with a 1,024-token cap, going from 8 to 128 tools cost six truncation-heavy configurations
+  43.7 points, against 2.7 at 16,384. Where MCP servers come from third parties, add tool-injection probes:
+  in one benchmark, gateways that exposed tools through discovery held tool-injection attack success at
+  about 16% against 40.6% to 51.5% for flat lists with GPT-5.1, and about 31% against 45.1% to 53.9%
+  with GPT-5.4; with GPT-5.1 discovery also cost up to 5.5 points of task success.'
 detect:
   static: more than about 10 tools, or more than about 10k tokens of tool definitions, in every prompt;
-    duplicate or near-duplicate tool names or descriptions (73% of audited MCP servers have repeated names);
-    tools the agent's credentials cannot use
+    an MCP client or gateway that sends every connected server's tools on every request; duplicate or
+    near-duplicate tool names or descriptions (73% of audited MCP servers have repeated names); tools
+    the agent's credentials cannot use; a whole server collapsed into one catch-all tool
   traces: tools never called across the eval runs; tool-use coverage below the eval's needs (share of
     needing cases where the right tool was loaded and chosen; GitHub measured 69% for a static list);
     calls to a tool where none was needed; failure rows labeled incorrect-tool-selection concentrated
-    on one pair of tools
-  evals: accuracy falling as tools are added (an ablation over catalog size); paired eval, current tool
-    set against a reduced one
+    on one pair of tools; first responses cut off at the output cap on long tool lists; three or more
+    tool searches per task, or needed tools that search never returned
+  evals: accuracy falling as tools are added (an ablation over catalog size, with unrelated and with near-duplicate
+    tools); paired eval, current tool set against a reduced one; completeness of tool search on labeled
+    multi-tool requests
 impact:
   quality:
     effect: improves
     size: medium
     when: GitHub +2-5 points on SWE-bench with 40 to 13 tools (Nov 2025); Anthropic tool search 49% to
-      74% (Opus 4); one irrelevant tool cost 34.7 points on questions answerable without tools (Sep 2026)
+      74% (Opus 4, Nov 2025); 8 to 128 listed tools -12.3 points across 21 configurations, -43.7 to -2.7
+      in truncation-heavy ones once the output cap was raised sixteenfold, 0.0 for Claude Opus 5.5 and
+      GPT-6.1 Sol (Xu, Oct 2026); flat lists -3.9 to -10.0 points at 1,500 extra tools while tool search
+      held level, but tool search 14.9-27.8 points below flat lists with GPT-5.1 (Zheng, Oct 2026); four
+      task-level tools 0.49 task completion against 0.42 for 8-10 tools and 0.36 for one tool on small
+      local models (Paschalides, Sep 2026); a related unnecessary tool cut the pooled answer rate from
+      98.2% to 63.5% (Paturi, Sep 2026)
     basis: evidence
   cost:
     effect: improves
-    size: large
-    when: definitions -85% (Anthropic); -46.9% tokens (Cursor A/B); deferral alone raises call count
+    size: medium
+    when: tool-definition tokens -85% (Anthropic, Nov 2025); agent tokens -46.9% in an A/B (Cursor, Jan
+      2026); 12.6k against 233.3k tokens per turn with 1,500 extra tools (Zheng, Oct 2026); against a
+      100-tool list, input -17.2% but bill only -5.5% under prompt caching with Codex (-39.6% and -21.8%
+      with Claude Code, which also offloaded large results), while short lookups over 8-37 tools used
+      22.0% more input and three or more searches 32.3-43.8% more (Partee, Oct 2026, vendor's own system)
     basis: evidence
   performance:
     effect: mixed
     size: medium
-    when: consolidation faster (GitHub -400 ms); deferral about 50% slower with 2-3x calls (Speakeasy)
+    when: consolidation faster (GitHub -400 ms response time, Nov 2025); tool search slower with no extra
+      tools (30.1 s against 20.8 s per task) and faster at 1,500 (38.7 s against 64.1 s), crossing between
+      500 and 1,000 (Zheng, Oct 2026); dynamic toolsets 2-3x calls and about 50% slower (Speakeasy, Nov
+      2025)
     basis: evidence
   security:
-    effect: unknown
+    effect: improves
+    size: medium
+    when: 'gateways exposing tools through discovery: tool-injection attack success about 16% against
+      40.6-51.5% for flat lists (GPT-5.1) and about 31% against 45.1-53.9% (GPT-5.4), no difference for
+      injection through returned content or the user prompt, and a spread across discovery designs (about
+      20-41%) as wide as the gap (Zheng, Oct 2026; one benchmark, single run)'
+    basis: evidence
   governance:
     effect: unknown
   brand:
     effect: unknown
+  primary:
+  - quality
+  - cost
 measure:
 - method: verify-fix
   tier: 1
   how: replay the hand-labeled set after removing unused tools
 - method: experiment
   tier: 3
-  how: 'paired eval, old tool set against new: success, coverage, calls, latency'
+  how: 'paired eval per model, old tool set against new and flat list against tool search where deferring,
+    several runs per arm: success, completeness of what search returns on labeled multi-tool probes, wrong-tool
+    calls, calls and searches per task, tokens, billed cost with caching on, latency, and responses cut
+    off at the output cap'
+- method: monitor
+  how: 'per model in production: tools loaded per request and their tokens, searches per task, needed
+    tools that search did not return (calls to unloaded tools, failed lookups), tools never called over
+    a window, cache read share and billed cost per task'
 evidence:
 - source: Jediah Katz (Cursor), "Dynamic context discovery", https://cursor.com/blog/dynamic-context-discovery
   date: '2026-01-06'
@@ -193,11 +264,17 @@ evidence:
     Answering", https://arxiv.org/abs/2609.14157'
   date: '2026-09-12'
   task: Do not offer tools the task does not need
-  effect: '500 query pairs, 10 domains, 6 LLMs, every query answerable from the model''s own knowledge:
-    accuracy falls from 98.2% to 63.5% once an irrelevant tool is offered, whether or not the model calls
-    it.'
+  effect: '500 query pairs, 10 domains, 6 LLMs, every closed-domain query answerable from the model''s
+    own knowledge: the pooled answer rate (share of responses judged correct) falls from 98.2% to 63.5%
+    once a related but unnecessary tool is available, whether or not the model calls it (Gemini 2.5 Flash-Lite
+    99.4% to 23.4% while calling it in 7.8% of trials); GPT-OSS 20B (95.8% to 94.6%) and Grok 4.1 Fast
+    (99.6% to 100.0%) were unaffected. A one-sentence scope-aware system instruction raised the tool-available
+    answer rate by up to 45.6 points.'
   direction: supports
   measured: true
+  conditions: Gemini 2.5 Flash-Lite, Flash and Pro, GPT-OSS 20B, Grok 4.1 Fast, Llama 3.3 70B; one tool
+    per domain, related to the question's domain but outside what it asks; gemini-2.5-flash judge
+  locator: Abstract; §6 Table 2; §6.3 Table 4
 - source: 'Wang et al., "From Docs to Descriptions: Smell-Aware Evaluation of MCP Server Descriptions",
     https://arxiv.org/abs/2602.18914'
   date: '2026-02-21'
@@ -245,10 +322,14 @@ evidence:
 - source: Li et al., "Scalable LLM Agent Tool Access in the Cloud", https://arxiv.org/abs/2607.15593
   date: '2026-07-17'
   task: Front a large tool catalog with hybrid retrieval
-  effect: 'Production MCP gateway over 3,000+ tools: 98% top-15 recall, 8.9x faster tool selection and
-    23.8x fewer tokens than mounting all tools. Systems metrics, not task success.'
+  effect: 'Production MCP gateway over 3,000+ tools: hybrid retrieval with about 98% top-15 recall; against
+    a baseline that mounts and exposes all its tools (372, since it cannot scale to about 1,000), 8.9x
+    faster tool selection (55.7 s to 6.2 s) and 23.8x fewer tokens (505.86k to 21.22k) with Qwen3-Plus;
+    listing all tools, ToolBench selection accuracy fell from 92.4% at 15 tools to 78.2% at 640, below
+    every retrieval method. Systems and selection metrics, not task success.'
   direction: supports
   measured: true
+  locator: §6.2, Figure 9, Tables 3-4
 - source: 'Li et al., "ComplexMCP: Evaluation of LLM Agents in Dynamic, Interdependent, and Large-Scale
     Tool Sandbox", https://arxiv.org/abs/2605.10787'
   date: '2026-05-11'
@@ -359,10 +440,113 @@ evidence:
     and read transcripts; production monitoring is the ground truth after launch. Not about tool counts.
   direction: mixed
   measured: false
+- source: 'Yitian Zheng, Zhaorun Chen, Haoyu Li, Bo Li, "GatewayBench: Unified Capability and Security
+    Evaluation Platform for MCP Gateways", https://arxiv.org/abs/2610.23449'
+  date: '2026-10-16'
+  task: 'Compare MCP gateways that list every connected tool (flattened: AgentCore, Agentgateway, LiteLLM,
+    Lunar MCPX) with gateways that expose discovery meta-tools (hierarchical: Enkrypt layered discovery,
+    Strata search, Bifrost virtual filesystem) as 0, 500, 1,000 or 1,500 task-irrelevant real MCP tool
+    definitions are added, on benign and attack tasks'
+  effect: 'Benign task success, flattened against hierarchical means, 0 to 1,500 added tools: GPT-5.4
+    87.2% to 83.3% against 85.1% to 85.6%; GPT-5.1 75.3% to 65.3% against 47.5% to 42.0%; OpenClaw with
+    GPT-5.1 86.7% to 80.7% against 71.8% to 68.0% (the layered-discovery gateway fell to 23.3% with GPT-5.1,
+    calling hallucinated tools). Tokens per turn (GPT-5.4) 8.3k to 233.3k flattened against 9.1k to 12.6k
+    hierarchical; task time 20.8 s against 30.1 s with no added tools and 64.1 s against 38.7 s at 1,500,
+    the advantage reversing between 500 and 1,000. Indirect attack success with no added tools 47.2% against
+    30.9% (GPT-5.4) and 42.5% against 15.6% (OpenClaw); tool-injection attack success (OpenClaw, GPT-5.1)
+    51.5% falling to 40.6% for flattened gateways as tools were added against about 16% (15.4% to 17.1%)
+    for hierarchical ones, with no separation for injection through environment content; under GPT-5.4
+    tool injection 53.9% to 45.1% against about 31%, and among hierarchical gateways about 20% (Bifrost)
+    to 41% (Enkrypt). Direct prompt injection (GPT-5.4) 44.2% against 44.7%.'
+  conditions: 450 DTap tasks in CRM, finance and travel (150 benign, 150 direct-attack, 150 indirect-attack)
+    with judges that check the final environment state; added tools are mock definitions from 251 real
+    MCP servers (11,118 tools) filtered to be unrelated to the task domain; GPT-5.1 and GPT-5.4 with the
+    OpenAI Agents SDK, GPT-5.1 with OpenClaw; default gateway settings; single run; the authors read the
+    low attack rates under GPT-5.1 with the Agents SDK as capability collapse; a smaller MCP-Universe
+    check (158 to 358 added tools, three gateways) was flat; independent
+  direction: mixed
+  measured: true
+  locator: §3 Table 1; §5.1; §5.2 Table 2, Table 3, Figure 4, Figure 5; App A.1-A.3
+- source: 'Sam Partee, River Stevens, Thierry Damiba, Valerie Fanelle (Arcade.dev), "Tool Recommendation
+    for Multi-Step Agents: Finding Every Tool a Task Needs", https://arxiv.org/abs/2610.23707'
+  date: '2026-10-16'
+  task: Replace a 100-tool static list with three gateway meta-tools over an 8,200-tool catalog (SelectTools
+    returns the five top-ranked full definitions per task description, UseTool runs one under the user's
+    own credentials, ListApps lists reachable apps; 993 tokens of definitions with the auth tool), and
+    compare paired end-to-end sessions
+  effect: 'Against the 100-tool list: input tokens -17.2% [-25.3, -8.6] and total bill -5.5% [-12.0, +1.3]
+    with Codex (327 pairs), -39.6% [-49.3, -24.5] and -21.8% [-28.9, -10.9] with Claude Code (81 pairs);
+    bill -13.6% [-18.4, -7.4] across both, lower in all 14 runs (2.6% to 40.0%); completion 276 against
+    273 of 327 (McNemar p = 0.80) and 74 against 76 of 81. Median input change by searches per workflow:
+    one search -28.2% (n = 153), three +32.3%, four or more +43.8%; on 14 short lookups against catalogs
+    of 8-37 tools, +22.0%. 85% (search) and 87% (static) of Codex input was served from cache, so "a 17%
+    to 40% cut in input tokens became a 5% to 22% cut in the bill". The first search covered every required
+    tool in 304 of 327 Codex sessions; of 24 missed required calls, 13 were never returned by any search,
+    10 came back later for a task the first call never asked about, and one was a ranking error. Cost
+    model: a static list is cheaper below about 25 to 28 tools or above about 0.63 searches per tool call.
+    ToolRet Completeness@10 45.2 against 28.8 for BM25.'
+  conditions: Codex 0.144.6 with gpt-5.6-luna (30 workflows, 11 runs) and Claude Code 2.1.291 with Sonnet
+    5, its own tool search off (34 workflows, 2-3 runs), in a seeded tenant (Gmail, Slack, Drive, Salesforce,
+    Jira, Confluence, Zendesk); list prices; in the Claude Code runs the search arm also kept tool results
+    over 14 KB out of context (the 40.0% bill cut is the large-result run, -7.9% on the 21 suite workflows);
+    the break-even is modeled and assumes large results kept out of context; the vendor's own system,
+    not reproducible outside it
+  direction: supports
+  measured: true
+  locator: §2.1-2.3; §3.2-3.4; §4.1-4.3, Table 3, Figure 3; §5; App A Table 4
+- source: 'Zichuan Xu, Yuyang Dong, Makoto Onizuka, Chuan Xiao, "ToolBottleneckBench: Measuring Tool-Agent
+    Performance under Controlled Pressures and Fixed Harness Budgets", https://arxiv.org/abs/2610.21098'
+  date: '2026-10-15'
+  task: Vary only the number of tool schemas the model sees (8, 32, 128; the added tools are near-duplicates
+    of the needed ones that never return a record) on fixed tasks, record which harness limit ended each
+    failed episode, and raise the per-request completion cap to test the menu penalty
+  effect: 'Growing the visible menu from 8 to 128 schemas changed verified task success by -12.3 pp [-14.6,
+    -9.9] with the menu narrowed after the first operational call and -17.5 pp [-20.2, -14.9] with the
+    full menu kept visible; 34 of 36 families degraded. Episodes cut off at the 1,024-token completion
+    cap rose from 1.6% to 13.6%, 391 of 411 truncated episodes at 128 schemas ended before any call, and
+    70.2% of truncated first responses held only reasoning tokens; within pairs that neither menu truncated
+    the effect was -1.5 pp; the 8 configurations that never truncated ranged -2.1 to +2.8 pp, and in the
+    6 truncation-heavy configurations a 16,384-token cap moved the penalty from -43.7 to -2.7 pp [-4.7,
+    -0.9]. Per configuration (narrowed menu): Claude Opus 5.5 0.0, GPT-6.1 Sol 0.0, Claude Sonnet 5 -9.0,
+    DeepSeek V4 Pro -24.3, Gemini 3.8 Flash -52.1, GLM-5.3 -53.5. Mean prompt tokens per episode (full
+    menu) 15,714 at 8 schemas and 37,659 at 128. At 2,048 registered tools the required tools were in
+    19.4% of a flat lexical retriever''s 16-tool shortlists and 77.8% of a connector-first router''s.
+    On ToolSandbox, exposing all tools instead of the authored scope changed full success by -2.9 pp [-7.0,
+    0.5] and added 16,916 tokens per episode.'
+  conditions: 21 model and provider configurations from 7 organizations; 36 synthetic enterprise task
+    families (accounting, email, file, calendar) graded exactly; frozen budgets (1,024-token completion
+    cap, 128,000-token episode budget); one run per configuration per core cell (repeats disagree on 12.1%
+    of conditions); the narrowed menu uses the ground truth (oracle-assisted); the 16x sweep covers 8
+    configurations; independent
+  direction: mixed
+  measured: true
+  locator: §3.2-3.3, Table 1; §5.1-5.3, Figure 2; App C Table 4; App E.1 Table 9; App K Table 14
+- source: 'Demetris Paschalides, Moysis Symeonides, George Pallis, Marios D. Dikaiakos, "MCP-GRANITE Benchmark:
+    GRANularity Interface TEsting for MCP-Based LLM Agents", https://arxiv.org/abs/2609.24161'
+  date: '2026-09-21'
+  task: 'Expose the same capability set over MCP at four granularities with the same prompts: 8-10 single-purpose
+    tools, 4 task-level tools grouped by task class, 2 tools split into read and write with an action
+    parameter, or one catch-all tool'
+  effect: 'Task completion (mean over nine models, 95% CI): 4 tools 0.49 [.39, .59], 8-10 tools 0.42 [.31,
+    .52], 2 tools 0.42 [.32, .53], 1 tool 0.36 [.25, .50], reported as +16.4% over 8-10 tools and +33.6%
+    over one tool; argument accuracy 0.40 against 0.20 for 8-10 tools; runs ending without any tool call
+    10.7%, 10.2%, 14.6% and 28.2%; tool-selection F1 highest with 2 tools (0.71). Four tools gave the
+    highest completion for 8 of 9 models; in a logistic regression with model size, quantization, domain
+    and difficulty, four tools raised completion odds 1.36x [1.12, 1.66] and one tool lowered them 22%.
+    "A 3.2B model at the optimal granularity outperforms a 20.9B model at a mismatched one."'
+  conditions: Nine locally served quantized models from 268M to 20.9B parameters (Qwen3 14.8B, Llama 3.2
+    3.2B, GPT-OSS 20B and others) on Ollama with a T4 GPU, Google ADK agent; 81 scenarios in 9 edge and
+    IoT domains on mock MCP servers; 3 repetitions, 8,748 runs; at most 10 tools; independent
+  direction: supports
+  measured: true
+  locator: §III-A; §V-B Table II, Table III; §V-C
 related:
 - 2.a.ii
-- 2.b.ii
 - 2.a.iii
+- 2.b.ii
+- 3.b.ii
+- 3.b.i
+- 10.c.i
 absorbs:
 - legacy_id: P10
   name: Consolidate tools into higher-level operations
@@ -484,3 +668,15 @@ provenance:
   sub_type: api
   harness_role: tool_surface
   action: restructure
+caveats: 'Most numbers come from one study each, often on synthetic tasks or mock servers with single
+  runs (the menu-size and gateway benchmarks), small local models (the granularity study) or older models
+  (the unnecessary-tool study), and many are vendors measuring their own products (Anthropic, GitHub,
+  Cursor, Speakeasy, Arcade). How much an extra tool costs depends on the model, its output budget and
+  how close the tool is to the needed ones: 1,500 unrelated tools cost GPT-5.4 3.9 points, 120 near-duplicate
+  tools cost Claude Opus 5.5 and GPT-6.1 Sol 0.0 points, and a related unnecessary tool left two of six
+  models unaffected while cutting another''s answer rate by 76 points. Deferral has failure modes of its
+  own: weaker models fail to drive discovery, retrievers miss needed tools (a flat lexical retriever had
+  them in 19.4% of its shortlists at 2,048 tools), each search re-sends the conversation, and token savings
+  shrink in dollars under caching. Exposing tools through discovery lowered tool-injection attack success
+  in one benchmark, but the spread between discovery designs (about 20% to 41%) was as wide as the gap
+  to flat lists, and it did nothing against injection through what tools return.'

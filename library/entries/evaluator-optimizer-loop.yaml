@@ -19,51 +19,92 @@ evidence_domains:
 - reasoning
 - document-extraction
 - judging
+- data-analysis
 categories:
 - orchestration.extra-compute
-summary: 'A separate evaluator (an LLM judge with written criteria, a different model, or an agent that
-  tests the running app) scores the generator''s output and returns specific findings; the generator revises
-  until the output passes or a round cap is hit. It pays when the task is beyond what the generator does
-  reliably in one pass and the evaluator is more reliable than the generator: a production diff judge
-  vetoed about a quarter of coding-agent sessions, and half of those recovered. It fails when the judge
-  is weak or shares the generator''s blind spots: judge loops left table extraction worse than the first
-  output and raised essay scores while human scores fell. Most of the gain comes in the first two to four
-  rounds, at roughly twice the tokens of one call.'
-how: '1. Start from the single pass, tuned with the same effort, and from best-of-N at equal tokens; add
-  the loop only where outputs often fall short and no compiler, test or execution check can judge them
-  (if one exists, feed its verdict back instead, 9.a.i). 2. Write the evaluator''s criteria as a few gradable
-  items, each with a hard pass threshold, and calibrate it with a few scored examples; where possible
-  let it check by acting (drive the app with Playwright, compare the diff with the original request).
-  The same criteria in the generator''s prompt also steer the first draft. 3. Make the evaluator separate
-  and skeptical: its own call and context, not the generator''s dialogue history; a model at least as
-  capable as the generator; tune its prompt by reading its logs against your own verdicts until it stops
-  approving problems it found. Check it on labeled good and bad outputs and planted-defect probes before
-  wiring it in. A judge from another model family does not remove favoritism (judges favor any model whose
-  mistakes resemble theirs), and content-free answers such as '':'' or ''Thought process:'' can pass it, so
-  include them among the probes. 4. Return findings the generator can act on (failing criterion or checklist
-  item, where, expected against actual; told which checklist items failed, Gemini 2.5 Pro went from 29.5
-  to 94.7, against -2.5 to +2.6 with no feedback) and tell it to keep what already passed; unconstrained
-  regeneration breaks parts that were right.
-  5. Stop on pass or after a low cap (most gains came in the first 2 to 4 rounds); raise the cap only
-  if the per-round curve keeps rising. Return the best version rather than the last, and stop early when
-  the score stalls or drops. 6. Measure against a check the loop never sees (a human-labeled sample or
-  a deterministic metric), per round: quality, share of items that end worse than their first output,
-  evaluator agreement with the audit, tokens and latency.'
+summary: 'Have a separate, skeptical evaluator check each output against written criteria and send back
+  specific findings, revising until it passes or a low round cap. It pays when the task is beyond what
+  the generator does reliably in one pass and the evaluator is at least as strong and sees every requirement:
+  a production diff judge vetoed about a quarter of coding-agent sessions and half of those recovered,
+  and a strong grader lifted a weak writer''s projects more than the writer''s own grading did. On strong
+  current models most of the gain is extra budget: given the same rounds without feedback, Opus 5.5 and
+  GPT-6 Sol came within a point of the loop, and at equal calls best-of-four sampling matched or beat
+  a reviewer loop in 13 of 16 code-quality comparisons. It backfires when the evaluator is weak, blind
+  to the requirements or gamed: feedback from a judge that could not see the instructions left outputs
+  worse than no feedback and worse each round, judge loops degraded table extraction and inflated essay
+  scores, and attackers revised code to a reviewer''s findings to get vulnerable changes approved.'
+how: '1. Start from three baselines: the single pass tuned with the same effort, best-of-N at equal calls,
+  and the same model given the same extra rounds or budget with no feedback. Add the loop only where outputs
+  often fall short and no compiler, test or execution check can judge them (if one exists, feed its verdict
+  back instead, 9.a.i). On strong current models the baselines take most of the gain: with seven models
+  as writers and graders of data science projects, Opus 5.5 and GPT-6 Sol scored 94% and 93% after two
+  rounds of feedback against 93% and 92% revising twice without it, and at four calls best-of-four ranked
+  by a static analyzer matched or beat a coder-reviewer loop in 13 of 16 code-quality comparisons. The
+  loop paid for weaker writers (GPT-6 Luna 78% to 87%) and where the writer had broken a rule without
+  knowing it (Haiku 4.5, 8% to 45%, once told its data were generated, not real). 2. Write the evaluator''s
+  criteria as a few gradable items, each with a hard pass threshold, and calibrate it with a few scored
+  examples; where possible let it check by acting (drive the app with Playwright, run the code and read
+  the result, compare the diff with the original request). Show it everything the output must respect:
+  the request, the system prompt or policy, and the source the output draws on. In one study, revising
+  on reports from a judge shown only the response cut instruction constraints met from 84% to 70% in one
+  round while a revise-only control rose to 87%, and it fell again each round; a judge that saw the request
+  without its separately stated constraints still lost 8 points. The same criteria in the generator''s
+  prompt also steer the first draft. 3. Make the evaluator separate and skeptical: its own call and context,
+  not the generator''s dialogue history, and a model at least as capable as the generator. A stronger
+  grader lifted a weak writer (Haiku 4.5''s final projects scored 45% by other graders when Opus 5.5 graded
+  the rounds, 36% when it graded itself), weaker graders did not improve stronger writers, and models
+  grading their own work scored it about 9 points higher than other graders did. Tune its prompt by reading
+  its logs against your own verdicts until it stops approving problems it found. Check it on labeled good
+  and bad outputs and planted-defect probes before wiring it in, including defects the rubric does not
+  name: seven graders'' marks barely moved for planted errors such as tests that assert nothing or a wrong
+  headline result. A judge from another model family does not remove favoritism (judges favor any model
+  whose mistakes resemble theirs), and content-free answers such as '':'' or ''Thought process:'' can
+  pass it, so include them among the probes. 4. Return findings the generator can act on (failing criterion
+  or checklist item, where, expected against actual) rather than a score: told which checklist items failed,
+  Gemini 2.5 Pro went from 29.5 to 94.7, against -2.5 to +2.6 with no feedback, and in another study a
+  bare 1 to 5 score gained less than no report at all (+3.6 against +5.9 points). Net gain follows the
+  precision of the findings, since false findings make the generator break what was right (acting only
+  on a blind judge''s most severe complaint cut its harm by about 60% but did not remove it); tell the
+  generator to keep what already passed, because unconstrained regeneration breaks parts that were right.
+  5. Stop on pass or after a low cap, and raise the cap only if the per-round curve keeps rising on an
+  independent check: most gain came from the first round of feedback (+13 points, then +5, with 35 of
+  147 runs falling in the third round), and other studies found most in the first 2 to 4 rounds. Give
+  each revision room to finish: revisions that ran out of tool calls or time broke 24 of 99 working projects,
+  against 2 of 115 that ended on their own. Return the best version rather than the last, and stop early
+  when the score stalls or drops. 6. When the author is also an agent (code-review bots), make the loop
+  converge: the two can keep each other busy indefinitely (one pull request ran more than fifty review-and-fix
+  rounds overnight, and 59% of repeat flags were on code there since the first pass). After the first
+  passes re-review only the new diff, never repeat a posted finding, flag a bug class once, and after
+  three rounds ask the author to reconsider the approach; at Anthropic mean reviews to pass fell from
+  2.08 to 1.32 and pull requests needing five or more rounds from 8.9% to 1.5%. Where the author may be
+  adversarial or the change is security-relevant, also re-check the whole change against the original
+  requirement before approval: an attacker revising code to an AI reviewer''s findings got exploitable
+  changes approved in 20.8% of 159 cases within five rounds, while re-inspecting the whole diff each round
+  caught 22 and a root-cause check 23 of the 33 that ordinary review approved. 7. Measure against a check
+  the loop never sees (a human-labeled sample or a deterministic metric), per round and against the no-feedback
+  and best-of-N baselines: quality, share of items that end worse than their first output, evaluator agreement
+  with the audit, tokens and latency. Re-grade a sample several times to learn the evaluator''s own noise:
+  in one study about half of later-round score changes were within it.'
 detect:
   static: 'A generate, evaluate, revise loop: a separate evaluator call, model or tool-using agent scores
     the output against written criteria and returns feedback, with a pass threshold and a round cap. Flag
-    an evaluator that shares the generator''s dialogue history, one weaker than the generator, no cap,
-    or a loop that returns the last version instead of the best.'
-  traces: Rounds per item; evaluator score per round next to an independent check; veto rate and recovery
-    after a veto; items whose evaluator score rose while the independent check fell; revisions that rewrote
-    parts that had passed.
-  evals: Quality per round on a grader the loop never sees; share of items that end worse than their first
-    output; evaluator agreement with human or gold labels.
+    an evaluator that shares the generator''s dialogue history, one weaker than the generator, one not
+    shown the request, policy or source the output must respect, feedback that is only a score, no cap,
+    re-review that repeats posted findings, or a loop that returns the last version instead of the best.'
+  traces: Rounds per item and rounds to pass; evaluator score per round next to an independent check;
+    veto rate and recovery after a veto; items whose evaluator score rose while the independent check
+    fell; revisions that rewrote parts that had passed or ran out of budget; findings repeated on code
+    unchanged since the first pass.
+  evals: Quality per round on a grader the loop never sees, against the same model given the same rounds
+    or budget without feedback and against best-of-N at equal calls; share of items that end worse than
+    their first output; evaluator agreement with human or gold labels, and the spread of its scores when
+    it re-grades the same output.
   judge: The evaluator is a judge; a meta-judge checks its agreement with humans.
   probes:
     what: Items with a clear rubric and a known defect.
-    construct: Seed outputs with one planted defect each; the evaluator must catch it and the refiner
-      must fix it.
+    construct: Seed outputs with one planted defect each, including defects the rubric does not name (tests
+      that assert nothing, a wrong headline result); the evaluator must catch it and the refiner must
+      fix it.
   primary:
   - traces
   - probes
@@ -72,27 +113,42 @@ impact:
     effect: mixed
     size: medium
     when: 'gains where the generator falls short and the critic is reliable: CodeContests 7.88 to 16.24
-      with a trained critic over five rounds, 12.48 with GPT-4o as critic (Xie, Feb 2025); Self-Refine
-      +4.6 and +1.9 points over a tuned single call, -0.3 on chess (Leins, Aug 2026); losses where the
-      judge is weak: table extraction 0.792 to 0.772 TEDS after 8 rounds (Kim, Jul 2026), essay judge
-      scores rose while human scores fell (Pan, Jul 2024)'
+      with a trained critic over five rounds, 12.48 with GPT-4o as critic (Xie, Feb 2025); a weaker writer''s
+      projects 87% against 78% revising without feedback (Alexander, Nov 2026); little on strong generators:
+      Opus 5.5 94% against 93% without feedback (Alexander, Nov 2026), Self-Refine +4.6 and +1.9 points
+      over a tuned single call (Leins, Aug 2026), best-of-four matched or beat a reviewer loop in 13 of
+      16 code-quality cells (Kadam, Oct 2026); losses where the judge is weak or blind: constraints met
+      84% to 70% with a judge that could not see the instructions (Kumar, Oct 2026), table extraction
+      0.792 to 0.772 TEDS after 8 rounds (Kim, Jul 2026), essay judge scores rose while human scores fell
+      (Pan, Jul 2024)'
     basis: evidence
   cost:
     effect: degrades
     size: medium
     when: 'an evaluator call plus a revision per round: Self-Refine took 1.82 to 2.13 times the tokens
-      of a tuned single call (Leins, Aug 2026); in one app build the QA rounds cost $3.24, $3.09 and $4.06
-      of $124.70, and the rebuilds they triggered $36.89 and $5.88 (Rajasekaran, Mar 2026)'
+      of a tuned single call (Leins, Aug 2026); each revision round of a data science project cost $0.32
+      to $0.35 on average against $0.68 for the first submission (Alexander, Nov 2026); in one app build
+      the QA rounds cost $3.24, $3.09 and $4.06 of $124.70, and the rebuilds they triggered $36.89 and
+      $5.88 (Rajasekaran, Mar 2026); before a round cap, pull requests took 2.08 reviews on average to
+      pass (Osmani, Oct 2026)'
     basis: evidence
   performance:
     effect: degrades
     size: large
     when: serial rounds; an evaluator that clicks through the running app took 6.8 to 9.6 minutes per
-      round, and a 5 to 15 round design loop ran up to four hours (Rajasekaran, Mar 2026)
+      round, and a 5 to 15 round design loop ran up to four hours (Rajasekaran, Mar 2026); without a cap,
+      an agent author and an agent reviewer ran more than fifty rounds overnight on one pull request (Osmani,
+      Oct 2026)
     basis: evidence
   security:
-    effect: none
-    basis: assessment
+    effect: degrades
+    size: medium
+    when: 'where the author may be adversarial, the evaluator''s findings guide it: revising code to an
+      AI reviewer''s findings got exploitable changes approved in 20.8% (Sonnet 5 reviewer) and 15.7%
+      (GPT-5.5) of 159 cases within five rounds, against 8.2% and 1.3% for the strongest text- or comment-based
+      attack, and 11.9% when the reviewer gave only its verdict; a root-cause check each round caught
+      23 of 33 (Gong, Oct 2026)'
+    basis: evidence
   governance:
     effect: improves
     size: small
@@ -109,13 +165,15 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired eval of the loop against the single pass and against best-of-N at equal tokens, per model,
-    graded by a check the loop never sees (human-labeled sample or deterministic metric): quality per
-    round, share of items ending worse than their first output, tokens, latency'
+  how: 'paired eval of the loop against the single pass, best-of-N at equal calls and the same model given
+    the same extra rounds or budget without feedback, per model, graded by a check the loop never sees
+    (human-labeled sample or deterministic metric): quality per round, share of items ending worse than
+    their first output, tokens, latency; re-grade a sample several times to estimate the evaluator''s
+    own noise'
 - method: monitor
-  how: rounds per item, first-pass rate, veto rate and recovery rate after a veto, cap-hit rate; on a
-    regularly audited sample, evaluator verdicts against human labels and drift between evaluator scores
-    and the audit
+  how: rounds per item and rounds to pass, first-pass rate, veto rate and recovery rate after a veto,
+    cap-hit rate, findings repeated on unchanged code; on a regularly audited sample, evaluator verdicts
+    against human labels and drift between evaluator scores and the audit
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -356,6 +414,161 @@ evidence:
   direction: supports
   measured: true
   locator: §4.2 Table 3; §5.1 Table 4; §5.3 Figure 9
+- source: Rohan Alexander, "Iterated creation, grading, and revision of data science projects by language
+    models", https://arxiv.org/abs/2611.05548
+  date: '2026-11-03'
+  task: 'A writer model with a shell and file tools builds a complete data science project (download,
+    clean, test and analyze a dataset, write a short paper); a neutral executor runs it and a grader model
+    scores it against a 26-item rubric with comments; the writer revises twice. Every model is both writer
+    and grader (49 pairs, three runs each); controls: two revision rounds with the same budget and no
+    feedback, and one session with the whole budget; all seven graders also score the first and final
+    submissions'
+  effect: 'Scored by each run''s own grader, the average rose from 59% to 76% (+13 points after the first
+    feedback round, +5 after the second, when 35 of 147 runs fell); by writer +3 points for Opus 5.5 (92%
+    to 95%) and +46 for Haiku 4.5. Scored by the six other graders, final submissions averaged 73% with
+    feedback, 65% after revising twice without feedback and 63% from one session with the whole budget:
+    Opus 5.5 94%, 93% and 95%; GPT-6 Sol 93%, 92% and 90%; GPT-6 Luna 87%, 78% and 85%; Haiku 4.5 45%,
+    8% and 0% ("the grader tells it that its data are generated"). "For these writers most of what looks
+    like the effect of feedback is the effect of being able to do more work." Haiku 4.5''s final projects
+    got 45% from the other graders when Opus 5.5 graded the rounds against 36% when it graded itself;
+    GPT-6 Sol''s got 91% with Haiku 4.5 as grader against 95% with Opus 5.5: "weaker models generally
+    do not improve stronger models". Self-grading ran about 9 points above other graders; 45% of second-round
+    and 51% of third-round score changes were within the grader''s own repeat-grading noise. 26 of 294
+    revisions broke a working project, 24 of them when the writer ran out of tool calls or time (2 of
+    the 115 revisions that ended on their own broke one). Of seven planted errors in one submission, only
+    fabricated data moved the graders'' average mark much (95% to 14%); the others left it at 90% to 95%.'
+  conditions: Seven models (Claude Opus 5.5, Claude Haiku 4.5, GPT-6 Sol, GPT-6 Luna, DeepSeek V4.1 Flash,
+    Gemini 3.8 Flash, GLM-5.3 Flash) as writers and graders; one undergraduate-style assignment; 147 runs
+    of three rounds (60 tool calls and 40 minutes for the first, 40 and 30 for each revision); graders
+    see the files, an execution report and the rubric; no human grading of the model projects (on 56 student
+    projects the graders' marks were far below teaching assistants', mean absolute error 13.9 to 48.1
+    points); single author; $675 in total
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.3; §3.2; §3.3; §3.4; §4; Appendices 2, 5, 6, 7
+- source: 'Prashank Kadam, "Beyond Passing Tests: A Systematic Review and Controlled Re-evaluation of
+    Techniques for Improving the Quality of LLM-Generated Code", https://arxiv.org/abs/2610.38977'
+  date: '2026-10-28'
+  task: Controlled re-evaluation of ten code-quality techniques at matched budgets of 4, 8 or 16 calls
+    (every critic and reviewer call counted), including a coder-plus-reviewer loop (a reviewer role with
+    a rubric in a separate context) and Self-Refine, against best-of-n sampling that filters on public
+    tests and ranks by static-analyzer findings; scored on measures the ranker does not optimize (cognitive
+    complexity, two LLM judges, CWEval and BaxBench secure-pass rates), on correctness, and on repository
+    tasks for thirteen models
+  effect: 'At equal calls best-of-n "matches or beats prompting, planning, self-refinement, a reviewer
+    agent and retrieval on measures the ranker does not optimize": against the reviewer loop it was better
+    or within the interval in 13 of 16 model-metric cells (the loop better in 3, worse in 4), and the
+    second judge (GPT-6.1 Sol) rated the loop better on 1 of 4 models and worse on 2; "much of their reported
+    gain over a single shot is a budget effect". On Codeforces contests held after every model''s cutoff
+    no technique differed from best-of-n or the single shot beyond the interval on any model; on Opus
+    5.5 the reviewer loop scored 65.86% pass@1 against 69.82% for the single shot and 68.03% for best-of-four.
+    On repository tasks (DeepSWE v1.1) the reviewer loop gave Opus 5.5 76.55% against 75.17% for the single
+    shot and 71.88% for best-of-four, not a resolved difference. "Gains should be reported against a budget-matched
+    sampling baseline and on measures independent of the technique''s own signal."'
+  conditions: 'Main grid: Claude Opus 5.5 (thinking on, medium effort), gpt-oss-120b, Gemma 4 31B and
+    Gemma 4 26B-A4B; three seeds; budgets matched in calls, not tokens (Opus 5.5 reasoning tokens are
+    not exposed); function-level Python benchmarks plus DeepSWE v1.1 across thirteen models; the best-of-n
+    reference uses a static-analyzer ranker and public tests, not blind sampling; two raters scored 440
+    outputs; single author'
+  direction: contradicts
+  measured: true
+  locator: Abstract; §1 contributions (i), (v); §16.1; Tables 2c, 3, 4 and 9
+- source: 'Nitish Kumar, Prateik Pothuneedi, Greg Bandak (Hosho), "The Anatomy of a Blind Spot: What an
+    LLM Judge Must Be Shown, and How Much", https://arxiv.org/abs/2610.15938'
+  date: '2026-10-11'
+  task: 'A judge''s defect report goes back to the model that wrote the output, which revises it; a programmatic
+    checker (IFEval''s constraint checker, GSM8K''s answer key, HaluEval answers) scores the revision.
+    Arms: a judge shown only the output (blind), one also shown the instruction or source (informed),
+    typed constraint ids, a perfect checker certificate, and a no-report control told only to revise;
+    one and three rounds; report channel varied (1 to 5 score, free text, typed ids); 83 predictions committed
+    before running'
+  effect: 'IFEval, 1,080 responses and 1,664 constraints, one round: constraints passing 84% before; blind
+    judge 70% (-0.145, breaking 331 constraints and fixing 90), no-report control 87% (+0.025, fixing
+    98 and breaking 56), informed judge 88% (+0.038), certificate 90%; "a blind judge''s reports leave
+    the system worse off than no report at all". Over three rounds the blind judge''s pass rate fell from
+    0.851 to 0.731, 0.706 and 0.683, while the informed judge gained +0.048, +0.025 and +0.002 and the
+    no-report control ended at 0.899. A judge shown the user''s request with the constraints removed (as
+    if they sat in a system prompt) still gave -0.080, 13.9 points below the no-report control. Report
+    channel: a bare 1 to 5 score +0.036, below the no-report control''s +0.059; free text +0.059; certificate
+    +0.074; net gain followed report precision. Acting only on the most severe complaint cut a blind judge''s
+    harm from -0.101 to -0.038. On GSM8K an instruction to revise with no content broke 69 of 265 correct
+    solutions. With Claude Haiku 4.5 as judge, the blind judge again ended below the start on all three
+    corpora (-0.092 on IFEval) and the informed judge improved all three (+0.071, +0.157, +0.057).'
+  conditions: Responders Llama-3.1-8B-Instruct and Qwen3-14B revising their own outputs; feedback judge
+    Gemini 2.5 Flash (three votes), replication with Claude Haiku 4.5; IFEval (300-response subset for
+    the three-round and channel runs), HaluEval QA, GSM8K; the blind judge in the IFEval and GSM8K loops
+    saw neither the instruction nor the problem, stricter than a deployed judge; small open responders,
+    not current reasoning models
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3-3.5; §8.1; §8.2; Table 4; Figures 15-17
+- source: Jingzhi Gong, Jie M. Zhang, Gunel Jahangirova, Meng Wang, "Adaptive Code Revision Attacks on
+    AI Pull Request Reviewers", https://arxiv.org/abs/2610.05399
+  date: '2026-10-04'
+  task: An attacker agent submits a pull request carrying a disclosed vulnerability to an AI reviewer
+    agent and, for up to five review rounds, revises the code to resolve each reported problem while keeping
+    the vulnerability; an executable exploit decides success; compared with attacks that edit only PR
+    text or code comments, with feedback cut to the verdict or the verdict plus location, and against
+    five reviewer defenses
+  effect: 'Approved and still exploitable within five rounds: 33 of 159 (20.8%) against a Claude Code/Sonnet
+    5 reviewer and 25 of 159 (15.7%) against Codex/GPT-5.5, against at most 13 (8.2%) and 2 (1.3%) for
+    the strongest text- or comment-based attack; success rose from 6.3% after round one to 20.8% after
+    round five. Feedback content: verdict only 19 of 159 (11.9%), plus location 25 (15.7%), full explanation
+    33 (20.8%). Letting the attacker also edit the PR text and reply to the reviewer: 70 of 159 (44.0%).
+    "reviewers accept repairs of reported problems while overlooking surviving vulnerabilities." Defenses
+    on the 33 attacks default review approved: re-inspecting the whole diff each round caught 22, checking
+    the vulnerability''s root cause 23, a blocking static scan 20, a different model (Fable 5.1) 18, executing
+    the supplied exploit 29; the root-cause, whole-diff and static-scan reviews cost $52, $53 and $50
+    against $12 for default review, and all 198 reviews of the genuine fixes still approved them.'
+  conditions: 159 disclosed CVEs with executable proofs of concept; attacker Claude Code with Sonnet 5
+    (Codex with GPT-5.5 usually refused the role); reviewers Claude Code/Sonnet 5 and Codex/GPT-5.5; at
+    most five reviewer interactions per instance; defenses tested only on the 33 prior successes; $4,277
+    in total
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5.1-5.3; §6.1-6.4 (Tables 2-4); §7.1
+- source: Addy Osmani, Morgan Westlee Lunt, Qing Wang (Anthropic), "How the Claude Code team does code
+    review", https://claude.dev/blog/solving-code-review-at-anthropic/
+  date: '2026-10-15'
+  task: Claude reviews every pull request in the Claude Code repositories against the diff, the whole
+    repo and the PR's intent, with findings voted on by separate agents before posting; agents often fix
+    the findings overnight, so author and reviewer are both agents; the team then capped rounds, re-reviewed
+    only the new diff after the first passes, flagged bug classes and stopped repeating posted findings
+  effect: '"An agent author and an agent reviewer can keep each other busy indefinitely. One CLI PR went
+    through more than fifty rounds of review and fixes overnight before its author stopped it." About
+    59% of what the reviewer kept flagging "was code that had been there since the reviewer''s first pass".
+    Changes: "After three rounds, the reviewer asks the author to step back and reconsider the approach";
+    "Diff-only re-review after the first few passes"; "Flag the class of bug"; "No repeats of findings
+    already posted". Before and after: pull requests passing after one review-and-fix round 65% to 78%,
+    pull requests needing five or more rounds 8.9% to 1.5%, mean reviews to pass 2.08 to 1.32. "Noise
+    costs more when the author is an agent. ... An agent fixes it, which means another commit and another
+    round of review."'
+  conditions: Anthropic about its own product and internal pull requests; before-and-after with no control;
+    no recall figure reported for the convergence changes (the team says it tracks rounds-to-pass alongside
+    recall); the post's whole-process figures (merged pull requests more than doubled while the revert
+    share fell by more than 40%, June to September) are not attributable to the round cap
+  direction: supports
+  measured: true
+  locator: Review has to converge; Fig D
+- source: 'Ruiyao Xu, Yanfei Chen, Zhongying CuiZhu, Bhavana Dalvi Mishra, Yifei Ming, Han Yu, Rujun Han,
+    Chen-Yu Lee, Tomas Pfister, "Harness^2: Recursive Agent Harnessing for an Open World", https://arxiv.org/abs/2610.14224'
+  date: '2026-10-09'
+  task: 'Per task and without a ground-truth verifier: run the agent once, have an editor propose two
+    harness edits, run each, compare their behavior with the reference run, compose a successor harness
+    and run it; lessons go to a library for later tasks'
+  effect: One improvement step raised GLM-5 under OpenCode from 64.2 to 75.7 on WorkBuddy-Bench (+11.5)
+    and from 59.6 to 71.4 on LAB (+11.8), against 72.4 to 76.5 for the stronger Gemini 3.5 Flash on WorkBuddy-Bench;
+    "A weaker model with an improved harness can thus outperform a stronger one with its original harness."
+    A harness refined for Gemini 3.5 Flash transferred to GLM-5 (+17.3 on Code) but gave Claude Opus 4.8
+    only 2.6 and 1.1 points. Each step runs the task about four times (reference, two probes, successor)
+    against one base run; the method "requires additional executions and editor sessions", and its signals
+    "remain sensitive to execution variability and shared model biases".
+  conditions: Executors GLM-5 and Gemini 3.5 Flash under OpenCode and Codex; editor Claude Opus 4.8; WorkBuddy-Bench,
+    JobBench, LAB; three runs with standard deviations; total-token compute reported (Figure 6) but no
+    comparison with the base harness given the same number of executions
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.2; §3.2 Tables 1-2; Figure 6; Appendix E.3; Appendix F
 assessment:
   qa:
     unit: Evaluator on labeled good and bad pairs.
@@ -402,6 +615,8 @@ related:
 - 9.c.ii
 - 9.c.iii
 - 7.b.iii
+- 9.b.ii
+- 10.c.i
 provenance:
   layer: target
   origin: observed
@@ -409,11 +624,16 @@ provenance:
   sub_type: reflection
   library_group: Workflow Patterns
   library_source: master
-caveats: 'Most studies are small or single-run (one app per harness, 150 Bash questions, 23 essays), and
-  the largest critic gain came from a critic trained for its generator, which is closer to 7.c.ii; prompted
-  critics, GPT-4o included, helped less and over five rounds cut MBPP+ from 77.83 to 74.60. On outputs
-  with no deterministic check the evaluator''s own error decides the sign: judges tied, inflated scores
-  and were gamed when they shared the generator''s blind spots or context. Gains shrink as generators
+caveats: 'Most studies are small or single-run (one app per harness, 150 Bash questions, 23 essays, one
+  single-author study of 147 runs on one assignment), and the largest critic gain came from a critic trained
+  for its generator, which is closer to 7.c.ii; prompted critics, GPT-4o included, helped less and over
+  five rounds cut MBPP+ from 77.83 to 74.60. On outputs with no deterministic check the evaluator''s own
+  error decides the sign: judges tied, inflated scores, missed planted errors and were gamed when they
+  shared the generator''s blind spots or context or could not see the requirements, and in one study about
+  half of later-round score changes fell within the grader''s own repeat noise. Gains shrink as generators
   improve: Anthropic found the evaluator unnecessary overhead for tasks within the newer model''s reach,
-  and in one study the loop helped only the weakest of six generators. The 2 to 4 round finding comes
-  from a setup where ground truth decided which answers got feedback, so it describes a best case.'
+  the strongest current writers came within a point of the loop when given the same rounds without feedback,
+  and in one study the loop helped only the weakest of six generators. The code-review convergence figures
+  are a vendor''s before-and-after on its own pull requests, the blind-judge harm was measured with small
+  open responders, and the 2 to 4 round finding comes from a setup where ground truth decided which answers
+  got feedback, so it describes a best case.'

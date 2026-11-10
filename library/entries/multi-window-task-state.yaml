@@ -21,47 +21,70 @@ evidence_domains:
 - tool-use
 - conversation
 - planning
+- memory
 categories:
 - memory.resume
 - memory.externalize
-summary: 'When a task spans context resets (compaction, a truncation limit, a new session), have the agent
-  keep what the next window needs in files and read them back at the start of each window: the plan and
-  a progress list, decisions and open items, intermediate results too large to hold in context, and for
-  coding a structured test list and an init script. In measured studies, mostly of deep-research and long-horizon
-  coding agents, state kept outside the history beat a growing or compacted one: Anthropic''s memory tool
-  plus context editing gained 39% on agentic search against 29% for context editing alone. The limits:
-  model-written notes were incomplete or never read back, a stale file misled agents more than no file,
-  and a stronger model needed resets less. Within one window this adds nothing a re-injected task list
-  (7.b.iv) doesn''t.'
+summary: 'Keep a long task''s plan, progress, decisions and large results in files, and start every new
+  context window by reading them back. In measured studies, mostly of deep-research, coding and autoresearch
+  agents, state kept outside the history beat a growing or compacted one: Anthropic''s memory tool plus
+  context editing gained 39% on agentic search against 29% for context editing alone, a checkpoint of
+  progress and verified facts plus a self-chosen reset took Claude Sonnet 4 from 22.7% to 30.7% on 150
+  BrowseComp questions with the same tools, and fresh contexts over the same workspace beat one compacted
+  session at equal compute (0.55 against 0.45 normalized score). Form matters: a structured handoff beat
+  a narrative summary of the same length (52.1% against 42.8% of tasks fully completed, GPT-5.4), and
+  state updated by code answered access questions at 0.80 where a ledger the model rewrote itself fell
+  to chance. The limits: the full history still beat a compact handoff where it fit, a strong reasoning
+  model needed explicit state only for long histories, a 7B model lost accuracy with the extra tools,
+  and stale, wrong or unread notes misled agents, so enforce read-back, let code apply updates, measure
+  per model, and within one window use a re-injected task list (7.b.iv) instead.'
 how: '1. Start from the harness as it is (compaction or truncation only) on tasks that really run past
-  one window, and log what breaks after each reset: work redone, decisions or user constraints lost, work
-  declared done too early. 2. In the first window, before real work, have the agent create the state files:
+  one window or carry a long history, and log what breaks after each reset: work redone, decisions or
+  user constraints lost, work declared done too early. Where the full history still fits, keep it as the
+  baseline to beat: in one study it beat a compact handoff (57.9% against 52.1% of tasks fully completed
+  with GPT-5.4), and a 120B reasoning model read a 256-event log almost as well as the extracted state
+  (0.95 against 0.99). 2. In the first window, before real work, have the agent create the state files:
   a structured list of features or tests (JSON, every item failing, with an instruction that items are
-  never removed or rewritten, only marked passing), a free-text progress log, a decisions and open-items
-  file that also holds the user''s constraints, and for coding an init script that starts the app and
-  runs a smoke test; commit them to git. 3. Write large intermediate results (sources, query results,
-  documents, logs) to files and keep only the path and a one-line note in context. 4. Start every later
-  window with a fixed resume step written into the prompt: read the progress log, the decisions file,
-  the test list and the git log, run the init script and the smoke test, then take one open item. Do not
-  leave reading optional; agents write notes they never read. 5. Update at fixed points: when an item
-  passes an end-to-end check, mark it, append to the log and commit; before a reset, write the handoff.
-  Rewrite the files in place so they describe the present and delete stale entries, because agents follow
-  a written file over the code. 6. Keep harness-side safety nets instead of relying on model-written notes
-  alone: keep compaction or the harness''s own state capture, re-append the constraint list after every
-  compaction, and choose a fresh window or compaction per model. 7. Measure with paired runs that force
-  a reset midway, with and without the files and the resume step: completion, steps redone, constraint
-  violations after the reset, tokens and wall time, per model; re-run after a model change.'
+  never removed or rewritten, only marked passing), a progress log, a decisions and open-items file that
+  also holds the user''s constraints, and for coding an init script that starts the app and runs a smoke
+  test; commit them to git. Keep the handoff structured (facts, commitments, completed actions, remaining
+  work), not a narrative: at the same length it fully completed 52.1% of tasks against 42.8% (GPT-5.4).
+  Record next to each verified fact where it came from (file, URL, test), since a fact corrupted before
+  a reset was never caught afterward. 3. Write large intermediate results (sources, query results, documents,
+  logs) to files and keep only the path and a one-line note in context. 4. Start every later window with
+  a fixed resume step written into the prompt: read the progress log, the decisions file, the test list
+  and the git log, run the init script and the smoke test, then take one open item. Do not leave reading
+  optional; agents write notes they never read. 5. Update at fixed points: when an item passes an end-to-end
+  check, mark it, append to the log and commit; before a reset, write the handoff. Have code, not the
+  model, apply changes to structured state: keep one keyed entry per item or constraint that the model
+  may update but not drop, and retire an entry only by an explicit rule (done, superseded). A ledger the
+  model rewrote itself dropped entries it judged inactive and fell to chance (0.50), against 0.80 when
+  the model only parsed each event and code applied it. Keep free-text files describing the present and
+  delete stale ones, because agents follow a written file over the code. 6. Keep harness-side safety nets
+  instead of relying on model-written notes alone: keep compaction or the harness''s own state capture,
+  re-append the constraint list after every compaction, and choose a fresh window or compaction per model.
+  Where you reset, do it at task boundaries or on a fixed schedule rather than waiting for a stall: fresh
+  contexts over the same workspace beat one compacted session at equal compute (0.55 against 0.45 normalized,
+  better on 6 of 11 tasks), and a plateau trigger did not fire before the budget ran out in 15 of 25 runs.
+  Check weaker models first: a checkpoint-and-reset prompt gained 4.8 to 8.0 points with Claude Sonnet
+  4 but cost a 7B model 3.9 points. 7. Measure with paired runs that force a reset midway, with and without
+  the files and the resume step, and against the full history where it fits: completion, steps redone,
+  completed actions repeated, constraint violations after the reset, tokens and wall time, per model and
+  with several runs; add a copy that corrupts one state entry before the reset; re-run after a model change.'
 detect:
   static: A plan or todo file, a progress log, a decisions and open-items file, and for coding a structured
     test list and an init script, kept outside the context window, plus a start-of-window step that reads
     them back.
   traces: Context resets followed by re-exploration or redone steps; notes written but never read back;
-    user constraints or decisions violated after compaction; work declared done after a reset; state files
-    older than the code they describe.
-  evals: Completion rate and redone work on tasks longer than one window, with a reset forced midway.
+    entries that vanish from the state between windows; completed actions repeated after a reset despite
+    a completion record; user constraints or decisions violated after compaction; work declared done after
+    a reset; state files older than the code they describe.
+  evals: Completion rate and redone work on tasks longer than one window, with a reset forced midway,
+    against carrying the full history where it fits.
   probes:
     what: Tasks longer than one context window.
-    construct: A multi-hour coding task with a test suite; force a reset midway.
+    construct: A multi-hour coding task with a test suite; force a reset midway, and in a second copy
+      corrupt one state entry before the reset.
   primary:
   - probes
 assessment:
@@ -110,33 +133,49 @@ impact:
   quality:
     effect: improves
     size: medium
-    when: 'tasks past one window: memory tool plus context editing +39% against +29% for context editing
-      alone (Anthropic, Sep 2025); a report rewritten into each rebuilt context +12.7 (o3) and +19.2 (DeepSeek-V3.1)
-      points on BrowseComp over ReAct (Chen, Nov 2025); without todo, checklist and log files 52.76 to
-      48.69 RACE on 10 queries (Zhu, Feb 2026); model-written notes alone degraded Devin (Cognition, Sep
-      2025); a stale convention file cut better-form decisions from 33% with no file to 0% (Mohammadi,
-      Aug 2026)'
+    when: 'tasks past one window or with long histories: memory tool plus context editing +39% against
+      +29% (Anthropic, Sep 2025); checkpoint plus reset 22.7% to 30.7% on BrowseComp with Claude Sonnet
+      4, but 17.5 to 13.6 on GAIA for a 7B model (Zhu, Oct 2026); fresh contexts over the same workspace
+      0.55 against 0.45 for one compacted session at equal compute (Cai, Oct 2026); a report rewritten
+      into each rebuilt context +12.7 (o3) and +19.2 (DeepSeek-V3.1) points on BrowseComp over ReAct (Chen,
+      Nov 2025); structured handoff 52.1% against 42.8% for a narrative summary, full history 57.9% (Li,
+      Oct 2026); code-applied state 0.80 against 0.50 for a model-kept ledger, and only +0.04 for a 120B
+      reasoning reader at 256 events (Guo, Nov 2026); without todo, checklist and log files 52.76 to 48.69
+      RACE on 10 queries (Zhu, Feb 2026); model-written notes alone degraded Devin (Cognition, Sep 2025);
+      a stale convention file cut better-form decisions from 33% with no file to 0% (Mohammadi, Aug 2026)'
     basis: evidence
   cost:
-    effect: mixed
-    size: small
-    when: file I/O under 0.03% of wall time (Zhu, Feb 2026); resets add token overhead (Rajasekaran, Mar
-      2026); an agent sometimes spent more tokens writing summaries than solving the problem (Cognition,
-      Sep 2025); no study reports tokens for the files alone
+    effect: improves
+    size: medium
+    when: 'where the state replaces a growing history: 314K against 1,078K input tokens per GAIA trajectory
+      at about the same accuracy (20.4% against 19.4%), peak context 14.3K against 30.6K, for an 8B model
+      (Zhu, Oct 2026); 1.3k against 28.1k tokens per decision on a 1,024-event log, though building the
+      state costs one parser call per event (Guo, Nov 2026); 61% and 22% fewer tokens on tau3-Bench Airline
+      and Retail (Li, Sep 2026); file I/O under 0.03% of wall time (Zhu, Feb 2026); resets add token overhead
+      (Rajasekaran, Mar 2026) and an agent sometimes spent more tokens writing summaries than solving
+      the problem (Cognition, Sep 2025), both unmeasured'
     basis: evidence
   performance:
     effect: mixed
     size: small
-    when: with a state-recovery memory, minutes per DeepSWE task rose from 42.0 to 54.2 under one harness
-      and fell from 103.8 to 75.3 under another (Xu, Oct 2026); resets add latency (Rajasekaran, Mar 2026)
+    when: 21.8 against 45.3 model calls per GAIA trajectory with checkpoints and resets for an 8B model
+      (Zhu, Oct 2026); with a state-recovery memory, minutes per DeepSWE task rose from 42.0 to 54.2 under
+      one harness and fell from 103.8 to 75.3 under another (Xu, Oct 2026); resets add latency (Rajasekaran,
+      Mar 2026)
     basis: evidence
   security:
     effect: none
     basis: assessment
   governance:
     effect: improves
-    size: small
-    basis: assessment
+    size: medium
+    when: 'constraints and permissions kept outside the summary: a constraint registry appended after
+      compaction raised compliance by 39.5 to 42.6 points, and after compaction an agent deleted emails
+      without approval in 30 of 100 sessions against none before (Wang, Jul 2026); permission state applied
+      by code answered whether a service may act at 0.80 to 0.89 against 0.64 to 0.73 for the same readers
+      reading the full log with a reasoning trace, while a ledger the model kept itself dropped components
+      and fell to chance (Guo, Nov 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
@@ -146,13 +185,14 @@ measure:
 - method: experiment
   tier: 4
   how: 'paired runs on tasks longer than one window, forcing a reset (or capping the window) midway: the
-    harness as is against the same harness with state files and a fixed resume step; completion, steps
-    redone after the reset, constraint violations after the reset, tokens and wall time, per model; re-run
-    after a model change'
+    harness as is against the same harness with state files and a fixed resume step, and against carrying
+    the full history where it still fits; completion, steps redone and completed actions repeated after
+    the reset, constraint violations after the reset, tokens and wall time, per model with several runs;
+    add a copy in which one state entry is corrupted before the reset; re-run after a model change'
 - method: monitor
-  how: 'per reset: whether the first actions read the state files, steps redone, items marked done that
-    fail their test, state files older than the code or plan they describe, and the share of tokens spent
-    writing notes'
+  how: 'per reset: whether the first actions read the state files, steps redone, completed actions repeated,
+    items marked done that fail their test, entries that vanish from the state between windows, state
+    files older than the code or plan they describe, and the share of tokens spent writing notes'
 evidence:
 - source: Lance Martin, "Agent Design Patterns", https://rlancemartin.github.io/2026/01/09/agent_design/
   date: '2026-01-09'
@@ -172,17 +212,18 @@ evidence:
   measured: false
   locator: 'Architecture overview (process diagram caption); Appendix: Long-horizon conversation management'
 - source: paper Table 6
-  date: '2026-02'
-  task: "Lists this practice in its agent-optimization pattern library (Long-Horizon group)"
+  date: 2026-02
+  task: Lists this practice in its agent-optimization pattern library (Long-Horizon group)
   effect: Names the practice as a known agent optimization; reports no measured effect for it.
   direction: supports
   measured: false
-  locator: "pattern library file master-agent-optimization-cookbook.md"
+  locator: pattern library file master-agent-optimization-cookbook.md
 - source: Justin Young (Anthropic), "Effective harnesses for long-running agents", https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents
   date: '2025-11-26'
   task: Keep a progress file and git history so a fresh context window can pick up the work
-  effect: '"The key insight here was finding a way for agents to quickly understand the state of work when starting
-    with a fresh context window, which is accomplished with the claude-progress.txt file alongside the git history."'
+  effect: '"The key insight here was finding a way for agents to quickly understand the state of work
+    when starting with a fresh context window, which is accomplished with the claude-progress.txt file
+    alongside the git history."'
   direction: supports
   measured: false
   locator: The long-running agent problem
@@ -248,9 +289,10 @@ evidence:
     the current repository before reuse
   effect: 'Against each harness''s native context management: under Codex CLI, DeepSWE pass@1 35.4 to
     56.6, SWE-EVO resolved 47.8 to 69.6, SWE-Milestone score 28.6 to 46.4; under mini-swe-agent, DeepSWE
-    48.7 to 66.4. A flat trace store without the structure scored 32.1 on DeepSWE, below native. 57.0%
-    of 9,226 file-bound traces saw a later change to a bound file. Mean minutes per DeepSWE task: 42.02
-    to 54.17 under Codex CLI, 103.77 to 75.30 under mini-swe-agent.'
+    48.7 to 66.4. On SWE-EVO under Codex CLI, observation masking and a flat trace store without the structure
+    each reached 65.2, 4.4 points below MemTrace; on DeepSWE the flat store scored 32.1, below native.
+    57.0% of 9,226 file-bound traces saw a later change to a bound file. Mean minutes per DeepSWE task:
+    42.02 to 54.17 under Codex CLI, 103.77 to 75.30 under mini-swe-agent.'
   conditions: deepseek-v4-flash, 200K window; DeepSWE 113 tasks, SWE-EVO 46, SWE-Milestone 98 milestones;
     one model; authors' own system
   direction: supports
@@ -342,13 +384,128 @@ evidence:
   direction: mixed
   measured: false
   locator: Why naive implementations fall short; The architecture
+- source: 'Tianhao Guo, Chongyao Guo, "Agent Memory as Rate-Limited Filtering: Explicit State Outlasts
+    Long Context Beyond a Reader-Dependent Horizon", https://arxiv.org/abs/2611.02361'
+  date: '2026-11-02'
+  task: 'Decide whether a service may act now from a log of grants, withdrawals, reinstatements, expiries,
+    groups and change windows: a model reading the full log, the same model reading the current state,
+    a state ledger the model rewrites every 16 events, a table the model updates from parsed events, a
+    table kept by code that the model may overwrite but not delete from, and a filter in which the model
+    parses each line and an explicit rule applies the update'
+  effect: 'Balanced accuracy at 256 events (Qwen2.5-14B / phi-4 readers): parsed events plus an explicit
+    rule 0.80 / 0.84 (0.89 with Qwen2.5-32B), within 0.03 of the true state; the full log read with a
+    4,096-token reasoning trace 0.64 / 0.73; the model applying the same parsed updates to its own table
+    0.59 / 0.58; a Mem0-style fact store 0.59 / 0.54. The ledger Qwen2.5-14B rewrote itself fell to 0.50
+    (chance), using 171 of 256 tokens and naming the queried key in 8 of 80 streams: "a dropped component
+    never returns". A code-kept table the model could overwrite but not delete from reached 0.70 and 0.69
+    with the Qwen reader but 0.53 and 0.61 with phi-4. Stronger readers move the horizon: gpt-oss-120b
+    read the 256-event log at 0.95 against 0.99 from the state (+0.04, short of the registered margin)
+    and the 1,024-event log at 0.87 against 0.99 (+0.12), at about 1.3k against 28.1k tokens per decision;
+    Qwen2.5-72B (4-bit) 0.72 against 0.94 at 256 events.'
+  conditions: Synthetic executable benchmark of paired counterfactual histories (80 streams, 40 pairs,
+    at 256 events; 100 new pairs for the stronger readers); open models from 7B to 120B, no proprietary
+    frontier models and no tool use; a 256-event log is about 7,000 tokens, inside every reader's window;
+    Qwen2.5-14B as parser; hypotheses and thresholds pre-registered; a frozen replication on a second
+    domain specified by a separate agent; the authors' own filter design
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.4 Table 6; §4.5 Tables 7-8; §4.6 Tables 9-10; §6
+- source: 'Zheng Zhu, Xiaozhuan Liang, Xi Chen, Bei Yu, Jiaya Jia (CUHK, Tencent, HKUST), "Don''t Lose
+    the Thread: Empowering Long-Horizon LLM Agents with Cognitive Resource Self-Allocation", https://arxiv.org/abs/2610.40350'
+  date: '2026-10-29'
+  task: Give a web agent two tools, one that writes task progress (the plan, sub-goals pending or done)
+    and verified facts to a persistent memory and one that clears the conversation and restarts from only
+    the system prompt, the task and that memory, against a ReAct agent with the same search and browse
+    tools that keeps its whole history; as a prompt-only wrapper on five backbones and after fine-tuning
+    Qwen3-8B
+  effect: 'Prompt-only, no training: Claude Sonnet 4 60.2 to 65.0 on GAIA (Pass@1 averaged over 8 samples)
+    and 22.7% to 30.7% on the first 150 BrowseComp questions; QwQ-32B 26.2 to 32.0; Qwen3-32B 34.0 to
+    36.3; Qwen3-8B 19.4 to 20.4; Qwen2.5-7B-Instruct 17.5 to 13.6, because it "cannot reliably emit JSON
+    for four tools instead of two". Per GAIA trajectory with Qwen3-8B, prompt-only: 314K against 1,078K
+    input tokens, 21.8 against 45.3 model calls, 14.3K against 30.6K peak context; after fine-tuning and
+    RL, 42.8% at 136K tokens. Failing trajectories reset about twice as often as succeeding ones. In a
+    qualitative probe, a fact corrupted before a reset was never recovered, while mid-episode corruption
+    was often caught because the evidence was still in context.'
+  conditions: GAIA text-only validation (103 questions), a multi-hop QA suite, and the first 150 BrowseComp
+    questions with one backbone; answers judged by an LLM; the memory is a tool-held store returned as
+    an observation, not files; the abstract's 6-7x token saving is for the trained agents; the authors'
+    own method
+  direction: supports
+  measured: true
+  locator: §3.1; §4.2 Table 1; §4.3 Table 2; §4.4; Appendix D Table 8 and D.2; Appendix F Table 9
+- source: Wenyuan Li, Guang Li, Dongyuan Li, Keisuke Maeda, Takahiro Ogawa, Miki Haseyama (Hokkaido University,
+    University of Tokyo), "Benchmarking Task Takeover Across Agent Handoffs", https://arxiv.org/abs/2610.36523
+  date: '2026-10-27'
+  task: A receiving model takes over unfinished work at a fixed point and gets the recent transcript,
+    a structured state (facts, commitments, prior actions, remaining work), a narrative summary of the
+    same length, or the full pre-handoff history; scored on evidence recovery for repository tasks and
+    on every requirement of continuation tasks
+  effect: 'GPT-5.4, 739 continuation tasks, share passing every criterion: recent transcript 44.7%, narrative
+    summary 42.8%, structured state 52.1%, full history 57.9%, privileged target state 85.3%. On the 429
+    tasks with untruncated summaries and equal source access, structured state kept a 3.04-point mean-score
+    lead [2.07, 4.03]. Structured state over the recent transcript: +7.44 to +12.18 points pass rate for
+    all six receivers, but with order status also required to match the tool observation, +6.09 for GPT-5.4
+    and -3.92 to -9.88 for the other five. Full history beat structured state on pass rate for every receiver.
+    Structured state kept 93.0% of earlier-seen target file paths against 12.6% for recent transcripts,
+    yet receivers still repeated operations that a completion record said were done.'
+  conditions: Synthetic continuation tasks written by GPT-5.4 with GPT-5 source histories, plus 300 repository
+    tasks from ContextBench and CodeTraceBench; structured state and summaries written by GPT-4.1 and
+    matched in visible tokens to the recent transcript (full history not matched); temperature 0; receivers
+    GPT-5.4, Claude Sonnet 5, DeepSeek V3.2, Qwen 3.5 Plus, Gemini 3.5 Flash Lite and Kimi K2, the narrative-summary
+    arm on GPT-5.4 only; a handoff between models in the prompt, not files
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1; Table 2; §5.3; §5.5 Table 3; §5.6 Table 4; §6; Appendix A
+- source: 'Ziyang Cai, Christos Ziakas, Vasilis Kontonis, Tim Pearce, Siddhartha Sen, Akshay Krishnamurthy,
+    Shivam Garg, Dimitris Papailiopoulos (Microsoft Research), "Fork-and-Flush: Escaping Idea Basins in
+    Autoresearch Agents", https://arxiv.org/abs/2610.07447'
+  date: '2026-10-05'
+  task: 'Long autoresearch runs (hours to days) in which the agent edits, runs and submits solvers against
+    a deterministic grader: one continuous session whose history is periodically compacted, against restarting
+    with a fresh chat context over the same accumulated workspace at 33% and 66% of the budget (flush
+    only), parallel branches from the workspace that keep the context (fork only), and both (fork-and-flush),
+    at equal compute'
+  effect: 'Min-max normalized mean score over 11 tasks: single compacted session 0.45, flush only 0.55,
+    fork only 0.57, fork-and-flush 0.71; flush only beat the single session''s mean on 6 of 11 tasks (p150
+    160.80 against 123.47, order-add 40.73 against 24.60) and trailed on 5 (LWE-rec 148.4 against 155.3).
+    Over 13 tasks, fork-and-flush 0.78 against 0.47 for a single run and 0.54 for best-of-4 (+66.0% and
+    +44.4% relative), with the highest mean on 12 of 13. Independent runs of one agent plateaued at different
+    scores "despite periodic compaction"; a plateau trigger did not fire before the budget ran out in
+    15 of 25 development runs, so the authors reset on a fixed schedule.'
+  conditions: GPT-5.6-terra at high reasoning effort (11 tasks) and GPT-5.5 at extra-high (2 tasks) in
+    GitHub Copilot CLI; 13 tasks from Frontier-CS, EdgeBench, Anthropic's kernel take-home and a CIFAR
+    compression task; eight single-run baselines and five draws per method; budgets in credits that meter
+    tokens; the ablation leaves out the two longest tasks; the workspace holds the agent's own files,
+    not a written handoff; open-ended optimization with a scored objective; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §2; §5.1-5.3 Tables 1-2; §7; Appendix A Table 3; Appendix D
+- source: 'Minghao Li, Bangyan Li, Zifan Wang, Yulong Li, Hu Xu, Gan Zhang, Jingtong Wu, Wenqiang Xu (Ant
+    International, Ant Group), "FlowState: Execution State as Memory for Long-Horizon LLM Agents", https://arxiv.org/abs/2609.34565'
+  date: '2026-09-28'
+  task: Replace the full interaction history with typed state nodes (requirements, observations, judgments,
+    artifacts) kept in a store, an index of past states in context, and on-demand access to earlier states
+    and raw tool observations
+  effect: 'Same DeepSeek-V4-Flash model against full context: tau3-Bench pass rate 58.0% to 78.0% on Airline
+    (+20.0) and 73.7% to 81.6% on Retail (+7.9), with 61.2% and 22.2% fewer tokens (Retail action accuracy
+    -4.9); MemoryArena average success rate +4.55 points with 43.2% fewer tokens. With DeepSeek-V4-Flash,
+    GPT-5.6-terra and Qwen3.5-397B-A17B, higher mean success and progress than full context at 28.3% to
+    56.3% lower relative token use.'
+  conditions: tau3-Bench base sets of 50 airline and 114 retail tasks; MemoryArena shopping, travel, math
+    and physics subsets; thinking disabled; no repeat runs reported; on tau3-Bench the only baseline is
+    full context; the authors' own system
+  direction: supports
+  measured: true
+  locator: Abstract; §3.2 Tables 1-2; Figure 3; Appendix B.5
 related:
 - 7.b.iv
 - 5.a.i
+- 5.c.i
+- 7.d.i
 - 4.b.ii
 - 4.b.i
 - 9.b.iii
-- 7.d.i
+- 5.c.ii
 - 4.c.i
 - 4.c.ii
 absorbs:
@@ -516,11 +673,17 @@ absorbs:
         note: ''
       primary:
       - quality
-caveats: 'Most measured gains come from deep-research and long-horizon coding systems built around their
-  authors'' own memory design, often on one model and small samples (one ablation used 10 queries, another
-  does not state its run count), and no controlled study isolates a plain progress file under a forced
-  reset. Model-written notes are not free memory: Cognition found them incomplete, Vending-Bench agents
-  wrote notes they never read, and a stale written standard led agents to the worse form on every contested
-  decision, so read-back and upkeep must be enforced. The need depends on the model: Anthropic needed
-  resets with handoff files for Sonnet 4.5 but dropped them for Opus 4.5, so measure per model and again
-  after an upgrade.'
+caveats: 'Most measured gains come from systems built around their authors'' own memory design, often
+  on one model and small or synthetic samples (one ablation used 10 queries and the BrowseComp check 150
+  questions on one backbone, and the structured-handoff and state-tracking results come from synthetic
+  tasks), and no controlled study isolates a plain progress file under a forced reset. Model-written state
+  is not free memory: Cognition found notes incomplete, Vending-Bench agents wrote notes they never read,
+  a model rewriting its own state ledger dropped entries until it answered at chance, a stale written
+  standard led agents to the worse form on every contested decision, and a fact corrupted before a reset
+  was never caught, so let code apply updates, keep each fact''s source and enforce read-back. The need
+  depends on the model and the history: Anthropic needed resets for Sonnet 4.5 but not Opus 4.5, a 120B
+  reasoning reader gained 0.04 from explicit state at 256 events and 0.12 at 1,024, a checkpoint-and-reset
+  prompt cost a 7B model 3.9 points, and the full history beat a compact handoff where it fit, so measure
+  per model and again after an upgrade. The fresh-context result comes from optimization tasks with a
+  scored objective, where it won on 6 of 11 tasks, and under a stricter status check structured handoffs
+  scored below recent transcripts for five of six receivers.'

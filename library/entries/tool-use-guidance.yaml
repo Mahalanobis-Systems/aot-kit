@@ -21,55 +21,142 @@ evidence_domains:
 - tool-use
 categories:
 - tools.misuse
-summary: 'For each tool or skill that is under-used or misused, add an explicit trigger rule where the
-  model always sees it (system prompt, AGENTS.md): the situation that calls for the tool, and what to
-  use it instead of (e.g. the dedicated read or edit tool rather than bash). Test the wording, since results
-  swing with it. It will not make a model that rarely calls tools start calling them. The cheapest form
-  is one sentence per tool stating what it is for: that alone recovered most of a 34.7-point loss caused
-  by offering the model an irrelevant tool.'
-how: '1. From traces, list tools with a low call rate on cases where they would have helped, and tools
-  chosen wrongly. 2. For each, write one rule: when to use it, and instead of what. 3. Put the rules in
-  always-loaded context, not in an optional skill. 4. A/B two wordings; keep the one with the higher call
-  rate and pass rate.'
+summary: 'Write down when the agent should use each tool, and put it where the model always reads it.
+  For each under-used or misused tool or skill, add a rule to the system prompt or AGENTS.md naming the
+  situation, the tool and what it replaces (e.g. the dedicated read or edit tool rather than bash), instead
+  of leaving it inside a skill the agent must choose to open: an explicit AGENTS.md instruction took a
+  docs skill that was never invoked in 56% of cases from a 53% to a 79% pass rate, and in another study
+  a rule loaded only on demand kept about half of its effect. Test the wording against no rule and an
+  irrelevant rule of the same length, since results swing with it: a one-line skill reminder did nothing
+  where a per-skill YES/NO check reached 100% activation, telling models to call tools ''only if necessary''
+  changed almost nothing while ''use sparingly'' also cut needed calls, and a scope instruction that recovered
+  most of the answers an unnecessary tool had cost reduced one model''s needed tool use. It will not make
+  a model that rarely calls tools start calling them, and in one coding study random rule files helped
+  as much as curated ones, so measure the rule''s own effect on call rates, not only pass rate.'
+how: '1. Start from the baseline: on the eval set (or recorded sessions), log per tool and skill the call
+  rate on cases where its trigger condition holds and where it does not, wrong-tool calls (bash used to
+  read, search or edit files where a dedicated tool exists; the wrong one of two overlapping tools), pass
+  rate, tokens, turns and latency. Include cases that need the tool, phrased with and without its obvious
+  keywords, and cases that do not: in one practitioner test a skill fired about 100% of the time when
+  the prompt held its keyword, 20-40% on generic phrasing and about 0% on indirect phrasing, and in one
+  benchmark open models made more than one tool call per task by default, even on tasks they could answer
+  directly. 2. Pick the targets from those traces: tools or skills rarely called where they would have
+  helped (a docs skill was never invoked in 56% of one vendor''s eval cases), tools called where they
+  are not needed or where a dedicated one exists, and questions a tool''s mere presence made the model
+  refuse or get wrong (one related but unnecessary tool cut answer rates from 98.2% to 63.5% across six
+  models). If the model rarely calls any tool, a rule will not fix it (weak models barely searched when
+  told to), so change the model (1.b.i) rather than the wording. 3. Write one rule per target: the situation,
+  the tool, and what it replaces (e.g. to read or search files, use the Read and Grep tools instead of
+  cat or grep in Bash; for questions about X use tool A, for Y tool B), naming the exact tool, command
+  or path. In one study of rules added to real Skills, the gain came mainly from rules that named a command
+  or path the agent had not been given, and stating the rule added 0.15 compliance beyond merely mentioning
+  the token. Where a tool is over-used, name the cases that do not need it rather than adding a blanket
+  instruction: across six open models ''only if necessary'' changed almost nothing (-1.0 points, 0.06
+  fewer calls per task) and ''expensive, use sparingly'' cut needed calls too, costing 8.4 points of accuracy
+  (11.1 on hard tasks). 4. Put the rules where the model always reads them (system prompt, AGENTS.md or
+  CLAUDE.md), not in an optional skill body: with the rule inside a Skill the agent had to choose to open,
+  four coding agents kept 51% of its effect on the required action on average (three open models 38%,
+  Claude Sonnet 4.5 all of it). Generate the rules from the active toolset, as Pi does with per-tool prompt
+  snippets, so the prompt never names a tool that is not offered, and keep them short: carrying a whole
+  Skill body in context cost 37-57% more tokens per episode. If triggers still fail, re-inject a short
+  check each turn: a hook that made Claude Code state YES or NO for each skill before acting took activation
+  from 50-55% to 100% on 22 prompts in two runs, where a one-line reminder (50-59%) and the harness''s
+  built-in prompt hook (41-55%) did not help. 5. Check both directions before keeping a rule: a scope
+  instruction that restored 27.8 to 45.6 points of answers on four models cut GPT-OSS 20B''s tool use
+  where the tool was needed from 94.4% to 72.4%, and asking the model to reason about need before every
+  call collapsed tool calling on two Llama models (Llama-3.3-70B accuracy 83.1% to 47.9%). 6. A/B two
+  or more wordings against no rule and against an irrelevant rule of the same length, with several runs
+  per arm, because a gain may not come from the rule''s content: in one coding study random rule files
+  matched curated ones (63.8% each against a 50.0% baseline), while another found same-length unrelated
+  text had no effect. Keep the wording with the highest trigger recall and pass rate and no rise in false
+  triggers or in failures on previously passing cases, and drop rules the model already follows or ignores
+  (one rule-model pair in five added tokens with no detected gain). 7. Measure: run the paired eval per
+  model and re-run it when the model, harness or toolset changes; report per tool the trigger recall and
+  false-trigger rate, the wrong-tool rate, pass rate overall and on cases that need the tool, and tokens,
+  turns and latency; track the same call rates in production traces.'
 detect:
   static: tools or skills whose intended use is stated nowhere the model always sees; overlapping tools
     with no rule for choosing between them
-  traces: 'tool spans: a tool called on under about 5% of cases where its trigger condition held (e.g.
-    a docs skill never invoked in 56% of runs); bash spans where a dedicated tool exists; failure rows
-    labeled incorrect-tool-selection'
-  evals: failures where the right tool existed but was not called
+  traces: 'tool spans: a tool or skill not called on cases where its trigger condition held (a docs skill
+    was never invoked in 56% of eval cases), or called where it was not needed (open models made more
+    than one call per task by default, including on tasks they could answer directly); bash spans where
+    a dedicated tool exists; a skill opened whose rule the agent then did not follow; failure rows labeled
+    incorrect-tool-selection'
+  evals: failures where the right tool existed but was not called; questions the model can answer alone
+    that it refuses or gets wrong once a related tool is offered
+  probes:
+    what: 'Cases at each rule''s trigger boundary: ones that need the tool phrased with and without its
+      obvious keywords, ones that do not need it, and boundary cases between overlapping tools.'
+    construct: For each tool or skill, write cases that need it using its keywords, generic phrasing and
+      indirect phrasing (in one practitioner test a skill fired about 100%, 20-40% and 0% of the time
+      on these), cases that do not need it, and for each overlapping pair cases that should route to each;
+      run each several times and score trigger recall, false triggers and wrong-tool picks.
 impact:
   quality:
     effect: improves
-    size: large
-    when: 'Vercel: pass rate 53% to 79% once told when to invoke the docs skill (Jan 2026); VeRO mixed:
-      -5 and +4.5 points; one sentence of tool scope recovered most of a 34.7-point loss from an irrelevant
-      tool (Paturi et al., Sep 2026)'
+    size: medium
+    when: an explicit AGENTS.md instruction took a docs skill's pass rate from 53% to 79% (Vercel, Jan
+      2026); added rules raised the rate agents took the required action by 0.23 and human-judged correctness
+      by 0.10 on average (Wang, Oct 2026); a per-turn skill check took activation from 50-55% to 100%
+      on 22 prompts (Spence, Feb 2026); a scope instruction recovered 27.8 to 45.6 points of answers lost
+      to an unnecessary tool on four of six models (Paturi, Sep 2026); against that, VeRO's tool-instruction
+      edit lost 5 points on MATH (VeRO, Feb 2026), 'use sparingly' cost 8.4 points (Sun, May 2026), and
+      random rule files matched curated ones (Zhang, Apr 2026)
     basis: evidence
   cost:
-    effect: unknown
+    effect: mixed
+    size: small
+    when: a rule adds input on every call (a revised Skill added 18-19% to a single answer), but tokens
+      per agent episode moved -2.3 to +3.0% because agents took fewer steps, while carrying a whole Skill
+      body cost 37-57% more, and one rule-model pair in five added tokens with no detected gain (Wang,
+      Oct 2026); with no instruction open models made more than one tool call per task, and 'use sparingly'
+      cut 0.46 calls per task only by dropping needed calls too (Sun, May 2026)
+    basis: evidence
   performance:
-    effect: unknown
+    effect: mixed
+    size: small
+    when: a short rule cut single-answer latency 1.6-7.2% because answers got shorter (Wang, Oct 2026);
+      a per-turn instruction to evaluate every skill raised time per turn from 8.7 s to 10.7 s, against
+      6.4 s with a small pre-classifier that named the skills (Spence, Feb 2026)
+    basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: small
+    when: a written rule documents each tool's intended use, and routing reads and edits to dedicated
+      tools rather than shell leaves actions a reviewer can follow, Claude Code's stated reason for its
+      rule (Barbaste, Jul 2026); no source measures it
+    basis: assessment
   brand:
     effect: unknown
+  primary:
+  - quality
 measure:
 - method: experiment
   tier: 3
-  how: paired eval with and without the rule, plus the tool's call rate in traces
+  how: 'paired eval per model with no rule, the rule in two or more wordings and an irrelevant rule of
+    the same length, several runs per arm: trigger recall per tool on cases that need it (including phrasings
+    without its keywords), false-trigger rate on cases that do not, wrong-tool rate between overlapping
+    tools, pass rate overall, on hard cases that need the tool and on previously passing cases, and tokens,
+    turns and latency per task'
+- method: monitor
+  how: 'per tool and skill in production traces: call rate where its trigger condition holds and where
+    it does not, bash calls where a dedicated tool exists, and skills opened but not acted on; re-run
+    the paired eval when the model, harness or toolset changes, and retire rules the model now follows
+    without them or ignores'
 evidence:
 - source: paper Figure 12 (Orchestrator, Sonnet 4.5; 'Early Peaker')
   task: MATH
   effect: 'Phase 3, ''Enhanced tool usage instructions'', added right after phase 2 added a SymPy calculator
     tool: validation 0.917 to 0.867 (regressed), train flat at 0.813. The figure gives only the label,
     not the instruction text.'
+  date: 2026-02
 - source: paper Figure 15 (Orchestrator, Opus 4.5; 'Best SimpleQA')
   task: SimpleQA
   effect: 'Phase 1, ''Improved prompt, tool descriptions'', bundled with prompt changes: validation 0.577
     to 0.622, train 0.456 to 0.587. Not separable from the description changes (T35).'
+  date: 2026-02
 - source: Jude Gao (Vercel), "AGENTS.md outperforms skills in our agent evals", https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals
   date: '2026-01-27'
   task: Tell the agent in AGENTS.md when to invoke a skill
@@ -127,14 +214,117 @@ evidence:
 - source: 'Paturi et al., "When Tools Get in the Way: The Effect of Unnecessary Tool Availability on LLM
     Answering", https://arxiv.org/abs/2609.14157'
   date: '2026-09-12'
-  task: State in one sentence what each tool is for
-  effect: 'Same setup: a one-sentence instruction stating the tool''s scope recovers most of the lost
-    answers.'
+  task: Add a scope instruction to the system prompt saying tools are optional and to use one only when
+    the question needs the external information it provides
+  effect: With a related but unnecessary tool available, the pooled answer rate on questions the models
+    could answer alone fell from 98.2% to 63.5%. The instruction raised it by 45.6 points for Llama 3.3
+    70B, 41.0 for Gemini 2.5 Flash-Lite, 34.4 for Flash and 27.8 for Pro; GPT-OSS 20B +0.6, Grok 4.1 Fast
+    -2.4. Where the tool was needed, GPT-OSS 20B's tool use fell from 94.4% to 72.4% and its answer rate
+    from 84.6% to 79.8%, and Gemini 2.5 Pro's answer rate fell from 95.4% to 86.8%.
   direction: supports
   measured: true
+  conditions: 500 query pairs across 10 knowledge domains, six models, 500 trials per condition per model,
+    correctness judged by gemini-2.5-flash; the paper calls it a one-sentence instruction, but the quoted
+    text is four sentences and describes tools in general, not what each tool is for
+  locator: Abstract; §6 Results; §6.3 Table 4
+- source: 'Jiajie Wang, Yutong Zhao, Tianlin Li, Huashan Chen, Jinfu Chen, Kebin Peng, Sen He, "Agent
+    Skill Evolution: How Revisions Affect Coding Agents", https://arxiv.org/abs/2610.04832'
+  date: '2026-10-04'
+  task: Take rules that maintainers added to real SKILL.md files (each naming a command, path or identifier)
+    and give agents the old or the new Skill body, either in the prompt or only on demand (name and description
+    listed, body read when the agent chooses); measure whether they take the action the rule requires,
+    final correctness, tokens and latency
+  effect: 'Sandbox, body in the prompt: required action old to new 0.42 to 0.58 (Qwen 3.5-9B), 0.42 to
+    0.62 (Qwen 3.5-27B), 0.44 to 0.80 (Devstral Small), 0.62 to 0.81 (Claude Sonnet 4.5), +0.23 on average;
+    human-judged final correctness +0.10 on average over three agents (Sonnet 4.5 +0.06, CI includes 0).
+    Body on demand: action gain +0.12, about 51% of the preloaded gain (95% CI 28-75%); the three open
+    models kept about 38%, Sonnet 4.5 kept all of its +0.19. Once the rule was on screen, Sonnet 4.5 acted
+    on it in 88% of episodes and Qwen 3.5-27B in 61% (81% and 62% with the body in the prompt). Single
+    answers: compliance +0.41 across 16 open models; on four control models the rule line alone gave about
+    two thirds of the full effect, stating the rule added +0.15 beyond naming its token, and unrelated
+    text of the same length had no detectable effect. Cost: a revision added 18-19% input tokens to a
+    single answer and changed tokens per agent episode by -2.3 to +3.0% (fewer steps); carrying a Skill
+    body cost 37 to 57% more tokens per episode than name and description alone; single-answer latency
+    -7.2 to -1.6%. One rule-model pair in five (20%) added tokens with no detected gain: of 55 such rules,
+    27 were already followed without the rule and 28 were ignored.'
+  conditions: 80 executable tasks from 57 repositories under the mini-SWE-agent scaffold in a network-less
+    sandbox, 12 steps, three episodes per cell (one for Sonnet 4.5); the agent saw only the first and
+    last 2,000 characters of a command's output, which the authors say likely understates on-demand gains
+    for long Skills; 300 single-answer probes on 16 open-weight models (3.8B to 32B) and 160 on five closed
+    models; thinking off; mechanically checkable project rules, not tool-selection rules as such; independent
+  direction: supports
+  measured: true
+  locator: Abstract; §3.3; §5.1.2; §5.2.2 Table 4; §5.2.3 Table 5; §5.2.4; §5.2.5; §6.1.2; §6.2 Table
+    7; §7.1
+- source: Chung-En Sun, Linbo Liu, Ge Yan, Zimo Wang, Tsui-Wei Weng, "LLM Agents Already Know When to
+    Call Tools -- Even Without Reasoning", https://arxiv.org/abs/2605.09252
+  date: '2026-05-10'
+  task: Vary the system prompt's tool-use instruction (tool use mandatory, no instruction, 'only if necessary',
+    'expensive, use sparingly', 'do not use any tools'), with and without asking the model to reason about
+    whether it needs a tool first, on tasks whose difficulty decides whether a tool is needed
+  effect: 'With no instruction the six models made 2,118 to 4,377 tool calls on 2,250 single-hop tasks
+    (Qwen3-1.7B: 864 calls on 750 easy tasks). Averaged over six models against no instruction: ''only
+    if necessary'' -1.0 points accuracy and -0.06 calls per task; ''expensive, use sparingly'' -8.4 points
+    (-6.3 easy, -7.9 medium, -11.1 hard) and -0.46 calls per task; ''do not use any tools'' -28.7 points.
+    Reasoning about need first: Llama-3.1-8B 79.5% to 31.2% and Llama-3.3-70B 83.1% to 47.9%, with near-zero
+    tool calls. A hidden-state probe that prefills a steering sentence cut 0.48 calls per task at -1.7
+    points.'
+  conditions: 'When2Tool: 18 synthetic environments (calculation, knowledge, execution tracing) at three
+    difficulty levels, 2,250 single-hop and 450 multi-hop test tasks, three seeds; Qwen3-1.7B, Qwen3-4B-Instruct,
+    Qwen3-14B, Qwen3-32B, Llama-3.1-8B and Llama-3.3-70B; open models only; generic prompt modes, not
+    per-tool trigger rules; the probe needs access to hidden states; independent'
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.2 Table 2; §5.2 Table 4; App. B Table 8
+- source: 'Xing Zhang, Guanghui Wang, Yanwei Cui, Wei Qiu, Ziyuan Li, Bing Zhu, Peiyang He, "Guardrails
+    Beat Guidance: A Large-Scale Study of Rules, Skills, and Persistent Configuration for Coding Agents",
+    https://arxiv.org/abs/2604.11088'
+  date: '2026-04-13'
+  task: Place different CLAUDE.md rule files in front of Claude Code (curated, random, popular, wrong-domain,
+    shuffled; 0 to 50 rules; one rule type at a time), and remove or apply curated rules one at a time
+  effect: 'No-rule baseline 50.0%; every rule file 56.9-63.8%, none significantly different from another
+    (Cochran''s Q p=0.697): random 63.8% and curated 63.8%, wrong-domain 58.6% against matched 56.9%.
+    0 to 50 rules: 59-67% (50 rules 66.7% against 60.3% for none). By type: tool/process rules (''when
+    to take what action'') 63.8%, architecture 53.4% (p=0.549). Removing each of 18 curated rules: the
+    3 that helped were all ''do not'' constraints (''do not refactor unrelated code'': 20-point drop when
+    removed, the only individually significant rule) and the 4 that hurt were all ''do'' directives (Fisher
+    p=0.029). Applied alone to 17 reliably solved tasks, 14 of 18 rules broke at least 2, which the authors
+    note run-to-run variance (about 11.8% per task) can largely explain.'
+  conditions: Claude Code with Claude Opus 4.6 on 58 SWE-bench Verified tasks chosen for a 30-70% baseline
+    pass rate (35 for the per-rule ablation); mostly one trajectory per task; the no-rule baseline was
+    50.0% in one experiment and 60.3% in another; no single condition beat the baseline at p<0.05 (the
+    headline rests on a sign test across seven conditions, p=0.008); the polarity split weakens at a 7-point
+    threshold (p=0.067); general coding rules, few about tool choice; numbers from v2 (May 2026); independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §6.1 Table 2; §6.2; §6.3 Table 3; §6.4 Table 1, Fig. 4; Limitations
+- source: Scott Spence, "Measuring Claude Code Skill Activation With Sandboxed Evals", https://scottspence.com/posts/measuring-claude-code-skill-activation-with-sandboxed-evals
+  date: '2026-02-08'
+  task: Inject a skill-trigger instruction into every user turn with a Claude Code hook and measure whether
+    the agent calls the Skill tool on prompts that need a skill, and not on prompts that do not
+  effect: 'Correct activation on 22 prompts, run 1 and run 2: no hook 55% and 50%; a one-line instruction
+    (''If the prompt matches skill keywords, use Skill()'') 59% and 50%; a similar instruction through
+    Claude Code''s native prompt hook 55% and 41%; a forced evaluation (state YES or NO for each skill
+    with a reason, call Skill() for each YES, then implement) 100% and 100%; a Haiku pre-classifier naming
+    the skills 100% and 100%. Average time in run 1: 8.7 s (no hook), 10.7 s (forced evaluation), 6.4
+    s (pre-classifier). On 24 harder prompts, 5 of them needing no skill: forced evaluation 75% correct
+    with 5 of 5 no-skill prompts right; pre-classifier 67% with 4 false activations. Without a hook, prompts
+    holding a skill''s keyword activated about 100% of the time, generic phrasing about 20-40% and indirect
+    phrasing about 0% (the author''s estimates); whenever a skill was activated it was the right one.'
+  conditions: Practitioner write-up; claude -p with Claude Sonnet 4.5 in fresh sandboxes, four SvelteKit
+    skills, one turn, only the Skill tool allowed, runs stopped after 20 s, so it measures activation,
+    not task success; about 250 invocations; independent
+  direction: supports
+  measured: true
+  locator: 'Run 1 results; Run 2: confirmation; Harder prompts; What the failures tell me'
 related:
 - 2.a.ii
 - 2.a.i
+- 2.a.iii
+- 3.a.iv
+- 4.c.ii
+- 3.a.iii
+- 1.b.i
 absorbs:
 - legacy_id: P07
   name: Tool docstrings with use / do-not-use guidance and examples
@@ -201,3 +391,17 @@ provenance:
   sub_type: instructions
   harness_role: prompt
   action: add
+caveats: 'The measured evidence is small and mostly from coding agents: one vendor''s eval of one docs
+  skill, one study of rules added to real Skills (80 sandbox tasks, thinking off, Claude Sonnet 4.5 run
+  once per cell), one practitioner test of skill activation (22 prompts, one turn, no task outcome) and
+  one CLAUDE.md study on one model whose single contrasts were not significant. Wording and model decide
+  the result: across six open models ''use tools only if necessary'' changed almost nothing and ''use
+  sparingly'' also cut needed calls (8.4 points of accuracy), asking for a necessity check before acting
+  collapsed two Llama models'' tool calling (Llama-3.1-8B 79.5% to 31.2%) while a per-skill YES/NO check
+  took Sonnet 4.5 to 100% activation, and a scope instruction that restored answers on four models cut
+  another''s needed tool use from 94.4% to 72.4%. A rule''s gain may not come from its content: random
+  CLAUDE.md rule files raised Opus 4.6''s pass rate as much as curated ones (63.8% each against 50.0%),
+  though another study found same-length unrelated text had no effect on rule compliance, and VeRO''s
+  tool-instruction edit lost 5 points on MATH while its SimpleQA gain is bundled with description changes.
+  Rules do not create tool use a model lacks: weak models barely searched when told to (BrowseComp-Plus),
+  and agents that had read a rule acted on it in 61% (Qwen 3.5-27B) to 88% (Sonnet 4.5) of episodes.'

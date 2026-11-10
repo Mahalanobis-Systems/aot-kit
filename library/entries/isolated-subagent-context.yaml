@@ -21,42 +21,65 @@ evidence_domains:
 - code-generation
 - tool-use
 - conversation
+- robotics
 categories:
 - context.isolate
 summary: 'Hand a context-heavy side task (code search, reading many files, documents or logs) to a sub-agent
-  that starts with a fresh context and only the tools it needs, and have it return a short result or file
-  references so the parent''s context stays small. It pays when the parent would otherwise read far more
+  with a fresh context and only the tools it needs, and have it return a short result or file references
+  so the parent''s context stays small. It pays when the parent would otherwise read or carry far more
   than it can hold: on legal data rooms of up to 80M tokens, delegating bounded reading raised rubric
-  pass rate from 23.3% to 62.4% across seven models. It is not a default win: on bounded repository questions,
-  delegated exploration scored 46.2% against 65.2% for an indexed single agent at 2.3 times the cost per
-  correct answer, with 41.8% of its failures at the hand-off, mostly silent; generic sub-agent roles and
-  a second level of delegation also lost quality.'
-how: '1. Start from the single agent: run it on your tasks and log peak context, tokens per task and which
-  tool outputs fill the window; if the material is a corpus you can index, try a retriever before delegating
-  (see 8.a.i), since indexed retrieval beat delegated exploration on bounded repository questions. 2. Delegate
-  only side tasks whose raw output is large and not needed again (codebase search, reading many files,
-  documents or logs) and whose result fits a short contract; keep work whose steps share a lot of context
-  in the parent. 3. Define each sub-agent as a task-specific role with an input-output contract: the objective,
-  the inputs it gets, an output schema (findings with file paths, line ranges or document ids, plus what
-  it did not cover) and a length cap; avoid generic lifecycle roles such as requirements, design or code
-  generation. 4. Start it with a fresh context and a self-contained brief, not the parent''s routing messages
-  or whole history, and give it only the tools it needs: read-only search and read tools for exploration,
-  no delegation tool (depth 1), and a turn cap. 5. Protect the hand-off: have it write long outputs to
-  files and return references (see 6.b.iii), have the parent forward or quote its findings instead of paraphrasing
-  them, and require it to list every policy- or risk-relevant fact it found. 6. Measure with a paired
-  eval of the single agent against the delegating one on the same tasks and models: success, cost per
-  correct answer, total and parent tokens, the parent''s peak context and latency; then label failures
-  where the sub-agent''s transcript holds a fact that the parent''s answer lacks.'
+  pass rate from 23.3% to 62.4% across seven models, and in a robot-manipulation harness, keeping each
+  subgoal''s history in a sub-agent cut mean input per model call 4.2 times and cost 2.4 times (success
+  45.0% against 40.8%). It is not a default win: on bounded repository questions, delegated exploration
+  scored 46.2% against 65.2% for an indexed single agent, with 41.8% of its failures at the hand-off;
+  on 166 tool-heavy work tasks, sub-agents raised cost for nearly every model and cost both closed models
+  more tasks than they gained (GPT-5.6 Sol lost 45 and gained 9), mostly through failed or unverified
+  sub-agent results; and on long-horizon coding, the same agent closing its own subtasks and keeping only
+  their results matched recursive delegation at 73.7% lower cost.'
+how: '1. Start from the single agent: run it on your tasks and log peak context, input per call, tokens
+  per task and which tool outputs fill the window. Try the cheaper fixes first: if the material is a corpus
+  you can index, a retriever (see 8.a.i), since indexed retrieval beat delegated exploration on bounded
+  repository questions; if the window fills with the details of finished subtasks, have the same agent
+  close each subtask and keep only its result (see 5.a.i), which matched recursive sub-agent delegation
+  on long-horizon coding at 73.7% lower cost; on inputs that fit in context (about 100K tokens), a minimal
+  agent working with files and a shell (mini-swe-agent) scored higher than a recursive sub-call harness
+  for four of five models, at lower cost for all five. 2. Delegate only side tasks whose raw output is
+  large and not needed again (codebase search, reading many files, documents or logs) and whose result
+  fits a short contract; keep work whose steps share a lot of context in the parent. Tell the parent when
+  not to delegate as well as when to, and do not push delegation for every task: in one benchmark a current
+  model delegated on 93.5% of the tasks that needed no sub-agent, unnecessary delegation added overhead
+  without gains in 124 cases, and forcing a planning sub-agent first led to delegation on 61.0% of the
+  tasks that needed none. 3. Define each sub-agent as a task-specific role with an input-output contract:
+  the objective, the inputs it gets, an output schema (findings with file paths, line ranges or document
+  ids, what it did not cover, and whether it finished) and a length cap; avoid generic roles (planner,
+  explorer, coder) and lifecycle roles (requirements, design, code generation), which scored below task-
+  or domain-specific ones in two studies. 4. Start it with a fresh context and a self-contained brief,
+  not the parent''s routing messages or whole history, and give it only the tools it needs: read-only
+  search and read tools for exploration, no delegation tool (depth 1), and a turn cap; when every subtask
+  could be delegated recursively, child agents made 75.5% of 32,650 model requests on long-horizon coding.
+  5. Protect the hand-off: have it write long outputs to files and return references (see 6.b.iii), have
+  the parent forward or quote its findings instead of paraphrasing them, require it to list every policy-
+  or risk-relevant fact it found, and have the parent check each result''s status and coverage before
+  building on it, then retry or take over a failed delegation: failed or unverified sub-agent results
+  caused 33 of GPT-5.6 Sol''s 45 and 14 of Claude Sonnet 5''s 22 tasks lost to delegation in one benchmark.
+  6. Measure with a paired eval of the single agent against the delegating one on the same tasks, per
+  model (in one benchmark both closed models lost tasks while two open models gained 10.2 points): success,
+  cost per correct answer, total and parent tokens, the parent''s peak context and input per call, latency,
+  and how often it delegates on tasks that need no sub-agent; then label failures where the sub-agent''s
+  transcript holds a fact that the parent''s answer lacks, or where the parent built on a failed sub-agent
+  result.'
 detect:
   static: 'A sub-agent call with a fresh context, a scoped tool list and a summary or file-reference return;
     or a single agent that reads large search results, file sets, documents or logs into its own context.
-    Warning signs: generic lifecycle sub-agents, sub-agents that inherit the full history or can delegate
-    further, a parent that paraphrases sub-agent output.'
-  traces: 'Sub-agent spans: tokens consumed inside vs returned; the parent''s peak context; empty returns;
+    Warning signs: generic sub-agent roles, sub-agents that inherit the full history or can delegate further,
+    prompts that push delegation for every task or force a planning sub-agent first, a parent that paraphrases
+    sub-agent output or never checks whether a sub-agent finished.'
+  traces: 'Sub-agent spans: tokens consumed inside vs returned; the parent''s peak context and input per
+    call; empty or failed returns the parent builds on; delegations on tasks the parent could do alone;
     facts present in the sub-agent transcript but missing from the parent''s answer (hand-off breakdowns,
     usually silent); share of the corpus read.'
-  evals: 'Single agent vs delegation (and vs an indexed retriever) on search-heavy tasks: success, cost
-    per correct answer.'
+  evals: 'Single agent vs delegation, per model (and vs an indexed retriever, or the same agent keeping
+    only finished subtasks'' results), on search-heavy tasks: success, cost per correct answer.'
   judge: 'Summary fidelity against the sub-agent''s full transcript: facts found but not returned, claims
     returned but not supported.'
   probes:
@@ -71,18 +94,28 @@ impact:
     when: 'Large corpora: +39.1 points rubric pass rate on legal data rooms (Grupen, Sep 2026); folding
       sub-tasks out of context 0.567 vs 0.540 for a 327K-context agent with the same RL on BrowseComp-Plus,
       at a 10x smaller active context (Sun, Oct 2025); sub-calls lifted GPT-5 on OOLONG 36.0 to 56.0 but
-      cut Qwen3-Coder on CodeQA 66.0 to 56.0 (Zhang, Dec 2025). Bounded tasks: 46.2% vs 65.2% for an indexed
-      single agent (Oskooei, Aug 2026); task-specific sub-agents +5.91 and +4.46 points, generic ones
-      lower (Hu, Sep 2026); medal rate 45.2% vs 55.7%, CIs overlapping (Brilliantov, Sep 2026); depth
-      2 cost 19 points (Grupen, Sep 2026)'
+      cut Qwen3-Coder on CodeQA 66.0 to 56.0 (Zhang, Dec 2025); robot manipulation 45.0% vs 40.8% for
+      one agent (Lee, Oct 2026). Bounded tasks: 46.2% vs 65.2% for an indexed single agent (Oskooei, Aug
+      2026); on about 100K-token inputs an RLM harness 53.5% vs 68.0% for a minimal file-and-shell agent
+      and 60.0% for direct inference with GPT-5.6 Sol (Pham, Sep 2026); on 166 tool-heavy tasks GPT-5.6
+      Sol gained 9 and lost 45 tasks, Claude Sonnet 5 gained 15 and lost 22, two open models +10.2 points
+      (Ding, Oct 2026); recursive delegation 42.4% vs 38.1% for compaction on long-horizon coding, 42.6%
+      for the same agent scoping its own subtasks (Xiang, Oct 2026); task-specific sub-agents +5.91 and
+      +4.46 points, generic ones lower (Hu, Sep 2026); medal rate 45.2% vs 55.7%, CIs overlapping (Brilliantov,
+      Sep 2026); depth 2 cost 19 points (Grupen, Sep 2026)'
     basis: evidence
   cost:
     effect: mixed
     size: large
     when: 'More total tokens (Piriyakulkij, Sep 2026): 2.3x cost per correct answer for delegated search
-      (Oskooei, Aug 2026), cost up for six of seven models in a delegating harness while Opus 5 fell from
-      ~$18 to ~$7 per data room (Grupen, Sep 2026); single-agent tokens grew with distractor domains while
-      sub-agent setups stayed flat (Fu-Hinthorn, Jun 2025)'
+      (Oskooei, Aug 2026); +$0.1 to +$4.2 per task for nearly every model on tool-heavy work (Ding, Oct
+      2026); recursive delegation $1,749.73 vs $681.22 for compaction and $460.77 for in-agent subtask
+      scoping on 98 milestones (Xiang, Oct 2026); RLM $4.30 vs $0.816 per instance for a minimal file-and-shell
+      agent with GPT-5.6 Sol (Pham, Sep 2026); cost up for six of seven models in a delegating harness
+      (Grupen, Sep 2026). Cost down where the parent would otherwise carry the whole history: $0.511 vs
+      $1.221 per robot episode at 4.2x less input per call (Lee, Oct 2026); Opus 5 from ~$18 to ~$7 per
+      data room (Grupen, Sep 2026); single-agent tokens grew with distractor domains while sub-agent setups
+      stayed flat (Fu-Hinthorn, Jun 2025)'
     basis: evidence
   performance:
     effect: mixed
@@ -94,13 +127,15 @@ impact:
   security:
     effect: mixed
     size: medium
-    when: Depends on tool scoping (see 5.c.ii).
+    when: Depends on tool scoping (see 10.a.i).
     basis: assessment
   governance:
     effect: degrades
     size: small
-    when: Nested traces.
-    basis: assessment
+    when: 'Policy-relevant facts a sub-agent found often never reached the agent that had to act on them:
+      22 of 26 for a 32B model and 1 of 18 for gpt-4.1-mini, against none in a single loop, causing both
+      under- and over-escalation (Li, Aug 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
@@ -110,14 +145,17 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'Paired eval on the same tasks and models: the single agent against the same agent with a delegated
-    sub-agent (and against an indexed retriever where the corpus allows): success, cost per correct answer,
-    total tokens, the parent''s peak context and latency; code each failure by mechanism, including hand-off
-    breakdowns where the sub-agent found the answer and the parent lost or misreported it.'
+  how: 'Paired eval on the same tasks, per model: the single agent against the same agent with a delegated
+    sub-agent, and against the cheaper alternatives where they apply (an indexed retriever, the same agent
+    keeping only the results of finished subtasks): success, cost per correct answer, total tokens, the
+    parent''s peak context and input per call, and latency; code each failure by mechanism, including
+    hand-off breakdowns where the sub-agent found the answer and the parent lost or misreported it, and
+    parents that built on a failed sub-agent result.'
 - method: monitor
-  how: 'Per sub-agent call: tokens consumed inside against tokens returned, empty returns, sub-agent count
-    against task size and the share of the corpus read; on a sample, have a judge check whether the facts
-    in the sub-agent''s transcript reach the parent''s answer (fact attenuation).'
+  how: 'Per sub-agent call: tokens consumed inside against tokens returned, empty or failed returns and
+    whether the parent used them, sub-agent count against task size, delegations on tasks the parent could
+    do alone, and the share of the corpus read; on a sample, have a judge check whether the facts in the
+    sub-agent''s transcript reach the parent''s answer (fact attenuation).'
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -289,6 +327,99 @@ evidence:
   direction: mixed
   measured: true
   locator: Score; Cost (Tokens); Improvements to supervisor
+- source: 'Jiahong Xiang, Kunqiu Chen, Lingming Zhang, Yuqun Zhang (Southern University of Science and
+    Technology, University of Illinois Urbana-Champaign), "Spine: Compiling Subtask Trees into Structured
+    Context for Long-Horizon Coding Agents", https://arxiv.org/abs/2610.37224'
+  date: '2026-10-27'
+  task: 'Compare context-management approaches inside Codex on long-horizon coding: native compaction,
+    trajectory pruning (AgentDiet), single-level context folding, recursive sub-agent delegation through
+    Codex''s native sub-agent mechanism (each subtask delegated to a child session with its own context
+    that returns its result and may delegate further), and Spine, where the same agent opens and closes
+    subtask scopes inline and the runtime replaces each finished subtask''s interactions with its result'
+  effect: 'SWE-Milestone with GPT-5.6 Sol (Table 5): native Codex 38.1% Score, 14/98 milestones, 1,072.4M
+    tokens, 131.2K average input tokens per request, $681.22; Recursive Subagent 42.4%, 17/98, 2,139.9M,
+    65.3K, $1,749.73; Context Folding 37.1%, 13/98, 765.2M, 87.3K, $596.25; SpineCodex 42.6%, 19/98, 640.5M,
+    72.3K, $460.77. With recursive delegation, "child agents account for 75.5% of its 32,650 model requests"
+    (8,792 requests in total for SpineCodex); SpineCodex "achieves a comparable Score to Recursive Subagent
+    at 73.7% lower total cost".'
+  conditions: GPT-5.6 Sol in Codex; SWE-Milestone, 7 repositories with 98 dependent milestones, one run
+    per repository; same model, harness, tasks and budget within each comparison; baselines implemented
+    by the authors (context folding without its RL training); the authors' own alternative to delegation;
+    the other benchmarks (ProgramBench, FrontierSWE, Pi with Gemini 3.8 Flash and Qwen 3.8 27B) compare
+    Spine with the native harness only
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.3; §5.2 Baselines; §5.3; §5.5.1 Table 5; §5.5.3
+- source: 'Bowen Ding, Qixin Wang, Lexing Ruan, Weiyi Lu, Qiwei Ge, Ruishan Fang, Tao Lin (Zhejiang University,
+    Westlake University), "MS-Eval: Benchmarking Sub-Agent Delegation and Orchestration in MCP-Intensive
+    Working Scenarios", https://arxiv.org/abs/2610.22869'
+  date: '2026-10-16'
+  task: 'Same harness with and without sub-agents on MCP tool-heavy work tasks: a single agent with the
+    task''s tools against a main agent that can delegate to sub-agents with isolated contexts, role-specific
+    tool allowlists, no delegation tool and a concise-summary return, alone or in parallel waves; generic
+    (planner, explorer, coder), domain-specialized and plan-first variants, plus an oracle given the ideal
+    delegation plan'
+  effect: 'Specialized sub-agents scored best of the practical variants (quality index 20.8% against 11.6%
+    for generic ones, which did not delegate on 52.8% of the tasks that needed it; the plan-first variant
+    delegated on 61.0% of the tasks that needed none). Against the single agent on all 166 tasks, tasks
+    gained/lost with specialized sub-agents: GPT-5.6-Sol 9/45, Claude-Sonnet-5 15/22, Qwen-3.8-Max 20/3,
+    Kimi-K3 26/9, GLM-5.3 16/9, DeepSeek-V4-Flash 11/11; Qwen-3.8-Max traded "a $1.0 cost increase for
+    a 10.2-point rise" and Kimi-K3 cut cost by $0.4 while also gaining 10.2 points. "Across nearly all
+    models, MAD-SAE carries a cost premium over SA", "ranging from +$0.1 for GLM-5.3-Flash to +$4.2 for
+    GPT-5.6-Sol per task". GPT-5.6-Sol delegated on 93.5% of tasks annotated as not needing sub-agents;
+    "Delegated Failure Propagation" caused 33 of its 45 lost tasks and 14 of Claude-Sonnet-5''s 22. Across
+    models, "Context Offloading accounts for 148 Cheaper-or-Efficient-Success cases" and "Unnecessary
+    Delegation" "inflates overhead in 124 cases". With the oracle plan, success matched the single agent
+    at higher cost: "extra cost buys efficiency, but not necessarily performance gains".'
+  conditions: Eight models (GPT-5.6-Sol, Claude-Sonnet-5, Qwen-3.8-Max, Kimi-K3, GLM-5.3, MiniMax-M3,
+    GLM-5.3-Flash, DeepSeek-V4-Flash; variant comparison on DeepSeek-V4-Flash); 166 Toolathlon-Gym tasks
+    in eight work scenarios, 89 annotated as needing delegation; Kimi-Code harness; every agent and sub-agent
+    gets a 128K window, 100 steps and 7,200 s, so total budgets are not matched; delegation also adds
+    parallelism; the quality index combines delegation match with normalized utilities; no repeat runs
+    reported; independent
+  direction: mixed
+  measured: true
+  locator: Abstract; §3; §4.2; §5.1; §6 Table 1; §7 Fig. 3-4; Appendix C; Appendix D Table 6
+- source: 'Junhoo Lee, Injun Baek, Seungyeon Kim, Suhyun Jeon, Minkyu Kim, Baekseung Kim, Nojun Kwak (Seoul
+    National University), "RobotUse: Allocating Computation, Context, and Decisions", https://arxiv.org/abs/2610.04929'
+  date: '2026-10-04'
+  task: Robot-manipulation agent harness in which the main agent delegates each subgoal to a sub-agent
+    that keeps its observation, selection and recovery history in its own context and returns a language
+    report; ablation against one agent doing the same work in one continuous conversation with the same
+    model, tools, role instructions and budgets
+  effect: 'Success 45.0% (54/120) with sub-agents against 40.8% (49/120) for the single agent. "Without
+    subagents, mean input per call increases by 4.2× and the average episode peak by 3.5×, raising total
+    token usage by 4.9× and API cost by 2.4×": 13.07k against 55.01k mean input tokens per call, 27.45k
+    against 95.74k peak, 596.8k against 2,909k tokens and $0.511 against $1.221 per episode, at 41.6 and
+    41.1 model calls per episode.'
+  conditions: Gemini-3.8-Flash for all agents; RoboLab simulation, 40 tasks x 3 seeds (120 episodes per
+    condition); no significance test; the authors' own harness and ablation; the abstract's 6.7-point
+    gain is over a different system (CaP-X)
+  direction: supports
+  measured: true
+  locator: §3; §5.3 Fig. 6; Appendix A.4 Table 3
+- source: 'Quang Hieu Pham, Thuy Duong Nguyen, Jocelyn Qiaochu Chen, Xi Ye (University of Alberta, Amii),
+    "LongHarness Bench: Stress-Testing Language Model Harnesses for Long-Context Reasoning", https://arxiv.org/abs/2609.38137'
+  date: '2026-09-29'
+  task: 'Long-context reasoning tasks of about 100K-120K tokens per instance, run by direct long-context
+    inference and four harnesses on the same models: RLM (the context held outside the model and processed
+    through recursive sub-model calls), OpenCode and mini-swe-agent (one agent working with files and
+    a shell), and ReAct with semantic search'
+  effect: 'Macro accuracy (cost per instance), GPT-5.6-sol: direct 60.0% ($0.822), RLM 53.5% ($4.30),
+    OpenCode 40.5% ($2.90), mini-swe-agent 68.0% ($0.816), ReAct 43.0% ($1.93); GLM-5.3: direct 9.5% ($0.948),
+    RLM 27.0% ($5.48), mini-swe-agent 42.5% ($3.00); Qwen3.8-27B: RLM 7.5% ($5.66), mini-swe-agent 33.0%
+    ($5.32); Gemini 3.8 Flash: RLM 10.5% ($0.713), mini-swe-agent 25.0% ($0.550); Kimi-K2.6: both 0.5%
+    ($6.65 and $4.03). On one suite "GPT-5.6-sol RLM reaches 2% at a reported cost of $7.86 per instance,
+    compared with 44% at $0.780 for direct inference": "decomposition reduces the context per call without
+    sufficiently reducing the final decision space." "Weaker models tend to gain more from harnesses."'
+  conditions: GPT-5.6-sol, Gemini 3.8 Flash and GLM-5.3 at high reasoning effort, Qwen3.8-27B at medium,
+    Kimi-K2.6; four synthetic suites (constraint search, outlier memos, program tracing, program-pair
+    search); 3M-token budget per instance; costs estimated from list prices; a harness-level comparison,
+    so the sub-calls are not isolated from the rest of each harness; inputs fit in context for direct
+    inference; independent
+  direction: contradicts
+  measured: true
+  locator: Abstract; §2.1; §4.1; §4.2 Table 2; §4.3; §4.4
 assessment:
   qa:
     unit: Sub-agent input and summary schema.
@@ -404,8 +535,14 @@ provenance:
 caveats: 'The large gains come from very large corpora (data rooms, multi-million-token inputs) and from
   setups that also change other things (a REPL holding the corpus, RL training), so they do not isolate
   the sub-agent; on bounded tasks with a strong single agent the gain vanished or reversed (repository
-  questions, MLE-bench, generic roles on ProgramBench). The hand-off is the new failure point: it caused
-  41.8% of delegated-search failures, usually with a confident wrong answer, and a 32B model lost 85%
-  of discovered facts across an orchestrator-subagent boundary, against 3-6% for gpt-4.1-mini. Several
-  studies are small or chart-only (14 data rooms for the depth test, 16-30 facts per cell, SkillsBench
-  accuracies in figures), and Harvey''s hold-out sets are unreleased.'
+  questions, MLE-bench, generic roles on ProgramBench, about 100K-token reasoning inputs), and on 166
+  tool-heavy work tasks both closed models (GPT-5.6 Sol, Claude Sonnet 5) lost more tasks with sub-agents
+  than they gained while some open models gained. The hand-off is the new failure point: it caused 41.8%
+  of delegated-search failures, usually with a confident wrong answer; failed or unverified sub-agent
+  results caused most of the tasks GPT-5.6 Sol and Claude Sonnet 5 lost to delegation; and a 32B model
+  lost 85% of discovered facts across an orchestrator-subagent boundary, against 3-6% for gpt-4.1-mini.
+  Delegation can buy quality at a high price: recursive delegation beat compaction on long-horizon coding
+  (42.4% against 38.1%) at $1,749.73 against $681.22, and the same agent closing its own subtasks matched
+  it at $460.77. Several studies are small, single-run or by the method''s authors (one run per repository
+  over 98 milestones, a 4-point success gap over 120 robot episodes without a test, 14 data rooms for
+  the depth test, 16-30 facts per cell), and Harvey''s hold-out sets are unreleased.'

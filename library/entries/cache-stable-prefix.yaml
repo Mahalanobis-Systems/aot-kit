@@ -17,49 +17,152 @@ domains:
 - general
 evidence_domains:
 - code-generation
-- data-analysis
+- web-research
 categories:
 - prompts.caching
-summary: 'Put static content (identity, rules, tool definitions) before a boundary and per-turn content
-  (date, state, memory) after it; keep the prefix bit-for-bit identical across turns; strip thinking text
-  from persisted history; and track per-turn cache-miss cost. Check the provider''s caching minimum: a
-  prefix below it never caches.'
-how: '1. Read the prompt assembly code: find timestamps, per-turn state, or non-deterministic serialization
-  (dict order, ids) early in the prompt. 2. Move them after the static block; sort and fix serialization.
-  3. Confirm the static prefix exceeds the provider''s minimum cacheable length. 4. Replay the hand-labeled
-  set; compare cache-hit rate before and after.'
+summary: Build each agent request as a byte-identical static prefix followed by an append-only history,
+  so every turn reads the prompt cache instead of reprocessing it. Put identity, rules and tool definitions
+  before the cache boundary and anything that changes (date, state, memory, mode, settings) after it as
+  appended messages; serialize deterministically; send earlier turns back verbatim, thinking blocks included
+  where the model keeps them; check the provider's caching minimum (a prefix below it never caches); and
+  track per-turn cache misses, since 108 of 120 fixed caching defects in ten open-source agents raised
+  no error. Against a prefix broken on every call, caching cut cost 41-80% and time to first token 6-31%
+  on one research benchmark, and in one inference provider's traffic a change to the tool list or reasoning
+  effort made a cache break more than 20 times as likely. The evidence is small and covers cost and latency,
+  not quality; caching the whole context raised latency on one model, and a cache shared across customers
+  lets them test whether a known prompt was sent.
+how: '1. Start from the baseline: log per request the cache read, cache write and uncached input tokens
+  (on Claude: cache_read_input_tokens, cache_creation_input_tokens, input_tokens), a hash of the tools,
+  system prompt and messages, and where the request first differs from the previous one, or the provider''s
+  cache-miss reason (Anthropic''s cache diagnostics names whether the model, system prompt, tools or messages
+  diverged). Compute the token-weighted hit rate per session and the cost of each avoidable miss, and
+  check the meter itself: 23 of 120 fixed caching defects in ten open-source agents miscounted cache tokens.
+  2. Read the prompt assembly code and order content by how often it changes: tool definitions and static
+  instructions first, then project or session content, then the growing history. Keep the system prompt
+  byte-stable, with no timestamp, request or session id, git status or memory in it (a live timestamp
+  there meant the cache never hit); put per-turn values after the history as an appended message that
+  supersedes earlier ones, keep the date to the day and fixed for the session, and announce a date change
+  with an appended note. 3. Make the bytes deterministic: rebuild each request from an append-only session
+  log so retries and resumes are byte-identical; sort keys in tool schemas and tool-call JSON (some languages
+  randomize key order) and avoid random per-request ids; keep the tool list sorted and identical in every
+  mode, appending new tools at the end, since a tool inserted mid-list re-reads everything after it (to
+  restrict tools without editing the list, see 3.b.ii); send assistant turns and tool results back verbatim.
+  Keep thinking out of persisted history only where the provider does not expect it back (as Gemini CLI
+  does); on Claude models that keep prior thinking (Opus 4.5 and later, Sonnet 4.6 and later, Haiku 5.5),
+  pass thinking blocks back unmodified, because a dropped block changes the cached prefix from that point
+  on. 4. Mark the boundary to fit the provider. Put the cache breakpoint on the last block that is identical
+  across requests, never on the block that varies: on Claude, writes happen only at breakpoints, reads
+  look back at most 20 blocks and up to 4 breakpoints are allowed, so add an intermediate one when a turn
+  appends 20 or more blocks, or use automatic caching on an append-only history. Do not assume caching
+  everything is best: in one study with a 10,000-token system prompt, caching the full context raised
+  GPT-4o''s time to first token 8.8% where caching only the stable system prompt cut it 30.9% (cost differed
+  by 2-4 points across placements), so compare placements on your own provider and session lengths. Enable
+  caching through a capability lookup, not model-name checks (37 of the 120 defects silently lost caching
+  when a model was renamed or added). Confirm the static prefix clears the model''s minimum (512 to 4,096
+  tokens across current Claude models; below it nothing caches and no error is returned). Choose the lifetime
+  from the gap between turns: Claude''s default is 5 minutes from the start of the request, refreshed
+  on each hit, with writes at 1.25x input; 1-hour writes cost 2x and pay when turns or side agents run
+  5 to 60 minutes apart. Keep the model fixed within a cached conversation (caches are per model; see
+  1.b.i), and send one stable cache key or session id per conversation where the API routes by one. 5.
+  Keep settings, modes and compaction from rewriting the prefix. Settle reasoning effort and thinking
+  settings per session, or carry a change in an appended message where the API allows it: two open-model
+  chat templates write effort at token 8, and on Claude a thinking or top-level effort change restarts
+  the cache while a per-message effort change does not. Put mode reminders in their own appended message
+  (a plan-mode reminder edited into and out of the user message re-read 330 to 2,340 tokens a turn) and
+  do not prune or replace earlier history in place each turn (one replacement re-read 5,846 of 15,520
+  tokens). Compact late, running the summarizer on the conversation''s exact prefix with the instruction
+  appended rather than over a re-serialized transcript (22% cached in the largest such workload one provider
+  saw). Run forks and sub-agents that share the parent''s context the same way, and for parallel calls
+  on a shared prefix send the rest after the first response starts, since a Claude cache entry exists
+  only from then. 6. If several customers share one provider credential (a relay, gateway or shared workspace),
+  keep their cache state apart: carry a namespace derived from the authenticated customer into every cache
+  lookup and write, or split after a verified public prefix. Under a shared credential five of five open-source
+  gateways exposed cross-customer cache reads; the split kept most reuse at a modeled 1.7 to 2.5% cost
+  increase, against 2.29 to 3.14 times for full separation. 7. Measure: replay the hand-labeled set (or
+  recorded sessions with the date fixed) before and after, plus scripted sessions that switch mode, change
+  effort and back, connect and disconnect a tool server, add a skill, cross midnight, idle past the cache
+  lifetime, restart and resume, spawn a sub-agent and compact; confirm outputs and task success are unchanged,
+  and compare token-weighted cache read share, cost per task, time to first token by context depth and
+  the first divergence position, per model and provider. In production, alert on hit-rate drops and on
+  deep turns that re-read most of the prompt: 108 of the 120 defects raised no error.'
 detect:
-  static: a timestamp, session id or per-turn state before the static block; non-deterministic serialization;
-    a marked-for-caching prefix shorter than the provider's minimum (in one image-labeling agent, 504
-    tokens against Haiku 4.5's 4,096)
+  static: a timestamp, session id or per-turn state before the static block; non-deterministic serialization
+    (unsorted keys, random call ids, tools rebuilt in a different order or inserted mid-list); a cache
+    marker on a block that changes every request; caching enabled by hard-coded model-name checks rather
+    than a capability lookup; history items edited, pruned or replaced in place, or mode reminders and
+    setting changes written into earlier messages or the system prompt; a compaction or side call with
+    its own system prompt over a re-serialized transcript; a marked-for-caching prefix shorter than the
+    provider's minimum (in one image-labeling agent, 504 tokens against Haiku 4.5's 4,096)
   traces: cache_read tokens near zero across calls that share a prefix; cache-hit rate below about 50%
-    on multi-turn runs
+    on multi-turn runs; cache breaks on turns where the tool list, reasoning effort or mode changed, or
+    after compaction; turns deep in a session that re-read most of the prompt; cache-token counts that
+    read zero while the bill shows caching
+  probes:
+    what: Scripted sessions that change settings and modes midway.
+    construct: Run one session through plan and build modes, an effort switch and back, a sub-agent, idle
+      time, a restart and resume, connecting and disconnecting a tool server, adding a skill and a compaction;
+      record every request and flag any that is not a pure append to the one before.
 impact:
   quality:
     effect: none
+    when: the provider states the response is identical with and without caching (Anthropic docs, Nov
+      2026), and the caching defects studied left model output correct (Zhang, Oct 2026); no source here
+      measures task quality, so moving instructions to suit the cache is a separate change (see 3.a.iv)
     basis: evidence
   cost:
     effect: improves
     size: large
-    when: cached input is billed at a fraction of full price; RETRACE's cache hits rose 45.6% to 90.8%
-      as a side effect (Aug 2026)
+    when: against a prefix broken on every call, caching cut agent cost 41.4-79.6% across four models
+      and 88-89% at 50,000-token prompts on GPT-5.2 and Claude Sonnet 4.5 (Lumer, Jan 2026); RETRACE's
+      cache hits rose 45.6% to 90.8% as a side effect (Li, Aug 2026); a gateway that rebuilt its system
+      prompt every turn raised cost about 75% (Zhang, Oct 2026); on Claude, reads bill at 0.1x input (0.05x
+      on Opus 5.5 and Sonnet 5.5) but 5-minute writes at 1.25x, so a prefix written and never read costs
+      25% more than no caching (Anthropic docs, Nov 2026)
     basis: evidence
   performance:
     effect: improves
-    size: small
+    size: medium
+    when: time to first token 6.1-30.9% better with the best cache placement per model and 60% better
+      on GPT-4o at 50,000-token prompts, but 8.8% worse on GPT-4o when the full context was cached (Lumer,
+      Jan 2026); deep in a session, turns that re-read most of the prompt took 5 to 41 s to a first token
+      against 0.8 to 2.8 s for normal turns (Neuralwatt, Oct 2026)
     basis: evidence
   security:
-    effect: unknown
+    effect: degrades
+    size: small
+    when: 'only where customers share a cache: under a shared provider credential five of five open-source
+      gateways exposed cross-customer cache reads and 12 of 28 high-volume model labels on one relay had
+      a cross-account route; public agent prefixes (15 of 17 with no per-run value) let a probe confirm
+      a known prompt, while recovering unknown text succeeded once, for 16 bits (Sun, Aug 2026); direct
+      Claude API caches are isolated per organization and workspace (Anthropic docs, Nov 2026)'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: none
+    when: on Claude, cache entries are held in memory only, not at rest, for their 5-minute or 1-hour
+      lifetime and prompt caching is eligible for zero data retention (Anthropic docs, Nov 2026); other
+      providers' terms differ; 23 of 120 fixed caching defects misreported cache tokens, so reconcile
+      cost reports with the bill (Zhang, Oct 2026)
+    basis: evidence
   brand:
     effect: unknown
+  primary:
+  - cost
+  - performance
 measure:
 - method: verify-fix
   tier: 1
-  how: replay the hand-labeled set; compare cache-hit rate
+  how: replay the hand-labeled set (or recorded sessions with the date fixed) before and after the change,
+    plus scripted sessions that switch mode, change reasoning effort and switch back, connect and disconnect
+    a tool server, add a skill, cross midnight, idle past the cache lifetime, restart and resume, spawn
+    a sub-agent and compact; confirm outputs and task success are unchanged, and compare token-weighted
+    cache read share, cost per task, time to first token by context depth and the first position where
+    each request differs from the previous one, per model and provider
 - method: monitor
-  how: cache-hit rate and cache-miss cost per turn
+  how: 'per turn: cache read, write and uncached input tokens, the first divergence position or the provider''s
+    cache-miss reason, time to first token and the cost of each avoidable miss; alert on drops in session
+    hit rate and on deep turns that re-read most of the prompt; reconcile reported cache tokens with the
+    bill; where a relay serves several customers, test periodically that one customer''s cached prefix
+    is not readable from another account'
 evidence:
 - source: 'Barbaste et al., "Harness Engineering: Anatomy, Architecture, and Evolution of Coding Agents
     -- A Source-Code Study of Eleven Systems", https://arxiv.org/abs/2609.00006'
@@ -139,8 +242,157 @@ evidence:
   direction: supports
   measured: false
   locator: Section 5.3 Cost and Latency
+- source: 'Ying Zhang, Ruoqi Guo, Yi Liu, Gelei Deng, Yuekang Li, Yepang Liu, Leo Zhang, "Silent and Costly:
+    Characterizing and Detecting Prompt-Caching Mis-Integration in LLM Agents", https://arxiv.org/abs/2610.34817'
+  date: '2026-10-26'
+  task: 'Classify the root cause, symptom and fix of every merged pull request that fixed a prompt-caching
+    defect in ten popular open-source agent applications, then build a detector (CacheLint: CodeQL to
+    locate cache markers and usage reads, an LLM guard check for prefix stability and accounting, and
+    a dated provider-capability table)'
+  effect: '120 defects from 622 candidate PRs. Request side 97 (81%): model-name gating 37 (31%), incompatible
+    cache marker 10 (8%), prefix reassembly 15 (13%), volatile value such as a timestamp or UUID in the
+    cached prefix 13 (11%), nondeterministic serialization 10 (8%), misplaced marker 3 (3%), cross-turn
+    mutation 9 (8%); read side, usage miscount 23 (19%). "108 of 120 (90%) raise no error": 86 (72%) silent
+    waste, 22 (18%) wrong telemetry; 12 (10%) crashed, 8 of them incompatible markers. In hermes-agent#754
+    a gateway "reassembled the system prompt every turn and lifted cost by roughly 75%"; pruning history
+    images after three turns meant "each compaction silently rebuilt the cache instead of hitting it"
+    (openclaw#58038); a live timestamp in the system prompt meant "the cache never hit" (goose#2434).
+    68% of fixes were small static local edits. CacheLint: precision 0.71 and recall 0.78 on the 120;
+    on 571 other repositories 32 true positives of 37 warnings (precision 0.86), 21 confirmed and 18 fixed,
+    one in Anthropic''s .NET SDK; without the dated capability table precision fell to 0.05, and gpt-5.4-mini
+    answered 5 of 33 dated one-hour-TTL capability facts confidently and correctly.'
+  conditions: Ten most-starred multi-provider agent applications on GitHub (OpenClaw, Hermes-Agent, AutoGPT,
+    OpenCode, LobeHub, OpenHands, Cline, Goose, Aider, Nanobot), merged PRs to 2026-05-10, three coders
+    (Fleiss kappa 0.76 on screening); counts defects that were found and fixed, not hit rates or bills;
+    the 75% is one PR's report; recall is in-sample because the rules were mined from the same fixes;
+    provider-side automatic caching out of scope
+  direction: supports
+  measured: true
+  locator: §III; §IV-A Table I; §V Table II (RQ1-RQ3); §VII-A, §VII-B Table III, §VII-C; §VIII
+- source: Chad Gibson (Neuralwatt), "Why harnesses matter for energy efficiency", https://neuralwatt.com/news/why-harnesses-matter-for-energy-efficiency
+  date: '2026-10-16'
+  task: Measure prompt-cache misses by client in an inference provider's traffic and their energy and
+    time-to-first-token cost, then trace their causes in scripted sessions of open-source coding agents
+  effect: 'Sep 8-Oct 7, 2026: 1.6% to 11.1% of input uncached by client; about 1 turn in 100 broke the
+    cache for deepseek-harness against about 3 in 100 for OpenCode and Pi. At about 50k-token prompts,
+    requests under 10% cached used 140% more energy on GLM-5.3 and 91% more on DeepSeek V4.1 Flash than
+    fully cached ones. Past 128k tokens about 3 turns in 1,000 re-read more than half the prompt, about
+    230k tokens each and 75% of re-read tokens at that depth, as much prefill as about 600 ordinary turns;
+    median time to first token for such turns rose from 5 s to 41 s with depth, against 0.8 to 2.8 s for
+    normal turns (Figure 3). Oct 6-13, three models: 2.8% of turns broke the cache when nothing visible
+    changed, 61% when reasoning effort changed and 67% when the number of tools changed ("more than 20
+    times as likely", re-reading about 40% of the previous prompt); tool-list changes on about 0.5% of
+    turns carried 19% of re-read tokens. Lab: of 539 follow-on requests 88% were pure appends and all
+    65 breaks came from the harness editing what it had already sent (none from chat templates; idle time,
+    restart and resume and sub-agents caused none): OpenCode 1.x''s plan-mode reminder (330 to 2,340 tokens
+    re-read a turn), omp replacing an earlier file read (5,846 of 15,520 tokens re-read), effort written
+    at token 8 of the GLM-5.3 and DeepSeek V4.1 templates, MCP tools inserted alphabetically mid-list
+    (about 1,300 tokens in for OpenCode 1.x on GLM-5.3), the date in the system prompt about 2,000 tokens
+    in, and compaction (67,850 tokens re-read over three compactions in OpenCode 2.x, 29,776 over one
+    in 1.x). Summarizers that re-serialize the transcript into one new message: "In the largest such workload
+    we saw, those calls were only 22% cached." Switching back to an earlier setting hit 10.6k to 27.5k
+    cached tokens.'
+  conditions: Vendor measuring its own platform; open models (DeepSeek V4.1 Flash, GLM-5.3, GLM-5.3 Flash);
+    request metadata only, and server-side numbers mix harness edits with cache eviction; the causes come
+    from scripted lab sessions on two models with OpenCode 1.18.34 and 2.0.29, Pi 1.0.4, omp 18.6.3 and
+    Kilo Code 7.8.3; the time-to-first-token figures are from Figure 3's description
+  direction: supports
+  measured: true
+  locator: 'Key findings; Same model, same price, different cache rates; What a miss costs in energy;
+    Cache misses get expensive deep in a session (Fig 3); What breaks the cache: In the lab, In production
+    (Fig 4); How deepseek-harness keeps the cache intact'
+- source: 'Bowen Sun, Yixi Cai, Xiaogeng Liu, Zhengyue Zhao, Yinzhi Cao, Chaowei Xiao, "KeyPooling: Measuring
+    Where LLM API Relay Paths Collapse Prompt Cache Isolation", https://arxiv.org/abs/2608.17485'
+  date: '2026-08-18'
+  task: Test whether customers of LLM API relays and gateways that forward requests through shared provider
+    credentials can read each other's prompt-cache state (from documented cached-input counts), locate
+    which hop loses the customer's identity, and evaluate a per-customer namespace defense
+  effect: 'No gateway bound customers to upstream credentials by default; under a shared credential all
+    five executable open-source gateways crossed in all five OpenAI cells and all five Anthropic cells.
+    OpenRouter weekly frame: 12 of 28 eligible model labels had a cross-account route (33.7% of eligible-model
+    volume, 7.1% of the platform), one negative, 11 inconclusive, four untested. Agent prefixes make probes
+    feasible: all 17 public Claude Code, Cursor and OpenCode prefixes exceed 1,024 tokens and 15 of 17
+    contain no per-run value. Recovery of unknown text: one controlled chain of eight positions recovered
+    a 16-bit target; "We found no stable production setting for general extraction of arbitrary content."
+    Defense: a namespace derived from the authenticated customer, split after verified public prefixes,
+    "increased modeled cost by 1.7 to 2.5% and exposed zero cached tokens from private regions across
+    customers" over 5,713 replayed request events; complete namespacing cost 2.29 to 3.14 times the unsafe
+    baseline.'
+  conditions: Synthetic canary prompts and researcher-controlled victim accounts; OpenAI and Anthropic
+    upstreams; the OpenRouter frame uses one account pair and is not a request-level prevalence estimate;
+    the defense cost is modeled from replayed WildChat conversations after five public agent prefixes
+    with representative prices (reads 0.1x, writes 1.25x), not billed; timing was not tested
+  direction: mixed
+  measured: true
+  locator: Abstract; §I; §II-A; §V Table I, §V-A; §VII-D; §IX
+- source: 'Elias Lumer, Faheem Nizar, Akshaya Jangiti, Kevin Frank, Anmol Gulati, Mandar Phadate, Vamse
+    Kumar Subbiah, "Don''t Break the Cache: An Evaluation of Prompt Caching for Long-Horizon Agentic Tasks",
+    https://arxiv.org/abs/2601.06007'
+  date: '2026-01-09'
+  task: 'Compare where the cache boundary sits in a multi-turn web-search agent: no cache (a UUID at the
+    start of the system prompt), full-context caching, system-prompt-only caching (a UUID after the system
+    prompt) and caching that excludes tool results (UUIDs after the system prompt and after each tool
+    result), with ablations over prompt size and tool-call count'
+  effect: 'Table 2, cost / time-to-first-token reduction against no cache, full context, system prompt
+    only, excluding tool results: GPT-5.2 79.3% / 9.5%, 81.4% / 10.5%, 79.6% / 13.0%; Claude Sonnet 4.5
+    77.8% / 21.8%, 78.5% / 22.9%, 78.1% / 20.9%; Gemini 2.5 Pro 38.3% / 6.0%, 41.4% / 6.1%, 27.8% / -2.9%;
+    GPT-4o 47.8% / -8.8%, 45.9% / 30.9%, 46.8% / 28.1%. Strategies were within 2-4 points on cost but
+    not on latency: "naive full-context caching ... can paradoxically increase latency." At 50,000-token
+    prompts GPT-5.2 saved 89% ($0.253 to $0.029), Claude Sonnet 4.5 88% ($0.667 to $0.080) and GPT-4o
+    54%, and GPT-4o''s time to first token improved 60% (4,290 ms to 1,699 ms); at 500 tokens, below the
+    minimum, time to first token regressed 10-18% (attributed to server variance). GPT-5.2 kept 77-81%
+    cost savings from 3 to 50 tool calls. Advice, not tested: place unavoidable dynamic values at the
+    end of the system prompt.'
+  conditions: DeepResearch Bench with a LangChain Deep Agents research agent; 40 sessions per model and
+    cache condition, 10,000-token system prompt, warmup calls before each condition; each mode compared
+    with the baseline by t-test, not with each other; minimums then 1,024 tokens (GPT-4o, GPT-5.2, Claude
+    Sonnet 4.5) and 4,096 (Gemini 2.5 Pro); January 2026 prices; one benchmark where the system prompt
+    dominates the prompt; time to first token carries server-load noise
+  direction: supports
+  measured: true
+  locator: §3.1-3.4; §4 Tables 1-2; §5.1-5.3; §6.1-6.3; App. A Tables 3-4; App. C
+- source: Anthropic, "Prompt caching", "Cache diagnostics" and "Thinking" (Claude API docs), https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+    ; https://platform.claude.com/docs/en/build-with-claude/cache-diagnostics ; https://platform.claude.com/docs/en/build-with-claude/thinking
+  date: '2026-11-02'
+  task: 'Provider mechanics for a cache-stable prefix: minimum cacheable length, lifetimes, prices, breakpoints,
+    what invalidates the cache, thinking blocks, isolation and retention'
+  effect: '"Cache prefixes are created in the following order: tools, system, then messages"; "Cache writes
+    occur only at your breakpoint"; "The lookback window is 20 blocks"; up to 4 breakpoints. Minimum cacheable
+    length: 512 tokens on Claude 5.x models (Opus 5.5, Sonnet 5.5, Haiku 5.5 and others), 1,024 on Opus
+    4.8, Sonnet 5, Sonnet 4.6 and Sonnet 4.5, 2,048 on Opus 4.7, 4,096 on Opus 4.6, Opus 4.5 and Haiku
+    4.5; shorter prompts "are processed without caching, and no error is returned." Default lifetime 5
+    minutes, "refreshed for no additional cost each time the cached content is used" and measured "from
+    the start of the request"; 5-minute writes cost 25% more than base input, 1-hour writes 2x; reads
+    0.1x (0.05x on Opus 5.5 and Sonnet 5.5, 0.025x on Fable 5.1 and Mythos 5.1). For concurrent requests
+    "a cache entry only becomes available after the first response starts." The thinking configuration
+    and effort "are rendered into the prompt", so changing them invalidates message blocks (and tool and
+    system blocks on some models), while an effort change in a mid-conversation system message "leaves
+    the cached prefix intact"; on models that keep prior thinking, earlier thinking blocks "stay cached
+    and in context", a dropped block "changes the cached prefix from that block''s position onward", and
+    the docs say to "keep passing complete, unmodified thinking blocks back". Some languages "(for example,
+    Swift, Go) randomize key order during JSON conversion, breaking caches." "Prompt caching has no effect
+    on output token generation. The response you receive is identical to what you would get if prompt
+    caching were not used." Caches are isolated between organizations and, on the Claude API, between
+    workspaces; KV representations "are held in memory only and are not stored at rest"; prompt caching
+    is eligible for zero data retention. Cache diagnostics reports the first divergence (model_changed,
+    system_changed, tools_changed, messages_changed): "The cache is per-model." No hit-rate or latency
+    numbers.'
+  conditions: Living docs; date is the access date. Claude API; Amazon Bedrock and Google Cloud use organization-level
+    isolation only, and cache diagnostics is Claude API only; vendor documentation, no measurements
+  direction: mixed
+  measured: false
+  locator: 'Prompt caching: Pricing; Automatic caching; Explicit cache breakpoints (How automatic prefix
+    checking works); Cache limitations; What invalidates the cache; Cache storage and sharing; Troubleshooting;
+    Data retention. Cache diagnostics: Cache miss reason types. Thinking: Thinking and prompt caching;
+    Preserved thinking'
 related:
+- 3.b.ii
+- 3.a.iii
 - 3.a.iv
+- 5.a.i
+- 5.c.ii
+- 1.b.i
+- 2.c.i
 absorbs:
 - legacy_id: P22
   name: KV-cache-friendly prompt layout
@@ -206,3 +458,15 @@ provenance:
   sub_type: formatting
   harness_role: prompt
   action: restructure
+caveats: 'The measured evidence is small: one controlled study on one research benchmark (40 sessions
+  per model and cache mode, a 10,000-token system prompt that dominated the prompt), one inference provider''s
+  report on its own traffic with open models (its server-side figures mix harness edits with cache eviction),
+  and counts of fixed defects; none measures task quality. Caching more is not always better: in that
+  study caching only the stable system prompt gave the most consistent latency gains while caching the
+  full context raised GPT-4o''s time to first token 8.8%, and a Claude 5-minute write costs 1.25x input
+  and expires 5 minutes after the last request that used it started, so short sessions, long gaps or low
+  reuse can cost more than no caching. Mechanics differ and change (current Claude minimums alone span
+  512 to 4,096 tokens, caches are per model, effort settings are rendered into the prompt), so a layout
+  tuned to one provider can miss on another. In one relay study a shared cache leaked membership of known
+  prompts across customers on several production routes but yielded unknown text only once (16 bits),
+  and its tenant-split cost is modeled, not billed.'

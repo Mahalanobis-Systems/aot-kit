@@ -18,68 +18,111 @@ evidence_domains:
 - tool-use
 - web-research
 - code-generation
+- retrieval
 categories:
 - topologies.parallel
-summary: 'Let the model put several independent read-only tool calls (searches, fetches, file reads) in
-  one turn and have the harness run them at once, while calls that write, share state or need another
-  call''s result run one at a time in the order the model emitted them. It pays where a task has many
-  slow, independent lookups: told to make three parallel search or scrape calls per turn, GPT-5 scored
-  68% against 66% on 100 BrowseComp tasks in half the turns, at 35.9% lower cost and 40.6% less time,
-  and native parallel calls ran 1.61x to 2.76x faster than one call per step on parallel search questions.
-  The gain shrinks where tool work is fast or sequential (1.04x on SWE-bench Lite, 1.40x once the harness
-  declared each tool''s reads and writes and kept decoding during calls), wider is not better (five or
-  eight calls per turn scored 60% and 63%), and batching calls that depend on each other costs accuracy
-  (GLM-4.5 completed 63.1% of compound tasks when parallelizing against 71.8% sequentially).'
+summary: 'Run the independent read-only tool calls a model emits in one turn at the same time, and keep
+  calls that write, share state or need another call''s result in the order the model emitted them. It
+  pays where a task has many slow, independent lookups: told to make three parallel search or scrape calls
+  per turn, GPT-5 scored 68% against 66% on 100 BrowseComp tasks in half the turns, at 35.9% lower cost
+  and 40.6% less time, and native parallel calls ran 1.61x to 2.76x faster than one call per step on parallel
+  search questions. Coding agents rarely batch: steps averaged 1.2 tool calls across 4,265 Claude Code and
+  Codex sessions over 23 models (a measure of all tools, not only reads, from a paper that tests no batching).
+  They gain little from it: running same-turn batches concurrently gave 1.04x on SWE-bench Lite, and
+  same-turn dispatch recovered 54 of 9,315 seconds of tool time; the larger gains came from overlapping tool time with decoding
+  through futures (1.40x) or sandboxed speculative run-ahead (1.27x to 1.35x at an unchanged SWE-bench
+  Verified resolve rate, with extra drafter compute). Wider is not better (five or eight calls per turn
+  scored 60% and 63%), batching calls that depend on each other costs accuracy (GLM-4.5 completed 63.1%
+  of compound tasks when parallelizing against 71.8% sequentially), acting on results before the whole
+  batch is back makes what the agent fetches next depend on arrival order, and speculative read-only calls
+  still reveal a user''s sensitive topic to the services they reach.'
 how: '1. Start from the baseline: the same agent, model and tasks with parallel calls off (disable_parallel_tool_use
   in Claude''s tool_choice, or your provider''s equivalent), and with them on but executed one at a time;
-  record accuracy, turns, tokens, cost and p50/p95 wall-clock per task, and the average number of tool
-  calls per tool-calling turn. Expect the gain to track how much slow, independent lookup work a task
-  has: native parallel batches ran 1.61x to 2.76x faster than ReAct on 2-way and 8-way parallel search
-  questions (gpt-3.5-turbo), but running a model''s same-turn batches concurrently instead of one by one
-  gave 1.04x on SWE-bench Lite (GPT-5.6 Sol). 2. Classify every tool by what it reads and writes. Search,
-  fetch, grep, glob, file reads and other lookups can run together; anything with side effects, shared
-  state (a shell session, a browser, a working directory) or an ordering requirement cannot. Default unknown
-  tools to serial, and classify shell commands per command (one harness locked the whole repository for
-  python, pytest and any command its rules did not match). Declaring a read set and a write set per tool
-  lets the harness run non-conflicting calls together while conflicting ones keep the model''s order.
-  3. Dispatch each batch in the harness, not the model: the provider APIs leave execution order, partial
-  failure and races to you. Run the safe calls concurrently, run the rest in the order the model emitted
-  them, and when a call fails cancel only the calls that depend on it. Return one result per call, all
-  in the next message and before any text (results sent as separate messages teach Claude to stop batching),
-  with is_error and a short reason for any call not run or that failed because its prerequisite had not
-  completed; the model reissues it next turn. 4. Prompt for it, at a modest width: "whenever you need
-  to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially"
-  plus "Only batch tool calls that are independent of each other." With GPT-5 on 100 BrowseComp tasks
-  at a 100-turn limit, three to four search or scrape calls per turn scored 68% against 66% for one, in
-  23.8 against 45.7 turns, while five and eight scored 60% and 63%; a wide-then-narrow schedule (3, then
-  2, then 1 per turn) reached 74%, and letting the model choose reached 72%. Open-weight models gained
-  little (DeepSeek-V3.2 38% to 39%), so measure before relying on it. 5. Keep dependent steps sequential:
-  where later calls need earlier results, parallel scheduling cost GLM-4.5 8.7 points of task completion
-  (63.1% against 71.8% sequential), and QwQ-32B put dependent calls in one batch and completed 29.36%.
-  Leave those workflows serial, or plan them as an explicit dependency graph (the LLMCompiler planner
-  ran 1.40x to 3.74x faster than ReAct). 6. Where tools are slow, also let decoding continue while calls
-  run: returning placeholders (futures) and filling in results at turn boundaries gave 1.40x on SWE-bench
-  Lite and 1.26x on BFCL web search with no significant accuracy change, and with no read/write declarations
-  it still helped by overlapping decoding with serialized calls. 7. Measure paired against the baseline
-  on tasks with and without dependent calls: accuracy, turns, cost and p95 latency per task, average calls
-  per tool-calling turn, calls returned as is_error because a prerequisite had not run, and probes that
-  put a read and a write to the same resource in one batch.'
+  record accuracy, turns, tokens, cost and p50/p95 wall-clock per task, the share of wall-clock spent
+  inside tools, and the average number of tool calls per tool-calling turn. Expect the gain to track how
+  much slow, independent lookup work a task has: native parallel batches ran 1.61x to 2.76x faster than
+  ReAct on 2-way and 8-way parallel search questions (gpt-3.5-turbo), but coding agents rarely batch and
+  their tool time sits in a few slow commands. Across 4,265 Claude Code and Codex sessions over 23 models steps
+  averaged 1.2 tool calls (median 1), and Claude''s calls under 1 s, counting all tools rather than reads
+  alone, were 70% of calls but under 1% of tool time (the study tests no batching, and its authors argue
+  more calls per step would cut model round trips);
+  in published Claude and Codex SWE-Marathon trajectories, same-turn dispatch recovered 54 of the 9,315
+  s spent in tools, and running a model''s same-turn batches concurrently gave 1.04x on SWE-bench Lite
+  (GPT-5.6 Sol). Hiding tool time can give at most 1/(1 - f) for a run that spends a share f of its wall-clock
+  in tools. 2. Classify every tool by what it reads and writes. Search, fetch, grep, glob, file reads
+  and other lookups can run together; anything with side effects, shared state (a shell session, a browser,
+  a working directory) or an ordering requirement cannot. Default unknown tools to serial, and classify
+  shell commands per command (one harness locked the whole repository for python, pytest and any command
+  its rules did not match). Declaring a read set and a write set per tool lets the harness run non-conflicting
+  calls together while conflicting ones keep the model''s order. 3. Dispatch each batch in the harness,
+  not the model: the provider APIs leave execution order, partial failure and races to you. Run the safe
+  calls concurrently, run the rest in the order the model emitted them, and when a call fails cancel only
+  the calls that depend on it. Return one result per call, all in the next message and before any text
+  (results sent as separate messages teach Claude to stop batching), with is_error and a short reason
+  for any call not run or that failed because its prerequisite had not completed; the model reissues it
+  next turn. Make the next model call wait for every result it depends on: when a search agent decided
+  after two of six parallel results had arrived, the documents it went on to retrieve differed across
+  arrival orders by 11.6 to 23.8 points more than across repeats, and its accuracy moved from 36.1 points
+  below to 8.9 points above waiting, depending on the task and how it read results (DeepSeek-V4-Flash,
+  GPT-5.6). If parts of a task may go ahead early, release each part only once its own results are complete
+  and pick among competing calls by a fixed rule, not by completion order: this kept arrival-order disagreement
+  within 1.0 point of repeat variation at the accuracy of waiting for everything and responded 3.1% to
+  3.9% sooner, while giving a shared search to the first-ready request added 21.6 points of disagreement.
+  4. Prompt for it, at a modest width: "whenever you need to perform multiple independent operations,
+  invoke all relevant tools simultaneously rather than sequentially" plus "Only batch tool calls that
+  are independent of each other." With GPT-5 on 100 BrowseComp tasks at a 100-turn limit, three to four
+  search or scrape calls per turn scored 68% against 66% for one, in 23.8 against 45.7 turns, while five
+  and eight scored 60% and 63%; a wide-then-narrow schedule (3, then 2, then 1 per turn) reached 74%,
+  and letting the model choose reached 72%. Open-weight models gained little (DeepSeek-V3.2 38% to 39%),
+  so measure before relying on it. 5. Keep dependent steps sequential: where later calls need earlier
+  results, parallel scheduling cost GLM-4.5 8.7 points of task completion (63.1% against 71.8% sequential),
+  and QwQ-32B put dependent calls in one batch and completed 29.36%. Leave those workflows serial, or
+  plan them as an explicit dependency graph (the LLMCompiler planner ran 1.40x to 3.74x faster than ReAct).
+  6. Where tools are slow, overlap them with decoding, and count what that costs. Returning placeholders
+  (futures) and filling in results at turn boundaries gave 1.40x on SWE-bench Lite and 1.26x on BFCL web
+  search with no significant accuracy change, and with no read/write declarations it still helped by overlapping
+  decoding with serialized calls. Where the wait lies across turns, a runtime that drafted the agent''s
+  next calls, ran them in copy-on-write sandboxes and committed them in order only after re-checking every
+  file they read gave 1.31x on 100 SWE-bench Verified tasks, 1.35x on 28 Terminal-Bench 2.0 tasks and
+  1.27x on 18 SWE-Marathon sessions at an unchanged 41.7% resolve rate (Qwen3.8-27B main agent; DeepSeek
+  V4 Pro gave the same 1.24x geometric mean on SWE-Marathon), against 1.16x for prefetching only the next
+  side-effect-free call; tasks under 15% tool time gained 1.07x and those over 40% gained 1.60x, and it
+  cost 1.6M drafter tokens per task and about 2.1 s of speculative compute per second saved, with network
+  sends and untraceable commands run serially. Gate speculative calls to external services before they
+  are sent: abandoned speculative lookups let an LLM adversary recover a user''s hidden sensitive topic
+  in 0.97 of static-plan tasks against 0.44 without speculation (0.49 against 0.34 with a Claude Opus
+  4.7 planner); a read-only restriction or an allow-list left that unchanged, while rewriting arguments
+  to generic terms or routing the call to an internal substitute cut it to 0.04 and 0.00, and speculation
+  itself saved 5.4% to 12.3% of p50 latency. 7. Measure paired against the baseline on tasks with and
+  without dependent calls: accuracy, turns, cost and p95 latency per task, the share of wall-clock in
+  tools, average calls per tool-calling turn, calls returned as is_error because a prerequisite had not
+  run, and probes that put a read and a write to the same resource in one batch. Where results can be
+  used before a batch completes, replay the same results in several arrival orders and compare what the
+  agent fetches next against repeat runs; with speculation, also count drafter tokens and compute, discarded
+  runs, and speculative calls sent to external services that the agent never used.'
 detect:
   static: Each tool marked read-only (safe to run together) or as having side effects, shared state or
     ordering needs, with unknown tools defaulting to serial; read-only calls in a batch dispatched concurrently;
-    the rest run in model-emitted order; all results returned in one message before any text; a parallel-calls
-    instruction in the prompt.
+    the rest run in model-emitted order; all results returned in one message before any text, and the
+    next model call waits for the results it depends on; a parallel-calls instruction in the prompt; any
+    speculative calls run in isolated sandboxes, commit in order after validation and pass an issue-time
+    policy before reaching external services.
   traces: Average tool calls per tool-calling turn near 1 on tasks with independent lookups (parallelism
-    unused); overlapping spans for calls that touch the same resource; calls that failed because a prerequisite
-    in the same batch had not run.
+    unused); a large share of wall-clock in a few slow tool calls between single-call turns (slack across
+    turns that batching cannot reach); overlapping spans for calls that touch the same resource; calls
+    that failed because a prerequisite in the same batch had not run; model calls issued before the results
+    they depend on had arrived; speculative calls to external services that the agent never used.
   evals: Accuracy, turns, cost and p95 latency with parallel calls off and on, on tasks with and without
     dependent calls; race-condition failures.
   probes:
     what: Batches that mix reads and writes to the same resource, or hold a call that needs another call's
-      output.
+      output; the same batch results delivered in different orders; speculative calls whose arguments
+      carry a sensitive user topic.
     construct: A read that depends on a write in the same batch; a call whose argument must come from
       another call in the same batch; a shell command treated as read-only that writes a file another
-      call reads.
+      call reads; one batch's results replayed in several arrival orders, comparing what the agent fetches
+      next with repeat runs; a request on a sensitive topic, checking what speculative calls send to external
+      providers before the agent commits to them.
   primary:
   - static
   - traces
@@ -90,17 +133,23 @@ impact:
     when: 68% against 66% in half the turns at three parallel calls per turn on 100 BrowseComp tasks,
       60% and 63% at five and eight, 38% to 39% for DeepSeek-V3.2 (Lin, Feb 2026); 63.1% against 71.8%
       forced sequential for GLM-4.5 on compound tasks with dependencies, 29.36% for QwQ-32B, which batched
-      dependent calls (Xu, Nov 2025); 79.3% against 79.0% on SWE-bench Lite, no significant change (Feng,
-      May 2026); native parallel calls 77.00% against 72.47% on Movie Recommendation and 87.32% against
-      89.09% on ParallelQA for ReAct (Kim, Dec 2023). A tool with side effects classified read-only can
-      race; no source measures that.
+      dependent calls (Xu, Nov 2025); no significant change from futures on SWE-bench Lite, 79.3% against
+      79.0% (Feng, May 2026), or from speculative run-ahead on SWE-bench Verified, 41.7% against 41.7%
+      (Yu, Sep 2026); deciding before a batch's results were all back moved accuracy from 36.1 points
+      below to 8.9 points above waiting, by task and reasoning program (Ren, Oct 2026); native parallel
+      calls 77.00% against 72.47% on Movie Recommendation and 87.32% against 89.09% on ParallelQA for
+      ReAct (Kim, Dec 2023). A tool with side effects classified read-only can race; no source measures
+      that in plain concurrent batches.
     basis: evidence
   cost:
-    effect: improves
+    effect: mixed
     size: medium
-    when: $65.7 against $102.5 per 100 BrowseComp tasks (35.9% less) for three parallel calls per turn
-      (Lin, Feb 2026); native parallel calls 1.81x to 3.33x cheaper than ReAct (Kim, Dec 2023); sequential
-      scheduling raised DeepSeek-R1 from 11.6k to 12.6k tokens per task (Xu, Nov 2025)
+    when: 'lower for parallel batches: $65.7 against $102.5 per 100 BrowseComp tasks (35.9% less) at three
+      calls per turn (Lin, Feb 2026); native parallel calls 1.81x to 3.33x cheaper than ReAct (Kim, Dec
+      2023); sequential scheduling raised DeepSeek-R1 from 11.6k to 12.6k tokens per task (Xu, Nov 2025).
+      Higher with speculation: 1.6M drafter tokens and 1,480 drafter GPU-seconds per task on top of the
+      main agent''s 8.3M tokens, and sandbox CPU from 2,760 to 4,310 s (Yu, Sep 2026); 4.03 provider calls
+      per task against 1.03 without speculation (Mohammadi, Jun 2026)'
     basis: evidence
   performance:
     effect: improves
@@ -108,17 +157,34 @@ impact:
     when: 904.2 s against 1,522.6 s per task (40.6% less) (Lin, Feb 2026); native parallel calls 1.61x
       to 2.76x faster than ReAct on parallel search questions (Kim, Dec 2023); 1.04x on SWE-bench Lite
       for concurrent batches alone, 1.40x with read/write declarations and decoding during calls (Feng,
-      May 2026); 361.6 s against 423.6 s sequential for DeepSeek-R1 (Xu, Nov 2025)
+      May 2026); speculative run-ahead 1.31x, 1.35x and 1.27x on three coding benchmarks, 1.07x on tasks
+      under 15% tool time and 1.60x over 40%, while same-turn dispatch recovered 54 of 9,315 s of tool
+      time in Claude and Codex trajectories (Yu, Sep 2026); 1.2 tool calls per step in 4,265 Claude Code
+      and Codex sessions, where tools took 59.8% of response time (Zhu, Jun 2026); 5.4% to 12.3% at p50
+      from speculative external calls (Mohammadi, Jun 2026); 3.1% to 3.9% from releasing each completed
+      sub-question early (Ren, Oct 2026); 361.6 s against 423.6 s sequential for DeepSeek-R1 (Xu, Nov
+      2025)
     basis: evidence
   security:
     effect: mixed
-    size: small
-    when: 'No source measures it: a call with side effects classified read-only can run alongside, or
-      ahead of, a check it should follow.'
-    basis: assessment
+    size: medium
+    when: 'speculative calls to external services reveal what the agent inferred: an adversary recovered
+      a hidden sensitive topic in 0.97 of static-plan tasks against 0.44 without speculation (0.49 against
+      0.34 with a real planner), unchanged by a read-only restriction or allow-list and cut to 0.04 and
+      0.00 by rewriting arguments or routing to an internal substitute before dispatch (Mohammadi, Jun
+      2026); sandboxed run-ahead with validated in-order commit had no false accepts in 4,010 audited
+      commits and caught 20 of 20 injected hidden dependencies, with network sends blocked (Yu, Sep 2026).
+      No source measures a side-effecting tool misclassified as read-only in plain concurrent batches.'
+    basis: evidence
   governance:
-    effect: none
-    basis: assessment
+    effect: mixed
+    size: small
+    when: acting on parallel results as they arrive makes the evidence an agent gathers depend on arrival
+      order (11.6 to 23.8 points above repeat variation), which the authors flag for auditing an agent's
+      conclusions, while waiting for the batch or releasing each completed sub-question kept it within
+      repeat variation (Ren, Oct 2026); runtime logs of speculative calls exposed nearly as much as provider
+      logs, 0.24 against 0.26 recovery (Mohammadi, Jun 2026)
+    basis: evidence
   brand:
     effect: none
     basis: assessment
@@ -130,13 +196,17 @@ measure:
   tier: 3
   how: 'paired runs on the same tasks and model with parallel calls off, on but executed one at a time,
     and on and concurrent, including tasks whose calls depend on each other: accuracy, turns, tokens and
-    cost per task, p50/p95 wall-clock, and average tool calls per tool-calling turn; sweep the calls-per-turn
-    instruction (1, 3, 5) and a wide-then-narrow schedule; add probes that put a read and a write to the
-    same resource, or a call that needs another call''s output, in one batch'
+    cost per task, p50/p95 wall-clock, the share of wall-clock in tools, and average tool calls per tool-calling
+    turn; sweep the calls-per-turn instruction (1, 3, 5) and a wide-then-narrow schedule; where tools
+    are slow, add a futures or speculative run-ahead arm and count its extra tokens and compute; replay
+    one batch''s results in several arrival orders and check that what the agent fetches next varies no
+    more than across repeats; add probes that put a read and a write to the same resource, or a call that
+    needs another call''s output, in one batch'
 - method: monitor
-  how: average tool calls per tool-calling turn, the share of batches that mix read-only and side-effecting
-    calls, calls returned as is_error because a prerequisite had not run, turns per task, and p95 tool
-    wall-clock per turn
+  how: average tool calls per tool-calling turn, the share of wall-clock spent in tools, the share of
+    batches that mix read-only and side-effecting calls, calls returned as is_error because a prerequisite
+    had not run, turns per task, p95 tool wall-clock per turn, and, with speculation, the share of speculative
+    calls discarded and of abandoned calls that reached external services
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -241,6 +311,111 @@ evidence:
   direction: supports
   measured: false
   locator: Execution semantics; Maximizing parallel tool use; Troubleshooting
+- source: 'Ruiyang Ren, Yuhao Wang, Yinan Zhang, Chunyan Miao (Nanyang Technological University), "The
+    Scheduler Is a Hidden Retriever: How Asynchrony Shapes Evidence Acquisition in Search Agents", https://arxiv.org/abs/2610.26310'
+  date: '2026-10-19'
+  task: Replay the same six parallel retrieval results to a search agent in eight arrival orders (two
+    repeats each) and let it decide whether and what to search after two arrivals (early commitment) or
+    after all six (complete input); test a coordination rule (Confluent Evidence Acquisition, CEA) that
+    releases reasoning on each sub-question once its own results are complete and allocates shared searches
+    by a fixed rule instead of completion order
+  effect: 'Early decisions: retrieved-set disagreement 11.6 to 23.8 pp above same-order repeat variation
+    across eight model-task settings (abstract: "up to 24 percentage points"); waiting for all six kept
+    it near repeat variation; after all results arrived, probe disagreement stayed 5.5 to 14.7 pp above
+    it. Accuracy, complete input minus early commitment, one search: incremental note-taking +30.3 and
+    +17.4 pp on 2Wiki bridge-comparison and compositional (DeepSeek-V4-Flash), +36.1 and +18.2 (GPT-5.6),
+    not significant on HotpotQA and MuSiQue; batch reading -2.5 to -8.9 (DeepSeek-V4-Flash) and -0.6 to
+    +16.6 (GPT-5.6); with two searches early commitment scored 43.6% against 40.9% at 1.54 against 1.13
+    searches. CEA: excess disagreement from 21.5 to -0.2 pp (DeepSeek) and 24.4 to -0.7 pp (GPT) on bridge
+    comparisons; with question-only plans 0.6, -0.2 and 1.0 pp, accuracy comparable to waiting for all
+    and up to 12.6 pp above early commitment; giving a shared search to the first-ready request added
+    21.6 pp of disagreement; releasing each completed sub-question cut final-response time 3.1% (27.3
+    to 26.5 s, 800 GPT pairs, 88.3% against 88.1% accuracy) and 3.9% (DeepSeek).'
+  conditions: DeepSeek-V4-Flash (non-thinking; 200 + 200 2Wiki, 100 HotpotQA, 100 MuSiQue questions) and
+    GPT-5.6 Luna (low reasoning effort; 100-question subsets); frozen corpus, deterministic BM25 top five,
+    six-document packets with one supporting document withheld, one search (two in an extension); arrival
+    orders replayed, not live tool latency
+  direction: mixed
+  measured: true
+  locator: Abstract; §2; §3.1 Figure 2; §3.2 Table 1; §3.3 Table 2; §5.1 Table 3; §5.2 Table 4; §5.4;
+    App. A
+- source: 'Jiangnan Yu, Ceyu Xu, Mengming Li, Shiyu Huang, Yiran Xia, Jian Weng, Hui Xue, Haohui Mai,
+    Zhiyao Xie, Yuan Xie (HKUST et al.), "TomasuLLM: Out-of-Order Speculative Execution for LLM Agents",
+    https://arxiv.org/abs/2609.38201'
+  date: '2026-09-22'
+  task: Run a coding agent's predicted next tool calls ahead of the model (a fine-tuned action drafter
+    plus an observation drafter) in copy-on-write sandboxes, trace each call's file reads and effects,
+    and commit results in trajectory order only after re-validating them against committed state; compared
+    with the same harness run serially and with one-step prefetch of the next side-effect-free call
+  effect: 'Speedup over the serial harness (geometric mean of per-task medians, three runs): 1.31x on
+    100 SWE-bench Verified tasks, 1.35x on 28 Terminal-Bench 2.0 tasks, 1.27x matched progress on 18 SWE-Marathon
+    sessions (one-step prefetch 1.16x there); resolve rate 41.7% for both on SWE-bench Verified (difference
+    0.0, 95% CI -4.3 to +4.3). Tasks under 15% tool time averaged 1.07x, over 40% 1.60x; the gain from
+    hiding tool time is bounded by 1/(1 - f). DeepSeek V4 Pro as main agent: the same 1.24x geometric
+    mean over the 18 SWE-Marathon rows. No false accepts in 4,010 audited commit records; 20 of 20 injected
+    hidden dependencies caught; read-only bash calls passed validation 99% of the time, tests 98%. Cost
+    per task: main agent 8.3M against 8.2M tokens, plus 1.6M drafter tokens, 1,480 drafter GPU-seconds
+    (0.9x a serial session''s 1,640) and sandbox CPU from 2,760 to 4,310 s, about 2.1 s of speculative
+    compute per wall-clock second removed. On 212 published Claude and Codex SWE-Marathon trajectories,
+    the average run spent 9,315 s in tools and "recovers only 54 seconds from multi-call parallel dispatch";
+    "fewer than 10% of turns emit two or more actions."'
+  conditions: Qwen3.8-27B main agent (DeepSeek V4 Pro replication on SWE-Marathon only); Qwen3-8B LoRA
+    action drafter trained on SWE-Marathon trajectories and a 35B Qwen-AgentWorld observation drafter;
+    Pi harness, E2B sandboxes, two H20 GPUs; median tool call 2.1 s, 8.5 s and 12 s on the three benchmarks;
+    seven of 18 SWE-Marathon tasks hit the 6 h cap and are scored by matched progress; network sends and
+    untraceable commands run serially; the Claude and Codex figures are the authors' analysis of published
+    trajectories; the authors' own system
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §2.2; §5.1 Figures 6, 7; §5.2 Table 1; §5.3; §5.4 Table 2, Figure 10
+- source: 'Kan Zhu, Mathew Jacob, Chenxi Ma, Yi Pan, Stephanie Wang, Arvind Krishnamurthy, Baris Kasikci
+    (University of Washington et al.), "TraceLab: Characterizing Coding Agent Workloads for LLM Serving",
+    https://arxiv.org/abs/2606.30560'
+  date: '2026-06-29'
+  task: 'Collect and analyze 4,265 coding-agent sessions from the authors'' own day-to-day use of Claude
+    Code and Codex: steps, tool calls per step, tool latency, tokens and time'
+  effect: '357,161 LLM steps and 432,510 tool calls; tool calls per step mean 1.2 (p25 1, median 1, p90
+    2, p99 4): "Each step on average uses slightly more than 1 tool call, suggesting that some tool calling
+    is parallelized, but this phenomenon is not pervasive." Of 2,783 hours of response time, tools took
+    59.8% and generation 41.0%. For Claude, calls under 1 s were 70% of calls but under 1% of tool time,
+    and calls over 1 min 4.9% of calls but 92% of tool time; for Codex, calls under 10 s were 88% of calls
+    and 12% of time, calls over 1 min 3.1% and 61%. The authors list "denser tool calling" (more calls
+    per step) as an opportunity. No comparison with parallel calls off.'
+  conditions: 43 users, Sep 2025 to Jun 2026; 2,676 Claude Code sessions (Opus 4.7 63.1% of the Claude
+    model mix, also Opus 4.6 and 4.8, Sonnet 4.6, Haiku 4.5) and 1,589 Codex sessions (GPT-5.5 47.5%,
+    GPT-5.4, GPT-5.3-codex, GPT-5.2-codex); the authors' own use, which they say may not generalize; numbers
+    from v2
+  direction: mixed
+  measured: true
+  locator: Abstract; Table 1; §4.1 Table 2; §4.4 Table 7; §6.1; §6.2 Figure 8; §9
+- source: 'Bardia Mohammadi, Lars Klein, Akhil Arora, Laurent Bindschaedler (MPI-SWS, EPFL, Aarhus University),
+    "Ghost Tool Calls: Issue-Time Privacy for Speculative Agent Tools", https://arxiv.org/abs/2606.02483'
+  date: '2026-06-01'
+  task: 'Measure what an external observer can infer from speculative tool calls an agent issues and then
+    abandons, and compare twelve dispatch policies on the same speculative frontier: no speculation, unfiltered
+    speculation, a read-only restriction (as in Speculative Interaction Agents), an allow-list, post-hoc
+    scrubbing, and issue-time policies that rewrite arguments, route to an internal substitute, defer
+    low-confidence calls or block tainted ones'
+  effect: 'Adversary recovery of a hidden sensitive label from provider-visible calls: static plans (30
+    tasks, 3 seeds) 0.967 with unfiltered speculation against 0.444 without; read-only restriction, allow-list
+    and post-hoc scrub 0.967; Rewrite 0.533; Shadow 0.422. Real Claude Opus 4.7 planner: 0.489 against
+    0.344; read-only 0.489; Rewrite 0.044; Shadow 0.000. 150-task paired replay (450 pairs): read-only
+    +0.020 against unfiltered (p = 0.035), Rewrite -0.076 and Shadow -0.104 (p < 0.0001). "Read-only authorization
+    does not imply privacy preservation under speculation." Median 8 speculative candidates per task,
+    82% to 89% abandoned; 4.03 provider calls per task against 1.03. Speculation saved 5.4% of p50 latency
+    with one tool (8.39 to 7.94 s) and 12.3% with three or more parallel speculative calls (5.00 to 4.38
+    s). Task success 0.77 to 0.83 across policies with overlapping CIs (Haiku 4.5 judge, 30 tasks). Runtime-log
+    adversary 0.24 against 0.26 for the provider view. 66 AgentDojo read-only tasks: unfiltered and read-only
+    0.75, Rewrite and Shadow 0.00.'
+  conditions: Prototype dispatcher over web search, document retrieval, calendar, CRM and email adapters
+    with simulated backends, plus Brave Search and DuckDuckGo runs; generated corpora of 30 and 150 sensitive-topic
+    tasks; Claude Opus 4.7 planner and adversary, Haiku 4.5 and GPT-4o-mini as alternative adversaries;
+    closed-set label recovery; the paper states that speculative disclosure is distinct from parallel
+    execution of calls that all belong to the chosen plan
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §2; §3 Proposition 2; §5 RQ1 to RQ5, Tables 3, 4; App. B Tables 6, 7, 8, 14,
+    B.17
 assessment:
   qa:
     unit: Mutating calls serialized; read-only concurrent.
@@ -287,6 +462,7 @@ related:
 - 2.b.i
 - 10.b.i
 - 7.b.iii
+- 10.c.i
 provenance:
   layer: target
   origin: observed
@@ -294,12 +470,17 @@ provenance:
   sub_type: parallelization
   library_group: Control Flow
   library_source: catalog
-caveats: 'The current-model accuracy and cost result rests on one study''s first 100 BrowseComp tasks,
-  where 68% against 66% is two tasks, and its headline 62.2% compares a full-set run with GPT-5 medium
-  against the score OpenAI reported for GPT-5 high in a different harness, not a single-call run (Lin,
-  Feb 2026). The speedup depends on the workload: concurrent batches alone gave 1.04x on SWE-bench Lite,
-  the 1.40x also needs futures and per-tool read/write declarations, and the same paper''s May 2026 version
-  reported 1.44x with a 3.3-point lower resolve rate on GPT-5.2, not significant (Feng, May 2026). The
-  loss on dependent calls comes from an LLM-judged benchmark whose same-model ablation gives numbers for
-  two of four models (Xu, Nov 2025), the largest speedups are with gpt-3.5-turbo against ReAct (Kim, Dec
-  2023), and no source measures races or security effects of a misclassified tool.'
+caveats: The current-model accuracy and cost result rests on one study's first 100 BrowseComp tasks, where
+  68% against 66% is two tasks, and its headline 62.2% is set against the score OpenAI reported for GPT-5
+  high in a different harness (Lin, Feb 2026). On coding agents the evidence that same-turn batches buy
+  little comes from one team's own 4,265 Claude Code and Codex sessions (Zhu, Jun 2026) and from 1.04x
+  on SWE-bench Lite, the 1.40x needs futures and per-tool read/write declarations and the paper's May
+  2026 version reported a 3.3-point lower resolve rate on GPT-5.2, not significant (Feng, May 2026), and
+  the 1.27x to 1.35x from speculative run-ahead used open-weight main agents and a drafter fine-tuned
+  on the benchmark's trajectories, at about 2.1 s of extra compute per second saved (Yu, Sep 2026). The
+  arrival-order result replays fixed evidence packets with one or two searches on multi-hop questions
+  (Ren, Oct 2026), the privacy result uses generated sensitive-topic tasks scored by LLM adversaries (Mohammadi,
+  Jun 2026), the loss on dependent calls comes from an LLM-judged benchmark whose same-model ablation
+  gives numbers for two of four models (Xu, Nov 2025), and the largest speedups are with gpt-3.5-turbo
+  against ReAct (Kim, Dec 2023). No source measures races or security effects of a side-effecting tool
+  misclassified as read-only in plain concurrent batches, and brand is unmeasured.

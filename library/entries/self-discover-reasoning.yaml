@@ -18,55 +18,75 @@ domains:
 evidence_domains:
 - reasoning
 - planning
+- code-generation
 categories:
 - prompts.reasoning-effort
-summary: 'Self-Discover has the model compose a reasoning structure once per task type (select useful
-  modules from 39 seed heuristics, adapt them to the task, write them as a step-by-step plan), then follow
-  that cached structure on every instance, so each instance costs one call. On non-reasoning models it
-  beat CoT (GPT-4 on BBH 75% to 81%, on T4D 52% to 85%) and, in a third-party run, 5-sample self-consistency
-  at under half the cost; but it trailed CoT on Claude 3 Sonnet and on multistep arithmetic, and trailed
-  zero-shot prompting on long-form essays. On reasoning models with thinking on, the evidence is thin
-  and leans negative: no study runs the original method, a plan-first prompt changed mean accuracy over
-  10 benchmarks by at most 0.51 points, and Anthropic advises general instructions over hand-written step-by-step
-  plans.'
+summary: 'Have the model write a reasoning plan once per task type (picked and adapted from 39 seed heuristics),
+  then follow that cached plan on every instance, so each instance still costs one call. On non-reasoning
+  models it beat CoT (GPT-4 on BBH 75% to 81%, on T4D 52% to 85%) and, in a third-party run, 5-sample
+  self-consistency at under half the cost; but it trailed CoT on Claude 3 Sonnet and on multistep arithmetic,
+  and trailed zero-shot prompting on long-form essays. On reasoning models with thinking on it mostly
+  does not pay: no study runs the original method, but one of its 39 modules injected into the thinking
+  lowered Qwen3-32B on all six math, science and coding benchmarks (AIME 2024 0.789 to 0.667), a hand-written
+  four-step task structure (with a motif scan the baseline lacked, on retrieved evidence) lowered all
+  five frontier reasoning models tested on an enzyme-classification benchmark, four of them slightly
+  (mean 0.720 to 0.687), Buffer-of-Thoughts templates scored below self-consistency in all 16 Qwen3 cells,
+  and a plan-first prompt moved mean accuracy by at most 0.51 points. The main exception is guidance chosen
+  for what the target model can execute (one study: Qwen3-8B on AIME 2025 from 67.33 to 74.00 in one call,
+  above 72.00 for 8-sample self-consistency), and Anthropic advises general instructions over hand-written
+  step-by-step plans.'
 how: '1. Start from the cheap baselines on your own labeled items: plain CoT for a non-reasoning model,
   the model''s own thinking at a chosen effort setting for a reasoning model (1.b.i), and self-consistency
-  at the same token budget (9.c.ii). Expect little on reasoning models with thinking on (a plan-first
-  prompt moved mean accuracy by 0.51 points or less; an induced task strategy moved o3-mini by -1.42 to
-  +3.20); the clearest gains were on non-reasoning and smaller models, on task types the baselines get
-  wrong. 2. Group traffic into task types that are solved the same way, and pick a handful of unlabeled
-  examples for each (the follow-up studies used 3 to 10). 3. Run discovery offline, once per task type,
-  with the strongest model you have: SELECT the useful modules from the paper''s 39 seed modules, ADAPT
-  each to the task, and IMPLEMENT them as a step-by-step plan, showing one human-written plan for another
-  task as the format example; that is 3 calls per task type. Small models wrote poor structures, while
-  structures from a stronger model transferred (GPT-4''s raised Llama2-70B on disambiguation QA from 42%
-  with CoT to 52%). Also try letting the model write its own task-specific modules instead of picking
-  from the 39 seeds: in a rival team''s rerun (Auto-Evolve), that reached 65.4% on BBH for Claude 2.0
-  against 58.7% for Self-Discover and 53.7% for direct prompting. 4. Check each structure before caching it: would following it solve a few labeled
+  at the same token budget (9.c.ii). Expect little or a loss on reasoning models with thinking on: a plan-first
+  prompt moved mean accuracy by 0.51 points or less, an induced task strategy moved o3-mini by -1.42 to
+  +3.20, one of the 39 seed modules injected into the thinking lowered Qwen3-32B on all six benchmarks
+  it was tested on (AIME 2024 0.789 to 0.667), and a hand-written task structure lowered all five frontier
+  reasoning models on one classification task, four of them slightly (by 0.004 to 0.023; mean 0.720 to 0.687); the clearest gains were on non-reasoning
+  and smaller models, on task types the baselines get wrong. 2. Group traffic into task types that are
+  solved the same way, and pick a handful of unlabeled examples for each (the follow-up studies used 3
+  to 10). 3. Run discovery offline, once per task type, with the strongest model you have: SELECT the
+  useful modules from the paper''s 39 seed modules, ADAPT each to the task, and IMPLEMENT them as a step-by-step
+  plan, showing one human-written plan for another task as the format example; that is 3 calls per task
+  type. Small models wrote poor structures, while structures from a stronger model transferred (GPT-4''s
+  raised Llama2-70B on disambiguation QA from 42% with CoT to 52%). Also try letting the model write its
+  own task-specific modules instead of picking from the 39 seeds: in a rival team''s rerun (Auto-Evolve),
+  that reached 65.4% on BBH for Claude 2.0 against 58.7% for Self-Discover and 53.7% for direct prompting.
+  4. Check each structure on the target model before caching it: would following it solve a few labeled
   examples? In the original study 12.5% of MATH structures were wrong, and an instance that follows a
-  wrong structure fails. 5. Cache the structure as a versioned block in that task type''s prompt, in the
-  stable prefix (3.b.i; the rest of the system prompt is 3.a.iv), followed by the instance and the paper''s
-  instruction to fill in each step by reasoning about the task, not to rephrase the keys, so each instance
-  costs one call; keep the final answer extractable (9.b.i). On Claude with thinking on, give the structure
-  as worked examples (problem, method, answer) rather than asking for it as visible output, and test it
-  against thinking alone. Prefer a natural-language plan to JSON (it won
-  on every benchmark, e.g. 75.50% vs 63.50% on MATH, in a per-question study with no CoT baseline), and leave out task types where the structure lost
-  to the baseline, such as multistep arithmetic (70 vs 92 for CoT on GPT-4) and long-form rubric-graded
-  answers (46.32 vs 57.35 zero-shot). 6. Measure on held-out labeled items per task type: accuracy against
-  CoT, the model''s own thinking at matched tokens and self-consistency at matched cost, plus tokens,
-  cost and p50 and p95 latency per item. Rediscover and re-test the structures when the model changes:
-  the gain over CoT disappeared on a stronger model (Claude 3 Sonnet 67.7 vs 68.3).'
+  wrong structure fails. A strategy that appears in good solutions often does not help when given as guidance,
+  and which strategies help differs by model and by source: picking hints by their measured success on
+  the target model raised Qwen3-8B on AIME 2025 from 67.33 to 74.00 in one call, above 72.00 for 8-sample
+  self-consistency. 5. Cache the structure as a versioned block in that task type''s prompt, in the stable
+  prefix (3.b.i; the rest of the system prompt is 3.a.iv), followed by the instance and the paper''s instruction
+  to fill in each step by reasoning about the task, not to rephrase the keys, so each instance costs one
+  call; keep the final answer extractable (9.b.i). On Claude with thinking on, give the structure as worked
+  examples (problem, method, answer) rather than asking for it as visible output, and test it against
+  thinking alone. Do not paste templates into a reasoning model''s thinking by default: a template placed
+  inside the thinking cut output tokens by 44.5% to 80.3% on GPQA but lowered accuracy on four of five
+  Qwen3 sizes (14B: 57.69 to 42.31), and its authors attribute the smaller gains on larger models to weaker
+  adherence to external templates after more reinforcement training. Prefer a natural-language plan to
+  JSON (it won on every benchmark, e.g. 75.50% vs 63.50% on MATH, in a per-question study with no CoT
+  baseline), check that answers still parse (a hand-written structure cut the valid-answer rate from 0.982
+  to 0.931), and leave out task types where the structure lost to the baseline, such as multistep arithmetic
+  (70 vs 92 for CoT on GPT-4) and long-form rubric-graded answers (46.32 vs 57.35 zero-shot). 6. Measure
+  on held-out labeled items per task type: accuracy against CoT, the model''s own thinking at matched
+  tokens and self-consistency at matched cost, plus the valid-answer rate, input, thinking and output
+  tokens, cost and p50 and p95 latency per item (on Qwen3-8B with thinking on, Buffer-of-Thoughts templates
+  cost $1.51 against $0.62 for CoT per AIME 2024 problem and took 556.07 s against 245.56 s). Rediscover
+  and re-test the structures when the model changes: the gain over CoT disappeared on a stronger model
+  (Claude 3 Sonnet 67.7 vs 68.3).'
 detect:
   static: A module-selection or planning step before solving, or a reasoning structure (key-value or numbered
     steps) per task type in the prompt. Flag a structure regenerated for every instance where one cached
-    per task type would do, JSON structures where a natural-language plan would do, a structure stacked on a reasoning
-    model with thinking on that was never compared against thinking alone, and no CoT or self-consistency
-    baseline.
+    per task type would do, JSON structures where a natural-language plan would do, a structure or template
+    stacked on a reasoning model with thinking on, or injected into its thinking, that was never compared
+    against thinking alone, and no CoT or self-consistency baseline.
   traces: Structure id and version per call and the task type it was discovered for; modules selected;
     whether the output fills every key or rephrases or skips them; tokens and latency per call against
     plain CoT.
   evals: Accuracy per task type against CoT, the model's own thinking at matched tokens and self-consistency
-    at matched cost; computation-heavy split from knowledge-heavy, short answers from long-form.
+    at matched cost; computation-heavy split from knowledge-heavy, short answers from long-form; valid-answer
+    rate and thinking tokens with and without the structure.
   judge: 'Before caching, check each discovered structure: would following it solve labeled examples of
     the task? (12.5% of MATH structures were wrong in the original study.)'
   probes:
@@ -84,10 +104,18 @@ impact:
       BBH 91.0 vs 86.0 for CoT and 89.6 for self-consistency on DeepSeek-V3 (Fan, Apr 2026); below CoT
       on Claude 3 Sonnet, 67.7 vs 68.3 (Aswani, Oct 2024), and on GPT-4 multistep arithmetic, 70 vs 92
       (Zhou, Feb 2024); below zero-shot on long-form CFA essays, 46.32 vs 57.35 (Shetty, Jun 2025); JSON
-      plans 63.50 vs 75.50 for natural-language plans on MATH, per question (Gunasekara, Jul 2025); reasoning models:
-      a plan-first prompt within 0.51 pp of direct prompting (Preet, May 2026), an induced task strategy
-      -1.42 to +3.20 on o3-mini (Chen, May 2026), a hand-written structure 74.3 to 83.3 for o1 on obfuscated
-      Mystery Blocksworld, while o1-mini fell 19.1 to 16.83 (Goh, Feb 2026)'
+      plans 63.50 vs 75.50 for natural-language plans on MATH, per question (Gunasekara, Jul 2025); reasoning
+      models with thinking on: a Self-Discover module injected into the thinking lowered Qwen3-32B on
+      all six benchmarks, AIME 2024 0.789 to 0.667, and 13 of 18 cells over three open models (Wu, Apr
+      2026); a hand-written task structure with retrieved evidence lowered all five frontier reasoning models,
+      four of them by 0.004 to 0.023 and glm-5.2 by 0.106 (mean 0.720 to 0.687),
+      where 3-sample self-consistency over a cascade reached 0.728 (Li, Jul 2026); Buffer-of-Thoughts
+      templates below CoT in 13 of 16 Qwen3 cells and below self-consistency in all 16 (Ahmed, Sep 2025);
+      a plan-first prompt within 0.51 pp of direct prompting (Preet, May 2026); an induced task strategy
+      -1.42 to +3.20 on o3-mini (Chen, May 2026); a hand-written structure 74.3 to 83.3 for o1 on obfuscated
+      Mystery Blocksworld, while o1-mini fell 19.1 to 16.83 (Goh, Feb 2026); per-question strategy hints
+      picked for the target model 67.33 to 74.00 on AIME 2025 for Qwen3-8B, vs 72.00 for 8-sample self-consistency
+      (Liang, Feb 2026)'
     basis: evidence
   cost:
     effect: degrades
@@ -95,14 +123,21 @@ impact:
     when: 3 task-level calls per task type, then one call per instance with longer input and output (Zhou,
       Feb 2024); 2.7x zero-shot cost per multiple-choice task ($0.686 vs $0.255) against 6.7x for 3-sample
       self-consistency ($1.701) (Shetty, Jun 2025); normalized cost 5.0 vs 2.5 for CoT and 12.0 for 5-sample
-      self-consistency on DeepSeek-V3 (Fan, Apr 2026)
+      self-consistency on DeepSeek-V3 (Fan, Apr 2026); on a thinking model, Buffer-of-Thoughts templates
+      $1.51 vs $0.62 for CoT and $2.29 for self-consistency per AIME 2024 problem on Qwen3-8B (Ahmed,
+      Sep 2025); per-question strategy hints cut completion tokens from 16,286 to 14,114 on Qwen3-14B
+      after a 6.4 GPU-hour offline build (Liang, Feb 2026)
     basis: evidence
   performance:
     effect: degrades
     size: medium
     when: 'one call per instance after offline discovery, but longer outputs: 14.9 s vs 6.0 s zero-shot
       per multiple-choice task and 25.27 s vs 15.18 s per essay, against 37.9 s for 3-sample self-consistency
-      (Shetty, Jun 2025); a step-by-step prompt made reasoning models 20-80% slower (Meincke, Jun 2025)'
+      (Shetty, Jun 2025); a step-by-step prompt made reasoning models 20-80% slower (Meincke, Jun 2025);
+      Buffer-of-Thoughts templates 556.07 s vs 245.56 s for CoT and 900.96 s for self-consistency per
+      AIME 2024 problem on Qwen3-8B, while a template inside the thinking cut latency by 8.5% to 72.9%
+      across Qwen3 sizes (Ahmed, Sep 2025); strategy hints 8.1 s vs 7.2 s per problem on Qwen3-14B (Liang,
+      Feb 2026)'
     basis: evidence
   security:
     effect: none
@@ -120,13 +155,15 @@ measure:
   tier: 3
   how: 'paired eval per task type on held-out labeled items: the cached structure against CoT, against
     the model''s own thinking or a higher effort setting at matched tokens (1.b.i), and against self-consistency
-    at matched cost (9.c.ii); accuracy split by task type (computation-heavy vs knowledge-heavy, short
-    answer vs long-form), tokens, cost and p50 and p95 latency per item; repeat on every model change'
+    at matched cost (9.c.ii); on a reasoning model, also the structure in the prompt against the same
+    structure inside the thinking and against none; accuracy split by task type (computation-heavy vs
+    knowledge-heavy, short answer vs long-form), valid-answer rate, input, thinking and output tokens,
+    cost and p50 and p95 latency per item; repeat on every model change'
 - method: monitor
   how: 'per call: which structure was used (task type, version, discovering model), whether the output
-    fills every key or rephrases or skips them, answer-extraction failures, tokens and latency; accuracy
-    by task type on a regularly labeled sample, and the share of traffic that matches no task type with
-    a structure'
+    fills every key or rephrases or skips them, answer-extraction failures, thinking and output tokens
+    and latency; accuracy by task type on a regularly labeled sample, and the share of traffic that matches
+    no task type with a structure'
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -248,9 +285,8 @@ evidence:
     metric; "CoT requests took between 20-80% (10-20 seconds) longer than direct requests." Non-reasoning
     models gained against direct (Gemini 2.0 Flash RD = 0.135, Sonnet 3.5 RD = 0.117); against the no-instruction
     default, Gemini 2.0 Flash still gained significantly (RD = 0.062, p < .001) while Sonnet 3.5 did not
-    (RD = -0.019, p = 0.189). "For dedicated reasoning models,
-    the added benefits of explicit CoT prompting appear negligible and may not justify the substantial
-    increase in processing time."'
+    (RD = -0.019, p = 0.189). "For dedicated reasoning models, the added benefits of explicit CoT prompting
+    appear negligible and may not justify the substantial increase in processing time."'
   conditions: 'GPQA Diamond, 198 questions x 25 trials per condition; reasoning: o3-mini, o4-mini, Gemini
     2.5 Flash; non-reasoning: Claude 3.5 Sonnet, Gemini 2.0 Flash, GPT-4o-mini, GPT-4o, Gemini 1.5 Pro;
     a plain step-by-step prompt, not a composed structure'
@@ -312,19 +348,115 @@ evidence:
   measured: true
   locator: §3.2; §4, Table 2; §4.1
 - source: Anthropic, "Prompting best practices" (Claude API docs), https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices
-  date: '2026-10-21'
+  date: '2026-11-12'
   task: Vendor guidance on prompting Claude models that think before answering
-  effect: '"Prefer general instructions over prescriptive steps. A prompt like "think thoroughly" often
+  effect: '"Prefer general instructions over prescriptive steps. A prompt such as "think thoroughly" often
     produces better reasoning than a hand-written step-by-step plan. Claude''s reasoning frequently exceeds
-    what a human would prescribe." Also: "Multishot examples work with thinking ... Present each example
-    as a problem, the method to apply, and the expected answer"; on the newest models, rely on thinking
-    rather than manual chain-of-thought prompts, "at a lower effort level if cost or latency matters".
-    On Opus 5.5, Fable 5.x and other recent models, prompts asking for written-out reasoning "may be declined".
-    No numbers.'
-  conditions: Claude models with adaptive or extended thinking; living documentation, read 2026-10-21
+    what a human would prescribe." Also: "Multishot examples work with thinking. Worked examples in your
+    prompt shape how Claude approaches similar problems in its own thinking blocks. Present each example
+    as a problem, the method to apply, and the expected answer." On Claude Fable 5.2, 5.1 and 5, Opus
+    5.5, Opus 5 and Sonnet 5.5, rely on thinking instead of manual chain-of-thought prompts, "at a lower
+    effort level if cost or latency matters: a prompt that asks the model to write out its reasoning,
+    for example in <thinking> tags, might be declined." No numbers.'
+  conditions: Claude models with adaptive or extended thinking; living documentation, read 2026-11-12
   direction: contradicts
   measured: false
   locator: 'Thinking and reasoning: Leverage thinking & interleaved thinking capabilities'
+- source: 'Linyu Li, Zhi Jin, Yichi Zhang, Dongming Jin, Yuanpeng He, Huanyao Zhang, Xuan Zhang, Gadeng
+    Luosang, Nyima Tashi, "Knowledge before Reasoning: EC-Reason-Bench, a Training-Free Diagnostic Benchmark
+    for LLM Enzyme Classification", https://arxiv.org/abs/2607.26397'
+  date: '2026-07-29'
+  task: 'Adds a hand-written, task-level reasoning structure (M3: reason along the four axes of the EC
+    number in order, with weak motif priors stated in the prompt) to a one-pass direct baseline (B0) on
+    five reasoning models with thinking on, closed-book and with retrieved homolog evidence; also a level-by-level
+    cascade (M1) and 3-sample self-consistency over the cascade (M4)'
+  effect: 'Table 1, full EC accuracy (L4), deepseek-v4-pro / gpt-5.5 / qwen3-235b-a22b-thinking / gemini-3.1-pro
+    / glm-5.2, B0 -> M3: with evidence 0.731 -> 0.716, 0.722 -> 0.718, 0.718 -> 0.695, 0.723 -> 0.707,
+    0.705 -> 0.599 (mean 0.720 -> 0.687); closed-book 0.159 -> 0.070, 0.036 -> 0.033, 0.010 -> 0.006,
+    0.084 -> 0.087, 0.013 -> 0.005 (mean 0.060 -> 0.040). Valid-EC rate, five-model mean: 0.982 -> 0.931
+    with evidence, 0.803 -> 0.585 closed-book. Self-consistency over the cascade (k = 3) with evidence:
+    0.733, 0.741, 0.725, 0.730, 0.712 (mean 0.728). The structure is "specified by hand rather than composed
+    by the model as in SELF-DISCOVER" and receives motif-scan input B0 lacks, "that can only favor M3,
+    which still loses to closed-book B0 on four of five models."'
+  conditions: 1,349 enzymes, one seed, 95% bootstrap intervals; five reasoning models with chain of thought
+    on by default; a knowledge-bound classification task where retrieved evidence dominates (open-book
+    multiplies L4 by roughly 5 to 70); one domain; a fixed expert structure, not a self-discovered one;
+    the self-consistency arm wraps the cascade, not the structure
+  direction: contradicts
+  measured: true
+  locator: §4 (B0, M1, M3, M4); §6, Table 1; Finding 2; Appendix Table 4
+- source: Di Wu, Devendra Singh Sachan, Wen-tau Yih, Mingda Chen, "Procedural Knowledge at Scale Improves
+    Reasoning", https://arxiv.org/abs/2604.01348
+  date: '2026-04-01'
+  task: Among the baselines for a procedural-retrieval method (Reasoning Memory), retrieves the top-1
+    of Self-Discover's 39 reasoning modules for each problem and injects it into the reasoning model's
+    thinking stream ("Template RAG (Self-Discover)"), against no retrieval and a retrieval-free baseline
+    that keeps the 4 shortest of the same 8 samples (Length Scaling)
+  effect: 'Table 1 (8 samples per problem, mean accuracy), No RAG -> Template RAG (Self-Discover), AIME
+    24 / AIME 25 / MATH500 / GPQA-D / LiveCodeBench V1-4 / V5-6: Qwen3-32B 0.789 -> 0.667, 0.586 -> 0.483,
+    0.905 -> 0.903, 0.669 -> 0.633, 0.387 -> 0.312, 0.465 -> 0.339; DeepSeek-R1-Distill-Llama-8B 0.461
+    -> 0.442, 0.350 -> 0.296, 0.806 -> 0.821, 0.427 -> 0.414, 0.220 -> 0.213, 0.211 -> 0.247; OpenThinker3-7B
+    0.470 -> 0.442, 0.392 -> 0.392, 0.841 -> 0.825, 0.438 -> 0.441, 0.318 -> 0.276, 0.266 -> 0.279 (lower
+    in 13 of 18 cells, all 6 on Qwen3-32B). Length Scaling on Qwen3-32B: 0.792, 0.591, 0.903, 0.699, 0.399,
+    0.444 (the Self-Discover arm is below it in 16 of 18 cells). "Most baselines fail to consistently
+    outperform No RAG on frontier reasoning tasks."'
+  conditions: Open-weight reasoning models in thinking mode (Qwen3-32B, DeepSeek-R1-Distill-Llama-8B,
+    OpenThinker3-7B); AIME 2024 and 2025 (30 problems each), MATH500, GPQA-Diamond, LiveCodeBench (112
+    and 109 problems); temperature 0.7, 32,768 max output tokens; one retrieved module per problem placed
+    in the thinking by a thought-hijacking prompt, not the SELECT, ADAPT, IMPLEMENT pipeline or a structure
+    per task type; written by the authors of a competing method; the Self-Discover rows are the same in
+    v1 and v3
+  direction: contradicts
+  measured: true
+  locator: §4 Baselines; §5.2, Table 1; Appendix B.2 (Template RAG (Self-Discover))
+- source: 'Weida Liang, Yiyou Sun, Shuyuan Nan, Chuang Li, Dawn Song, Kenji Kawaguchi, "Strategy Executability
+    in Mathematical Reasoning: Leveraging Human-Model Differences for Effective Guidance", https://arxiv.org/abs/2602.22583'
+  date: '2026-02-26'
+  task: Gives compact reasoning models strategy hints extracted from human-written and model-generated
+    solutions, one generation per problem, either from one source or selected by a small trained predictor
+    of whether the target model can execute each strategy (Selective Strategy Retrieval, SSR, with category-conditioned,
+    problem-transfer and semantic routes); compared with direct solving, one retrieved worked example,
+    8-sample self-consistency, least-to-most and ToT
+  effect: 'Table 1, AIME25, direct solving / one worked example / human-sourced hints / model-sourced
+    hints / SSR: Qwen3-8B 67.33 / 68.00 / 70.67 / 69.33 / 74.00; Qwen3-14B 70.66 / 70.33 / 72.67 / 72.00
+    / 74.67; DeepSeek-R1-Distill-Qwen-7B 42.00 / 48.00 / 51.33 / 52.00 / 53.13; Apex, Qwen3-8B 8.16 ->
+    13.06. Table 8, 8-sample self-consistency on AIME25 72.00, 74.33 and 48.67, on Apex 11.42, 13.88 and
+    8.97 (SSR 13.06, 14.69, 7.75); ToT (B = 3, D = 2) on Qwen3-14B 75.00 and 15.91. Table 10 (v2, Qwen3-14B):
+    completion tokens 16,286 direct, 14,114 SSR, 35,715 ToT; online latency 7.2 s, 8.1 s, 27.8 s; SSR
+    offline cost 6.4 GPU-hours. "Strategies that are frequently used by a source solver do not necessarily
+    yield higher accuracy when transferred as guidance."'
+  conditions: Qwen3-8B, Qwen3-14B, DeepSeek-R1-Distill-Qwen-7B (reasoning tokens reported), temperature
+    0.7, 32,768 context, mean of 5 runs; HM-ReasoningBench (paired human and model solutions), AIME25,
+    Apex; per-question hints with a trained selector of about 0.65M parameters, not one structure per
+    task type; the abstract's "+13 points on AIME25" is the text's figure for GPT-4.1 and o3-mini (Figure
+    2), not the compact models
+  direction: supports
+  measured: true
+  locator: §3.4; §5.1-5.3, Table 1; §5.6; Appendix D.1, Table 8; Appendix D.4, Table 10 (v2)
+- source: 'Ammar Ahmed, Azal Ahmad Khan, Ayaan Ahmad, Sheng Di, Zirui Liu, Ali Anwar, "Retrieval-of-Thought:
+    Efficient Reasoning via Reusing Thoughts", https://arxiv.org/abs/2509.21743'
+  date: '2025-09-26'
+  task: 'Compares thought-template methods on Qwen3 models in thinking mode: Buffer of Thoughts (BoT),
+    static retrieved templates (RAG) and the authors'' per-problem templates assembled from a graph of
+    earlier reasoning steps, placed in the prompt (RoT) or inside the <think> block (RoT+TI), against
+    CoT and self-consistency (CoT-SC), with tokens, cost and latency'
+  effect: 'Table 2 (accuracy, total tokens), Qwen3-8B on AIME 2024: CoT 62.96% at 11,233 tokens, BoT 18.52%
+    at 49,993, CoT-SC 77.78% at 41,127, RoT+TI 59.26% at 10,930. Over Qwen3-0.6B to 8B on four contests
+    (16 cells), BoT was below CoT in 13 and tied in 3, and below CoT-SC in all 16; on Qwen3-14B BoT ran
+    out of tokens. Per AIME 2024 problem on Qwen3-8B, cost (Table 3) CoT $0.62, BoT $1.51, CoT-SC $2.29,
+    RoT+TI $0.60, and latency (Table 5) 245.56 s, 556.07 s, 900.96 s, 240.14 s. RoT+TI cut latency against
+    CoT by 72.9% on Qwen3-0.6B, 29.7% on 1.7B, 15.6% on 4B, 11.6% on 8B and 8.5% on 14B. GPQA (v2), CoT
+    -> RoT+TI accuracy (output tokens): Qwen3-0.6B 27.94 -> 20.59 (-80.3%), 1.7B 30.23 -> 30.23 (-74.2%),
+    4B 58.21 -> 53.73 (-44.5%), 8B 53.97 -> 47.62 (-68.2%), 14B 57.69 -> 42.31 (-51.1%). The authors attribute
+    smaller gains on larger models to reinforcement training that "diminishes adherence to external templates."'
+  conditions: Qwen3-0.6B to 14B in thinking mode on A100s; AIME 2023 to 2025 and AMC 2023 (accuracy steps
+    imply 27 to 40 problems each), GPQA added in v2; number of runs and CoT-SC samples not stated; costs
+    at Alibaba Cloud prices; written by the authors of a competing method; the abstract's "latency by
+    82%, and cost by 59% while maintaining accuracy" is the Qwen3-0.6B best case, where RoT+TI fell from
+    42.5 to 15 on AMC 2023
+  direction: mixed
+  measured: true
+  locator: §4.5; §5.1-5.3, §5.5, §5.8, §6; Appendix D, Tables 2, 3 and 5 (v2)
 assessment:
   qa:
     unit: null
@@ -368,6 +500,8 @@ related:
 - 3.b.i
 - 9.b.i
 - 7.c.vii
+- 3.a.i
+- 4.c.i
 provenance:
   layer: target
   origin: observed
@@ -377,12 +511,16 @@ provenance:
   library_source: catalog
 caveats: 'The original''s compute advantage counts inference calls on two BBH tasks, not tokens, and its
   authors note longer inputs and outputs; the headline 32% is one task (T4D), and on MATH it built a structure
-  per instance. Most follow-ups are small or come from papers proposing a rival method (Auto-Evolve, SABA):
-  the CFA study''s Self-Discover is a one-prompt, per-question imitation scored on 60 multiple-choice
-  questions with no single-sample CoT arm, the instance-level replication had no CoT baseline, and Strategy-Induct
-  sampled 25 questions per task. The reasoning-model evidence comes mostly from neighboring prompts (CoT,
-  plan-and-solve, induced instructions, a hand-written TMK structure) rather than Self-Discover itself,
-  and it disagrees: no gain on multiple-choice benchmarks, a gain on one obfuscated planning task,
-  where o1-mini nonetheless fell from 19.1% to 16.83% on the Mystery variant. Per-question strategy prompts
-  broke a reasoning model''s answer format (o3-mini on Shift Cipher, 24.64 vs 98.40 for CoT), which favors
-  one cached strategy per task type.'
+  per instance. Most follow-ups are small or come from papers proposing a rival method (Auto-Evolve, SABA,
+  and the three 2025-2026 template and hint studies on reasoning models): the CFA study''s Self-Discover
+  is a one-prompt, per-question imitation scored on 60 multiple-choice questions with no single-sample
+  CoT arm, the instance-level replication had no CoT baseline, Strategy-Induct sampled 25 questions per
+  task, and the contest sets in the template studies have 27 to 40 problems each. No study runs the original
+  three-stage method on a reasoning model with thinking on: the reasoning-model evidence injects single
+  modules or retrieved templates into the thinking of open 0.6B to 32B models, uses hand-written structures
+  (a gain for o1 on one obfuscated planning task where o1-mini fell, a loss on all five frontier models
+  in one enzyme-classification study with one seed), or tests neighboring prompts (CoT, plan-and-solve,
+  induced instructions), and the strongest positive result picks per-question hints with a trained selector
+  on contest math with 7B to 14B models. Per-question strategy prompts broke a reasoning model''s answer
+  format (o3-mini on Shift Cipher, 24.64 vs 98.40 for CoT) and a hand-written structure lowered the valid-answer
+  rate (0.982 to 0.931), which favors one cached, format-checked strategy per task type.'

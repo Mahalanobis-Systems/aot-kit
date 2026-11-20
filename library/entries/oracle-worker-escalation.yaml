@@ -19,62 +19,100 @@ evidence_domains:
 - tool-use
 - conversation
 - reasoning
+- computer-use
+- judging
+- robotics
+- commerce
 categories:
 - topologies.escalate
 - models.cheap-verifiable
 summary: 'Let a cheap model do the work and call an expensive one only when a trigger fires: a cascade
   escalates when the cheap answer looks unreliable or fails a check, a router picks the model before the
-  call, and an advisor tool lets a cheap agent consult a stronger model mid-task. It pays when the trigger
-  really separates the cheap model''s failures: a two-model cascade beat the best single model at the same budget by 2.1 to 8.2 points on average across
-  budgets, a learned consult policy recovered 44% to 81% of the gap to the strong
-  model on three agent benchmarks at 34.5% to 48.1% of its cost, and re-running only the failures of a low-effort run at high effort matched an all-high run for about
-  40% less (computed task by task from existing runs, not run end to end). The trigger is the weak link:
-  none of six commercial routers beat a random mix of two well-chosen models at matched cost (the worst
-  trailed by 10.5 points), a third to fifth model in a cascade added at most 0.43 points, and agents left
-  to decide for themselves consulted rarely and late. In Anthropic''s tests on current models the advisor
-  bought about what more effort does (1.7 points for 2.1 times the cost on coding) and scored 7 points
-  lower on chart reading, where it was configured but consulted on 1 of 300 tasks.'
+  call, and an advisor or critic brings a stronger model in mid-task. It pays when the trigger really
+  separates the cheap model''s failures: two-model cascades beat the best single model at the same budget
+  by 2.1 to 8.2 points on average across budgets, a learned consult policy recovered 44% to 81% of the
+  gap to the strong model on three agent benchmarks at 34.5% to 48.1% of its cost, and a small grader''s
+  stated confidence sent 7% of decisions to the large model for 76% lower cost and 61% lower median latency
+  (kappa 0.802 vs 0.819). Speed gains need a cheap model that is actually faster and rare escalation:
+  a strong model reviewing a 4B model''s drafts only at state-changing actions came within a point of
+  it on two customer-service benchmarks in 41% to 54% of its wall time, but with cloud models on MCP-Atlas
+  it scored 8.9 to 12.9 points lower with no time saved. The trigger is the weak link: none of six commercial
+  routers beat a random mix of two well-chosen models at matched cost, escalating a web agent''s least
+  self-consistent actions did worse than escalating at random, a third to fifth model in a cascade added
+  at most 0.43 points, and in Anthropic''s tests the advisor bought about what more effort does (1.7 points
+  for 2.1 times the cost on coding).'
 how: '1. Start from single-model baselines on your own tasks: the cheap and the strong model alone, each
-  across effort settings (the strong one at low effort too), priced per completed task, plus a random
-  mix of the two at the same spend. A pairing must beat that whole curve: Anthropic''s coding advisor
-  pairing (90.1% at $2.92 per attempt) landed on its executor''s own effort curve (88.4% at $1.38 on high,
-  91.1% at $4.11 on xhigh), and no commercial router beat the random mix. Picking one model per call site
-  statically is 1.b.i. 2. If the outcome is checkable (tests, a schema, a sound verifier), try the simplest
-  cascade first: run cheap and escalate only the failures. Opus 5.5 at low effort with its failures re-run
-  at high solved about 97% for about $0.17 a task, against 95.3% for $0.29 with everything at high, a figure
-  computed task by task from existing runs rather than run end to end. A
-  checker that passes bad work lets those failures through, so audit it on a gold sample (9.c.iii). 3.
-  Use two models, not a ladder: allowing three to five models did not raise mean test accuracy in 118
-  of 135 comparisons (at most +0.43 points), and even with true query difficulty known a two-model roster
-  was within 1 point of the best roster of any size. Take the cheap model from the cost-accuracy frontier;
-  in one 26-model set it trailed the strongest by 1.6 points at a 96% discount. 4. Measure the trigger
-  before trusting it. For a confidence-score cascade, check how well the score separates the cheap model''s
-  errors from the strong model''s: log-probability scores reached AUROC 0.63 to 0.80 for the cheap model''s
-  correctness yet beat random escalation at the same escalation rate (not the same cost) by only about 0.3 points
-  on MATH. For a pre-call router, check
-  it against the random two-model mix at the same spend (commercial routers trailed it by 1.0 to 10.5
-  points). 5. In agents, trigger consults on execution evidence and workflow phase rather than on the
-  agent''s own sense of being stuck, and cap them. On SWE-bench Verified, a learned policy at 2.78 consults
-  per episode solved 48.0%, fixed triggers (before committing to an approach, before finishing, on stalls)
-  41.3%, random placement at similar volume 28.0%, and the orchestrating model left to choose (not volume-matched) made 0.41 consults per episode, 77% of
-  them in the last third; on Terminal-Bench the learned policy only tied the fixed triggers (34.7% each). Do not re-run whole agent tasks on the strong model
-  after a failed self-check: that cascade cost $59.68 against $45.90 for the strong model alone. 6. Watch
-  the consult rate and whether the advice is used. Sonnet 5.5 at its default effort never consulted on
-  20 SWE-bench Pro problems; a pairing that consulted on most tasks at default effort consulted on few
-  once its effort was lowered, and then scored below the executor alone; with the advisor tool attached
-  but never called, GPQA cost 12% to 25% more (its definition is about 1,000 prompt tokens per request);
-  ignored advice made up 58% of the learned policy''s remaining SWE-bench failures. A consult that fires
-  on most tasks can cost more than the strong model alone (1.8 times on chart reading). 7. Measure on
-  held-out tasks with gold outcomes over several seeds: success and cost per completed task (counting
-  failed cheap attempts and strong-model tokens) against every step-1 baseline, escalation or consult
-  rate, and latency on escalated tasks; re-run at every model or price change.'
+  across effort settings (the strong one at low effort too), priced per completed task and timed (median
+  and p95), plus a random mix of the two at the same spend. A pairing must beat that whole curve: Anthropic''s
+  coding advisor pairing (90.1% at $2.92 per attempt) landed on its executor''s own effort curve (88.4%
+  at $1.38 on high, 91.1% at $4.11 on xhigh), and no commercial router beat the random mix. Picking one
+  model per call site statically is 1.b.i. 2. If the outcome is checkable (tests, a schema, a sound verifier),
+  try the simplest cascade first: run cheap and escalate only the failures. Opus 5.5 at low effort with
+  its failures re-run at high solved about 97% for about $0.17 a task, against 95.3% for $0.29 with everything
+  at high, a figure computed task by task from existing runs rather than run end to end. A checker that
+  passes bad work lets those failures through, so audit it on a gold sample (9.c.iii). 3. Use two models,
+  not a ladder: allowing three to five models did not raise mean test accuracy in 118 of 135 comparisons
+  (at most +0.43 points), and even with true query difficulty known a two-model roster was within 1 point
+  of the best roster of any size. Take the cheap model from the cost-accuracy frontier; in one 26-model
+  set it trailed the strongest by 1.6 points at a 96% discount. 4. Measure the trigger before trusting
+  it, against escalating at random at the same rate and cost. For a confidence-score cascade, check how
+  well the score separates the cheap model''s errors from the strong model''s: log-probability scores
+  reached AUROC 0.63 to 0.80 for the cheap model''s correctness yet beat random escalation at the same
+  escalation rate (not the same cost) by only about 0.3 points on MATH, and in a computer-use agent token-probability
+  uncertainty predicted subgoal failure at AUROC 0.488 to 0.540. A confidence the cheap model states in
+  its answer (a 0 to 100 field after its verdict, no extra call) can work if it varies: in one grading
+  task Claude Haiku 4.5''s (AUROC 0.857, 13 distinct values) sent 7% of decisions to Claude Opus 4.6 for
+  kappa 0.802 against 0.819 for Opus alone, while Gemini 3.1 Flash-Lite''s took 3 values and its cascade
+  could not close the gap at any threshold. Do not assume sample agreement works in agents: escalating
+  a web-shopping agent''s least self-consistent actions succeeded less often than escalating at random
+  (4.5% against 16.0% at a 20% escalation budget, 41.0% against 50.5% at 60%), while a probe trained on
+  where the weak and strong models'' actions differ beat random (21.0% and 76.5%). For a pre-call router,
+  check it against the random two-model mix at the same spend (commercial routers trailed it by 1.0 to
+  10.5 points). 5. In agents, decide inside the run on execution evidence and workflow phase rather than
+  up front or on the agent''s own sense of being stuck, and cap consults. On OSWorld, escalating on runtime
+  uncertainty scored 71.65% against 59.92% for routing at the start (not cost-matched). On SWE-bench Verified,
+  a learned policy at 2.78 consults per episode solved 48.0%, fixed triggers (before committing to an
+  approach, before finishing, on stalls) 41.3%, random placement at similar volume 28.0%, and the orchestrating
+  model left to choose (not volume-matched) made 0.41 consults per episode, 77% of them in the last third;
+  on Terminal-Bench the learned policy only tied the fixed triggers (34.7% each). If a model decides when
+  to escalate, make it a separate, capable judge: on Terminal-Bench a GPT-5.4-mini judge reached 71.91%
+  where the 9B worker judging itself reached 50.56% (cloud model alone 74.16%). Once a critic hands control
+  to the strong model, keep it there until the critic clears a higher return threshold, and give both
+  models one shared record of verified progress and recent failures: an embodied agent run this way stayed
+  within 5 points of the cloud model alone while the cloud made 24% to 34% of its action requests, beat
+  random and periodic hand-offs on tasks the local model failed alone at 30% to 50% cloud use (88.4% to
+  93.0% against 74.4% to 79.0%; no difference at about 20%), and resumed 20 recorded hand-off states successfully
+  every time with the shared record against 25% without it. Where latency matters, let the cheap model
+  draft and run read-only calls, hold its first state-changing action for the strong model to review in
+  one pass, accept the longest valid prefix by meaning and repair the first bad step: within 1 point of
+  the strong model on tau2-Bench in 41% to 54% of its wall time, while exact-match review dropped Retail
+  to 82.5%; in coding, cloud help on write and edit steps tracked success most. Do not re-run whole agent
+  tasks on the strong model after a failed self-check: that cascade cost $59.68 against $45.90 for the
+  strong model alone. 6. Watch the consult rate and whether the advice is used. Sonnet 5.5 at its default
+  effort never consulted on 20 SWE-bench Pro problems; a pairing that consulted on most tasks at default
+  effort consulted on few once its effort was lowered, and then scored below the executor alone; with
+  the advisor tool attached but never called, GPQA cost 12% to 25% more (its definition is about 1,000
+  prompt tokens per request); ignored advice made up 58% of the learned policy''s remaining SWE-bench
+  failures. A consult that fires on most tasks can cost more than the strong model alone (1.8 times on
+  chart reading), and escalating on the weak model''s own progress check made more strong-model calls
+  than the strong model alone (18.5 against 13.8 per airline task) and took longer (385.2 s against 305.2
+  s). 7. Measure on held-out tasks with gold outcomes over several seeds: success, cost per completed
+  task (counting failed cheap attempts, strong-model tokens and the context resent with each review or
+  consult) and median and p95 wall time against every step-1 baseline, plus escalation or consult rate;
+  re-run at every model or price change. Run step-level switching live, not by stitching logged runs:
+  after an early model swap in one SWE-bench pilot only 3% to 8% of the states a replay would score still
+  occurred, and replay missed all 5 success-relevant outcomes. Expect a speed gain only if the cheap model
+  is faster than the strong one: with a local 4B model about as slow as hosted ones, wall time did not
+  fall, and reviewed drafts raised compute by 30% to 87%.'
 detect:
   static: Two models with an escalation call from worker to oracle.
   traces: Escalation or consult rate and when it fires (turn of the first consult, share in the last third
-    of the run); strong-model share of tokens and cost; escalated tasks whose outcome changed; advice
-    the worker then ignored.
-  evals: Success and cost per completed task against each model alone across effort settings and against
-    a random mix of the two at the same spend.
+    of the run); the trigger score's distribution (a stated confidence stuck on a few values cannot separate
+    failures); strong-model share of tokens and cost; median and p95 wall time of escalated against kept
+    tasks; escalated tasks whose outcome changed; advice the worker then ignored.
+  evals: Success, cost and wall time per completed task against each model alone across effort settings,
+    against random escalation at the same rate and against a random mix of the two at the same spend;
+    step-level switching run live, not scored by replaying logged trajectories.
   judge: Whether escalations were warranted.
   probes:
     what: Tasks the worker solves, tasks only the oracle solves, and tasks neither solves.
@@ -87,33 +125,50 @@ impact:
   quality:
     effect: mixed
     size: medium
-    when: 'gains where the trigger separates failures: two-model cascades +2.1 to 8.2 points over the best single model at the same budget, on average across
-      budgets (Bouchard, May 2026); a learned consult policy recovered 44%
-      to 81% of the cheap-to-strong gap on SWE-bench Verified, Terminal-Bench 2.1 and tau2-bench (Sowietzki,
-      Oct 2026); FrugalGPT matched GPT-4 on three 2023 tasks (Chen, May 2023). Losses where it does not:
-      six commercial routers 1.0 to 10.5 points below a random two-model mix at matched cost (Wang, Oct
-      2026); Anthropic''s advisor +1.7 points on coding at the edge of noise, within noise on GPQA with
-      no consults, 7 points lower on chart reading (Anthropic, Oct 2026)'
+    when: 'gains where the trigger separates failures: two-model cascades +2.1 to 8.2 points over the
+      best single model at the same budget, on average across budgets (Bouchard, May 2026); a learned
+      consult policy recovered 44% to 81% of the cheap-to-strong gap on SWE-bench Verified, Terminal-Bench
+      2.1 and tau2-bench (Sowietzki, Oct 2026); on OSWorld, escalation on the weak model''s own uncertainty
+      67.94% against 61.72% for random escalation at about the same rate (Q. Wang, Oct 2026); within 1
+      point of the strong model on tau2-Bench with review at write boundaries (Z. Wang, Oct 2026), -5.0
+      to +2.5 points of a cloud-only embodied agent (Zhang, Oct 2026), and kappa 0.007 to 0.026 below
+      the large grader with stated-confidence escalation (Burleigh, Mar 2026); FrugalGPT matched GPT-4
+      on three 2023 tasks (Chen, May 2023). Losses where it does not: six commercial routers 1.0 to 10.5
+      points below a random two-model mix at matched cost (S. Wang, Oct 2026); 8.9 to 12.9 points below
+      cloud-only on MCP-Atlas with a local 4B drafter (Z. Wang, Oct 2026); self-consistency and token-entropy
+      triggers below random escalation in a web-shopping agent (Noorani, Oct 2026); Anthropic''s advisor
+      +1.7 points on coding at the edge of noise, within noise on GPQA with no consults, 7 points lower
+      on chart reading (Anthropic, Oct 2026)'
     basis: evidence
   cost:
     effect: mixed
     size: large
     when: 'cheaper than the strong model alone when escalation is selective: 34.5% to 48.1% of its cost
-      with a learned consult policy (Sowietzki, Oct 2026); 59.2% to 98.3% less at matched accuracy on
-      2023 classification tasks (Chen, May 2023); re-running only failures at high effort about 40% below an all-high run, computed from existing runs
-      (Anthropic, Oct 2026). Dearer when escalation is frequent or task-level: the coding
+      with a learned consult policy (Sowietzki, Oct 2026); 33% to 63% lower cloud spend within 3.4 points,
+      local compute excluded (Shi, Oct 2026); 49% to 81% lower for stated-confidence grading cascades
+      (Burleigh, Mar 2026); 59.2% to 98.3% less at matched accuracy on 2023 classification tasks (Chen,
+      May 2023); re-running only failures at high effort about 40% below an all-high run, computed from
+      existing runs (Anthropic, Oct 2026). Dearer when escalation is frequent or task-level: the coding
       advisor pairing cost 2.1 times its executor alone, GPQA 12% to 25% more with no consults, and a
       pairing that consulted on 88% of chart tasks 1.8 times the strong model alone (Anthropic, Oct 2026);
       verify-then-escalate cost $59.68 against $45.90 for the strong model alone on SWE-bench Verified
-      (Sowietzki, Oct 2026)'
+      (Sowietzki, Oct 2026); reviewing a cheap model''s drafts cut API cost only to 59% to 81% of strong-only,
+      since each review resends the context, and raised compute by 30% to 87% (Z. Wang, Oct 2026)'
     basis: evidence
   performance:
     effect: mixed
-    size: small
-    when: each escalation or consult is a serial strong-model call on the critical path (about 1.4 per
-      coding attempt), and a re-run failure takes two runs of wall-clock time (Anthropic, Oct 2026); work
-      the cheap model finishes may be faster, which no source here times
-    basis: assessment
+    size: medium
+    when: 'faster where the cheap model is faster and escalation is rare: 41% to 69% of the strong model''s
+      wall time with review at write boundaries on tau2-Bench, AutomationBench and VitaBench (Z. Wang,
+      Oct 2026); 28.8% to 82.6% lower median time between actions and 4.4% to 34.8% lower median episode
+      time for a critic-triggered embodied agent (Zhang, Oct 2026); 61% to 82% lower median latency for
+      stated-confidence grading cascades, with a slow tail of escalated cases (Claude p95 8,228 ms against
+      2,888 ms small-only) (Burleigh, Mar 2026). No gain or slower when the cheap model is as slow as
+      the strong one (a local 4B drafter: 108 to 215 s against 105 to 151 s per MCP-Atlas task) or escalation
+      is frequent (a self-evaluation trigger: 385.2 s against 305.2 s per airline task) (Z. Wang, Oct
+      2026); each consult is a serial strong-model call on the critical path (about 1.4 per coding attempt;
+      Anthropic, Oct 2026)'
+    basis: evidence
   security:
     effect: none
     basis: assessment
@@ -134,13 +189,17 @@ measure:
 - method: experiment
   tier: 4
   how: 'paired eval on held-out tasks with gold outcomes, 3 or more seeds: the escalation setup against
-    the cheap and the strong model alone across effort settings and against a random mix of the two at
-    the same spend; success, cost per completed task counting failed cheap attempts and strong-model tokens,
-    escalation or consult rate, latency of escalated tasks'
+    the cheap and the strong model alone across effort settings, against random escalation at the same
+    rate and against a random mix of the two at the same spend; success, cost per completed task counting
+    failed cheap attempts, strong-model tokens and the context resent with each review or consult, escalation
+    or consult rate, and median and p95 wall time; run step-level switching live or by branched rollouts,
+    not by replaying logged trajectories'
 - method: monitor
-  how: escalation or consult rate by task type and when it fires, strong-model share of tokens and cost,
-    success of escalated against kept tasks, advice the worker ignored, and true error on a gold-labeled
-    audit sample the trigger never sees (9.c.iii); repeat the experiment at each model or price change
+  how: escalation or consult rate by task type and when it fires, the spread and drift of the trigger
+    score (a stated confidence stuck on a few values cannot separate failures), strong-model share of
+    tokens and cost, p95 latency of escalated tasks, success of escalated against kept tasks, advice the
+    worker ignored, and true error on a gold-labeled audit sample the trigger never sees (9.c.iii); repeat
+    the experiment at each model or price change
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -258,6 +317,177 @@ evidence:
   direction: supports
   measured: true
   locator: Abstract; §4.1; §4.3 Table 1; §4.4 Table 2; Appendix C, Table 25
+- source: Zilin Wang, Yinhong Liu, Chao Chen, Qun Liu, Zhijiang Guo (HKUST Guangzhou, University of Cambridge
+    et al.), "Trajectory-Level Speculation with Semantic Verification for Tool-Using Agents", https://arxiv.org/abs/2610.21463
+  date: '2026-10-15'
+  task: 'SpecAgent: a weak model drafts the trajectory and runs read-only tool calls, holds the first
+    state-changing action, and a strong model reviews the drafted segment in one prefill pass, commits
+    the longest prefix it judges semantically valid and repairs the first rejected step. Compared with
+    Weak-only, Strong-only, AgentCollab (escalation on the weak model''s self-evaluation) and Speculative
+    Actions, counting both models, with compute, memory traffic, wall time and API cost as separate axes'
+  effect: 'Pass@1, Weak-only / Strong-only / SpecAgent: tau2-Bench Airline 80.0 / 86.0 / 86.0, Retail
+    80.4 / 88.6 / 87.7 (paired bootstrap 0.0 [-5.3, +5.3] and -0.9 [-4.7, +2.9]); AutomationBench 6.8
+    / 15.2 / 10.5 (44% of the gap); VitaBench 34.0 / 48.0 / 44.5 (75%). Wall time 41%, 54%, 57% and 69%
+    of Strong-only (Airline 126.2 s vs 305.2 s); estimated FLOPs +30%, +38%, +38% and +87%; Strong calls
+    13.8 to 3.1 per Airline trajectory. AgentCollab 85.3 and 85.7 on tau2 with more Strong calls than
+    Strong-only (18.5 vs 13.8 on Airline) and longer wall time (385.2 s vs 305.2 s); on AutomationBench
+    7.3 at 3.0 times Strong-only''s wall time. Retail ablations: exact-match acceptance 82.5 with +70%
+    FLOPs; reviewing every chunk or also holding replies 2.5 to 3.0 times the wall time and lower Pass@1.
+    MCP-Atlas with a local 4B drafter and cloud strong models: 59.4 vs 72.3 (Qwen3.5-397B-A17B), 67.3
+    vs 76.2 (GLM-5), 74.3 vs 84.2 (DeepSeek-V4-Flash), 53-75% of the gap at 59-81% of the API cost; ''Wall
+    time does not fall here'' (120, 108 and 215 s vs 105, 110 and 151 s).'
+  conditions: Weak Qwen3.5-4B, Strong Qwen3.5-397B-A17B on H20 GPUs, thinking on when generating actions
+    and off for verification; tau2-Bench Airline 50 and Retail 114 tasks with 3 trajectories each, AutomationBench
+    600 tasks with 1, VitaBench Delivery 100 tasks with 2; MCP-Atlas 101 public tasks, one trajectory
+    each, weak model on a local RTX 5090, LLM-judged; compute and memory traffic estimated from token
+    counts; the authors' own method
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1; §4.2 Table 2; §4.3 Table 3; §5 Table 4, Figure 4; Appendix A
+- source: 'Qingni Wang, Changdae Oh, Yuzhe Yang, Sharon Li, Jiachen Yang, Ang Li, Xin Eric Wang (Simular,
+    University of Wisconsin-Madison), "LEASH: Uncertainty-Aware Weak-to-Strong Escalation and Oversight
+    for Computer-Use Agents", https://arxiv.org/abs/2610.22280'
+  date: '2026-10-15'
+  task: A weak open-weight computer-use agent guided by a Claude Opus 5 Manager (subgoal planning and
+    verification) escalates a task to Opus 5 at the start or mid-run when its own hidden states look more
+    like those of past failed trajectories (pooled LDA distance, no extra forward pass); after hand-off
+    a Shadow layer probes the weak model every third step and can make the strong agent re-decide at higher
+    effort. Compared with random escalation at matched rates, StepWise, Progress Advantage, and always-on
+    Opus 5 and Sonnet 4.5
+  effect: 'Qwen3.5-35B-A3B, success and cost per task: alone 37.40%; + Manager 41.15% ($0.1372); + escalation
+    67.94% ($0.4050); full LEASH 73.66% ($0.4117, 64.1% of tasks escalated) against random escalation
+    of 64.4% of tasks 61.72% ($0.3768) and always-on Opus 5 72.90% ($0.5094). Full LEASH beat random escalation
+    by 6.55 to 11.94 points across four weak models. Gates (with Manager, without Shadow): initial only
+    59.92% ($0.3122), runtime only 71.65% ($0.4169). Runtime AUROC for subgoal failure: pooled LDA 0.609
+    and 0.575, best token-probability statistic 0.488 and 0.540. On an escalation-prone subset, LEASH
+    timing 64.6% at $0.67 vs shuffled timing 60.4% at $0.79.'
+  conditions: OSWorld, 262 evaluation tasks, screenshot observations, 50-action budget, one run; weak
+    EvoCUA-8B, Qwen3.5-35B-A3B, Nemotron-3-Nano-Omni (30B-A3B), Qwen3.8-27B; Claude Opus 5 as Manager
+    and strong executor; always-on references run without the Manager; costs from OpenRouter reference
+    prices, local models included at reference prices; needs the weak model's hidden states and a reference
+    bank of about 99 tasks; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §4.2 Tables 1-2; §4.3 Table 3; §4.4 Table 4; §4.5; Appendix B.1, B.3 Table 8; Limitations
+- source: 'Zeru Shi, Jindong Jiang, Ryo Hachiuma, Yonggan Fu et al. (NVIDIA et al.), "EdgeWise: Bringing
+    Long-Horizon Agents to the Edge via Selective Cloud Delegation", https://arxiv.org/abs/2610.17560'
+  date: '2026-10-13'
+  task: A local 9B model solves coding tasks step by step and delegates selected steps to a cloud model,
+    either when an external GPT-5.4-mini judge flags a key step (write/edit and complex read/search, criteria
+    taken from a delegation analysis) or by its own learned choice after SFT and step-level RL (self-delegation).
+    Compared with cloud-only, random delegation and three multi-turn routers (RSD, STEER, MTRouter)
+  effect: 'Self-delegation vs cloud-only, points and cost change: SWE-ReBench with GPT-5.5 (xhigh) Pass@1
+    +1.82 at -51.22%, Pass@3 +2.72 at -52.68%; with Opus 4.8 (xhigh) -2.73 at -62.68% and -2.73 at -62.14%;
+    Terminal-Bench 2.1 with GPT-5.5 -2.25 at -36.93% and 0.00 at -34.98%; with Opus 4.8 -3.38 at -33.65%
+    and 0.00 at -32.60%. Terminal-Bench Pass@1 with GPT-5.5: cloud-only 74.16% ($90.31), judge delegation
+    71.91% ($59.16), self-delegation 71.91% ($56.96), random delegation 66.29% ($74.34); on SWE-ReBench
+    with Opus 4.8, judge delegation 47.27% ($127.63) trailed random 50.90% ($132.17). Judge model on Terminal-Bench:
+    the 9B worker judging itself 50.56%, Qwen3.8-27B 70.79%, GPT-5.4-mini 71.91%. Cloud coverage of write/edit
+    steps had the strongest correlation with success (0.200, 95% CI 0.099 to 0.297).'
+  conditions: Qwen3.5-9B worker (EdgeWise-9B after SFT and RL with Kimi-K3 on SWE-Smith); cloud GPT-5.5
+    (xhigh) or Claude Opus 4.8 (xhigh) via Bedrock; Terminal-Bench 2.1 and SWE-ReBench in the Terminus2
+    harness, 80-turn cap; cost is cloud API spend only (local compute excluded, judge cost included);
+    the authors' own method
+  direction: supports
+  measured: true
+  locator: §2 Figure 2; §3.1 Figure 3; §3.2; §4.2 Table 1; Appendix C.1-C.2 Tables 5-6
+- source: 'Wei Zhang, Lirong Xiang, Charles Fleming (University of Illinois Urbana-Champaign, Cornell
+    University, Cisco), "Know When to Escalate: Critic-Guided Adaptive Execution for Cloud-Local Embodied
+    Agents", https://arxiv.org/abs/2610.30587'
+  date: '2026-10-22'
+  task: 'CARE: a local model acts by default; a critic scores the local proposal (every step on Habitat,
+    every third step elsewhere) and hands control to a cloud model when its confidence falls below an
+    escalation threshold, keeping it there until confidence rises above a higher return threshold; a shared
+    handoff memory (recent transitions plus a summary of verified progress and open failures) goes to
+    whichever model acts, and the cloud action is generated speculatively alongside the critic. Compared
+    with local-only, cloud-only, their ReAct variants, a fixed cloud-planner and local-executor hierarchy
+    (Hi Robot), per-step routing (a RouteLLM adaptation) and feedback-triggered cloud replanning (AdaPlanner),
+    and with random and periodic hand-offs at matched cloud use'
+  effect: 'Success / median episode time / median time between actions, cloud-only vs CARE: Habitat 91.7%
+    / 49.62 s / 4.61 s vs 92.5% / 32.36 s / 0.80 s; EmbodiedBench 80.0% / 40.07 s / 4.41 s vs 75.0% /
+    37.28 s / 3.14 s; VLABench 85.0% / 23.67 s / 2.47 s vs 87.5% / 22.62 s / 1.31 s, with the cloud making
+    24.4% to 34.4% of executor requests. Local-only 64.2%, 40.0%, 71.2%; RouteLLM-style routing 55.8%,
+    53.8%, 73.8%; the best collaboration baseline 6.3 to 18.3 points below CARE. On Habitat instances
+    local-only failed: at about 20% cloud use CARE, random and periodic hand-offs were similar; at 30-50%
+    CARE 88.4% to 93.0% vs 74.4% to 79.0%; periodic needed over 70% cloud use to reach 93.0%. Handoff
+    memory at 20 recorded escalation states: full 100%, episodic only 90%, observation only 75%, none
+    25%. Critic evaluation added 0.15 to 2.45 s across latency percentiles.'
+  conditions: Claude Sonnet 4.6 as cloud planner and executor; one Qwen3.6-35B-A3B checkpoint as local
+    executor and critic; Habitat rearrangement 120, EmbodiedBench 80 and VLABench 80 instances, simulated,
+    temperature 0, one run; thresholds chosen per benchmark from a sweep with no held-out split reported;
+    latency at the decision layer, not on a physical robot; no dollar costs; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §III-B; §IV-A; §IV-B Table I, Figure 3; §IV-C Figure 4; §IV-D Figure 5, Tables II-III;
+    §V
+- source: Sima Noorani, Shayan Kiyani, George Pappas, Hamed Hassani (University of Pennsylvania), "Disagreement-Guided
+    Weak-to-Strong Routing", https://arxiv.org/abs/2610.22245
+  date: '2026-10-15'
+  task: Routes weak-model outputs to a stronger model with a probe on the weak model's hidden states,
+    trained without correctness labels to predict weak-strong disagreement minus the strong model's self-disagreement;
+    at action level in agents (BFCL multi-turn, WebShop) and per query on single-turn tasks. Compared
+    at matched escalation rates with token entropy, self-consistency (plurality vote share over sampled
+    responses), semantic entropy, random escalation and a probe trained on correctness labels
+  effect: 'WebShop end-to-end success at about 20% / 40% / 60% of actions escalated (200 tasks): random
+    16.0% / 20.0% / 50.5%; self-consistency 4.5% / 14.5% / 41.0%; token entropy 4.0% / 15.0% / 40.5%;
+    weak-strong disagreement probe 6.5% / 26.0% / 71.5%; corrected disagreement probe 21.0% / 46.0% /
+    76.5%. On BFCL both disagreement probes beat the best label-free baseline (figure only). On Math-500,
+    self-consistency and semantic entropy approached the corrected-disagreement probe as budget and sample
+    count grew and slightly beat it at a 50% budget for N>1; they did worse on Spider and AceCode, where
+    grouping equivalent answers is harder.'
+  conditions: BFCL multi-turn (160 train / 40 test tasks), Qwen3-8B to GPT-5-mini; WebShop (2,000 train
+    tasks), Qwen3-8B to a task-trained RL policy; single-turn Math-500 (Phi-3.5-mini to GPT-4o-mini),
+    Spider (Qwen3-1.7B to OmniSQL-7B), AceCode (Qwen2.5-Coder-1.5B to Qwen3-Coder-30B-A3B); agent results
+    averaged over 5 runs; budget is the share of actions escalated, not cost; the probes need the weak
+    model's hidden states; the authors' own method
+  direction: mixed
+  measured: true
+  locator: §6 Baselines; §6.1 Figure 2; §6.2; Appendix A.2 Tables 1-3; Appendix A.4 Table 4
+- source: 'Ashritha Gonuguntla (Carnegie Mellon University), "The Replay Gap: Static Evaluation of Model
+    Switching in LLM Agents Scores the Wrong World", https://arxiv.org/abs/2608.08239'
+  date: '2026-08-08'
+  task: 'Tested whether per-step model switching in agents can be scored by replaying logged trajectories:
+    forked live SWE-bench Verified runs at 30% and 70% of their length, re-ran the prefix in a fresh container,
+    continued each fork with the other model (swap) or the same model (control), and compared the results
+    with a log-stitching replay evaluator'
+  effect: Swaps exceeded same-model controls by +0.25 to +0.66 normalized post-fork edit distance (95%
+    CIs exclude zero), rewriting 61-94% of post-fork actions; 74-77% of early swaps diverged at the first
+    post-fork action vs 6-35% of controls; replay validity (share of post-fork states a replay evaluator
+    scores against the right state) 3.2% and 8.0% for early swaps, 34.4% and 39.4% for late ones. All
+    five outcome flips occurred in swap arms (upgrades rescuing unsolved instances, a downgrade losing
+    the one solve), none across 359 control forks. The replay evaluator got 0 of 5 success-relevant calls
+    right (patch similarity 0.00 to 0.11). The larger model exhausted the 50-step budget without submitting
+    more often (24 of 30 vs 17 of 30 base runs, one run pair).
+  conditions: mini-SWE-agent on SWE-bench Verified, 50-step budget, 28k context; Qwen3-4B-Instruct (FP8)
+    and Qwen3-14B (AWQ, thinking off) on one 24 GB GPU at temperature 0; six run pairs of 30 instances,
+    717 scored branch pairs from about 900 rollouts; resolution rates 0-3%; a workshop pilot
+  direction: mixed
+  measured: true
+  locator: Abstract; §3; §4.1 Table 1; §4.2; §4.3; §4.5 Table 2; §5; §6
+- source: Tyler Burleigh (Khan Academy), "Do Small Language Models Know When They're Wrong? Confidence-Based
+    Cascade Scoring for Educational Assessment", https://arxiv.org/abs/2604.19781
+  date: '2026-03-29'
+  task: A small model scores each rubric criterion and states a 0-100 confidence in the same JSON response,
+    after its verdict; decisions below a threshold go to the same family's large model with thinking at
+    high effort. Cascades simulated from independent full runs of both models on all decisions, sweeping
+    thresholds and picking the cheapest Pareto point within 0.02 kappa of the large model; cost from list
+    prices and token counts, latency from recorded API response times
+  effect: 'Confidence discrimination, AUROC (distinct values): Claude Haiku 4.5 0.857 (13), GPT-5.4-nano
+    0.757 (36), Gemini 3.1 Flash-Lite 0.678 (3). Cascade vs large model alone, kappa: Claude 0.802 vs
+    0.819 (Opus 4.6) at 7% escalated, difference -0.017 [-0.039, +0.005]; GPT 0.763 vs 0.770 at 47%, -0.007
+    [-0.020, +0.005]; Gemini 0.783 vs 0.810 at 13%, -0.026 [-0.042, -0.010]. Cost 76%, 49% and 81% lower
+    and median latency 61%, 64% and 82% lower than always-large (Claude median 2,066 ms vs 5,300 ms; p95
+    8,228 ms vs 14,806 ms, small alone 2,888 ms). Small-model kappa on kept vs escalated decisions 0.831
+    vs 0.211 (Claude). Claude Haiku 4.5 alone (0.783) scored above GPT-5.4 (0.770).'
+  conditions: 2,100 binary scoring decisions on 4 high-school math items (7 criteria) from Khan Academy
+    conversation-based assessments, 3 expert annotators each; small models without thinking, large models
+    with thinking at high effort, temperature 1; threshold chosen on the evaluation data (five-fold cross-validation
+    optimism under 0.005 kappa); no random-escalation baseline; one task and one confidence prompt; single
+    author
+  direction: supports
+  measured: true
+  locator: Abstract; §2.6-2.8; §3.1 Table 4; §3.2 Table 5; §3.4 Table 8; §3.5 Tables 9-13; §4.4; Appendix
+    C Table 16
 assessment:
   qa:
     unit: Escalation trigger.
@@ -303,6 +533,8 @@ related:
 - 6.b.iii
 - 9.a.i
 - 3.b.i
+- 10.b.i
+- 7.c.vi
 provenance:
   layer: target
   origin: observed
@@ -310,14 +542,18 @@ provenance:
   sub_type: orchestration
   library_group: Multi-Agent
   library_source: catalog
-caveats: 'The agent results are small or vendor-run: the learned consult policy was tested on one Gemini
-  model pair in one framework, on 40 to 50 held-out tasks per benchmark with 3 seeds (success standard
-  deviations up to 7.2 points) and outcome-screened development tasks, and Anthropic''s advisor figures
-  are internal, sometimes single runs on Claude models, from a living page whose August 2026 revision
-  rated the advisor more favorably (closing 60% to 90% of the gap). The router and cascade studies are
-  single-turn QA, math and code with list-price costs; the router study''s random baseline uses a pair
-  picked from the frontier with hindsight, and the cascade study tested only log-probability and trained
-  scores on older open and GPT-4o-class models, not verbalized confidence, self-consistency or judges.
-  FrugalGPT''s 98% is its best of three 2023 classification datasets (59.2% and 73.3% on the other two).
-  A cheap verifier used as the trigger can hide most of the cascade''s errors, so measure true error outside
-  it (9.c.iii).'
+caveats: 'The agent results are small, single-run or the authors'' own methods: the learned consult policy
+  used one Gemini pair on 40 to 50 held-out tasks with 3 seeds (success standard deviations up to 7.2
+  points) and outcome-screened development tasks, the critic study tuned its thresholds on the evaluation
+  instances and ran once in simulation, the hidden-state trigger ran once on 262 OSWorld tasks and needs
+  an open-weight worker, and Anthropic''s advisor figures are internal, sometimes single runs on Claude
+  models, from a living page whose August 2026 revision rated the advisor more favorably (closing 60%
+  to 90% of the gap). Trigger evidence is thin and mixed: stated confidence was tested on one grading
+  task with no random baseline, self-consistency lost to random in one web-shopping agent whose strong
+  model was a task-trained policy, the cascade study tested only log-probability and trained scores on
+  older open and GPT-4o-class models, and the router study is single-turn with a random pair picked from
+  the frontier with hindsight. Speed gains need a faster cheap model and rare escalation (no wall-time
+  gain with a local 4B model as slow as hosted ones, compute up 30% to 87%), and step-level switching
+  scored by replaying logged runs is unreliable (one pilot on small open models). FrugalGPT''s 98% is
+  its best of three 2023 classification datasets (59.2% and 73.3% on the other two), and a cheap verifier
+  used as the trigger can hide most of the cascade''s errors, so measure true error outside it (9.c.iii).'

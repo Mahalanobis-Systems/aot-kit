@@ -17,41 +17,54 @@ domains:
 evidence_domains:
 - reasoning
 - document-extraction
+- code-generation
 categories:
 - orchestration.extra-compute
-summary: 'Graph-of-Thought runs one task as a graph of model calls: split the input into parts, generate
-  and score several candidates per part, keep the best, then merge the partial results and refine the
-  merged answer. It paid on merge-shaped tasks that one call gets wrong as inputs grow: on sorting it
-  made fewer errors than Tree-of-Thought at lower cost (median error about 62% lower in the original paper;
-  12.7 against 18.4 mistakes at 5.0 against 15.9 cents in a re-implementation), but it cost far more than
-  one chain-of-thought call. Independent 2025-2026 comparisons are mixed: graph methods mostly beat chain-of-thought
-  on Game of 24 and multi-hop QA but trailed it or direct answering on GPQA and step-by-step math at several
-  times the tokens; on a six-task suite GoT ranked below tree search and had the highest share of runs
-  both costlier and worse. No study compares GoT with self-consistency at matched tokens.'
-how: '1. Start from one chain-of-thought call and from self-consistency or best-of-N with a vote at the
-  same total tokens (9.c.ii); add a graph only where one call fails on inputs that split into parts whose
-  results can be merged (sorting, set intersection, keyword counting, merging documents, questions that
-  combine several sources) and the failures grow with input size. On step-by-step math (GSM8K, MATH-500)
-  graphs lost to a single call with GPT-4o-mini and Qwen2.5-7B, at far more tokens where counted. 2. Write
-  the graph of operations for the task class up front, as the original framework does (a controller executes
+summary: 'Run one task as a graph of model calls: split the input into parts, generate and score several
+  candidates per part, keep the best, then merge the partial results and refine the merged answer. It
+  paid on merge-shaped tasks that one GPT-3.5 call got wrong as inputs grew (sorting median error about
+  62% below Tree-of-Thought in the original paper; 12.7 against 18.4 mistakes at 5.0 against 15.9 cents
+  in a re-implementation), at far more cost than one chain-of-thought call, but one o3-mini call now sorts
+  lists of up to 256 items with a sorting score of 0.990. Independent comparisons are mixed: graph methods
+  mostly beat chain-of-thought on Game of 24 and multi-hop QA but trailed it or direct answering on GPQA
+  and step-by-step math at several times the tokens, and GoT ranked below tree search on a six-task suite
+  with the highest share of runs both costlier and worse. In the one study matched on calls, a two-call
+  reasoning graph only tied chain-of-thought self-consistency, and the graph''s own typed edges changed
+  no answer.'
+how: '1. Start from one chain-of-thought call on the current reasoning model and from self-consistency
+  with chain-of-thought votes at the same total tokens or calls (9.c.ii); a vote over bare answers is
+  a weak baseline (78/58/70 against 98/90/82 with chain-of-thought votes in one study). Add a graph only
+  where that call fails on inputs that split into parts whose results can be merged (sorting, set intersection,
+  keyword counting, merging documents, questions that combine several sources) and the failures grow with
+  input size. Check this first: one o3-mini call scored 0.990 on sort order and 0.965 on keeping the input
+  items over lists of 2 to 256 items, and beat GPT-4o significantly only at 256 items; its residual errors
+  were dropped or added items on long, token-heavy lists. On step-by-step math (GSM8K, MATH-500) graphs
+  lost to a single call with GPT-4o-mini and Qwen2.5-7B, at far more tokens where counted. 2. Write the
+  graph of operations for the task class up front, as the original framework does (a controller executes
   a fixed plan through a per-task prompter, parser and scorer): split the input into parts small enough
   that one call usually gets each right (16 elements in the paper), Generate several candidates per part
   (k=5), Score them and KeepBestN(1), Aggregate pairs of partial results with several attempts each, Score
   and keep the best again, and add a refine step on the merged result; merge level by level up to the
   final answer. 3. Score with code wherever the task allows (the paper''s sorting and set scorers count
-  errors); an LLM scorer is noisier, and in one benchmark replacing search strategies'' heuristic evaluator
-  with an exact one raised quality and cut run-to-run variance. Without a trustworthy score, keeping the
-  best of k is close to a random pick. 4. Hold cost down: run independent nodes in parallel and cache
-  repeated calls (parallel execution took GoT sorting from 259 s to 30 s per instance); trim few-shot
+  errors, including dropped and added items); an LLM scorer is noisier, and in one benchmark replacing
+  search strategies'' heuristic evaluator with an exact one raised quality and cut run-to-run variance.
+  Without a trustworthy score, keeping the best of k is close to a random pick. Do not count on structure
+  the model labels itself: in one paired ablation, typed support and contradict edges and a structural
+  stop rule changed no answer, because the model declared a conflict on only 4.0% of questions (an added
+  step that read the edges repaired one item). 4. Hold cost down: run independent nodes in parallel and
+  cache repeated calls (parallel execution took GoT sorting from 259 s to 30 s per instance); trim few-shot
   examples in node prompts, which dominate once the task is split finely; pass compact summaries instead
   of whole parent contexts; route leaf subtasks to a smaller model while planning and the final merge
   stay on the strong one, under a token budget that caps depth, branching and node count (one router cut
   output tokens 79.1% against Adaptive GoT). 5. Tune k, part size and depth on a held-out set with cost
   capped at the untuned level (one framework cut sorting mistakes from 12.7 to 12.1 at no extra cost).
-  6. Measure on a paired set against chain-of-thought and self-consistency at matched input-plus-output
-  tokens, per model and per input size, over repeated runs (the top strategy won only 77% of head-to-head
-  runs in one benchmark): accuracy on a deterministic grader, tokens, wall-clock latency and cost per
-  correct answer.'
+  6. Measure on a paired set against chain-of-thought and chain-of-thought self-consistency at matched
+  input-plus-output tokens (or calls, if tokens are not logged), per model and per input size, over repeated
+  runs (the top strategy won only 77% of head-to-head runs in one benchmark), plus an ablation that keeps
+  the calls but drops the structure (a second reflection pass, or self-consistency with as many samples
+  as the graph makes calls): in one study a two-call reasoning graph tied two-sample chain-of-thought
+  self-consistency (98 vs 98, 92 vs 90, 82 vs 82). Report accuracy on a deterministic grader, tokens,
+  wall-clock latency and cost per correct answer.'
 detect:
   static: 'A controller that runs a fixed or generated graph of model calls on one task: split the input,
     generate several candidates per part, score and keep the best, aggregate partial results and refine
@@ -62,14 +75,16 @@ detect:
     scorer verdicts beside an independent check, budget-cap hits, wall-clock time. In a single-call agent,
     errors that grow with input size (dropped, duplicated or miscounted elements) mark where a split-and-merge
     graph could help.'
-  evals: Accuracy against chain-of-thought and self-consistency at matched tokens, sliced by input size;
-    cost and latency per correct answer.
+  evals: Accuracy against one chain-of-thought call on the current reasoning model and against chain-of-thought
+    self-consistency at matched tokens or calls, sliced by input size, plus a same-calls ablation without
+    the graph structure; cost and latency per correct answer.
   judge: Rate whether each merge kept all information from its inputs without duplication (retention and
     redundancy, as in GoT's document-merging score).
   probes:
     what: Tasks whose sub-results must be merged, at growing input sizes, plus a sequential control.
-    construct: Sorting, set-intersection, keyword-counting or document-merge inputs at 32, 64 and 128
-      elements (or more documents), checked by code, plus step-by-step math items where a graph should
+    construct: Sorting, set-intersection, keyword-counting or document-merge inputs at 32, 64, 128 and
+      256 elements (or more documents), checked by code for order and for dropped or added items, run
+      first as one call on the current reasoning model, plus step-by-step math items where a graph should
       not beat one chain-of-thought call.
   primary:
   - evals
@@ -77,13 +92,16 @@ impact:
   quality:
     effect: mixed
     size: medium
-    when: 'gains on merge-shaped tasks: sorting 128 numbers, median error about 62% below ToT (Besta,
-      Aug 2023), 12.7 against 18.4 mistakes in a re-implementation (Fricke, Feb 2026); a generalized GoT
-      on Qwen3-30B beat CoT on multi-hop QA (MoreHopQA 73.0 vs 68.0) and Game of 24 (72.0 vs 58.0) but
-      trailed it on GPQA (59.6 vs 63.1) (Liu, Mar 2026); GPT-4.1 Nano six-task suite 0.336 vs CoT 0.279
-      and CoT-SC 0.227, below ToT-BFS 0.415 (Potamitis, Dec 2025); below direct answering on MATH-500
+    when: 'gains on merge-shaped tasks with GPT-3.5: sorting 128 numbers, median error about 62% below
+      ToT (Besta, Aug 2023), 12.7 against 18.4 mistakes in a re-implementation (Fricke, Feb 2026); one
+      o3-mini call already scores 0.990 on sorting lists of up to 256 items (Herbold, Apr 2025); a generalized
+      GoT on Qwen3-30B beat CoT on multi-hop QA (MoreHopQA 73.0 vs 68.0) and Game of 24 (72.0 vs 58.0)
+      but trailed it on GPQA (59.6 vs 63.1) (Liu, Mar 2026); GPT-4.1 Nano six-task suite 0.336 vs CoT
+      0.279 and CoT-SC 0.227, below ToT-BFS 0.415 (Potamitis, Dec 2025); below direct answering on MATH-500
       (73.24 vs 74.96) and GSM8K (88.76 vs 90.95) with Qwen2.5-7B (Hao, May 2025); graph reasoning 82.0
-      vs CoT 89.5 on GSM8K under the same grader (Huang, Mar 2026)'
+      vs CoT 89.5 on GSM8K (Huang, Mar 2026); a two-call reasoning graph tied cost-matched CoT-SC on deepseek-chat
+      (GSM8K 98 vs 98, MATH 92 vs 90, BBH 82 vs 82) (Liu, Oct 2026); a GoT baseline on o3-mini and DeepSeek-R1
+      within 0.7 below to 1.3 above CoT-SC (Teng, Feb 2025)'
     basis: evidence
   cost:
     effect: degrades
@@ -91,8 +109,9 @@ impact:
     when: 'many calls per item: costs "much higher" than IO and CoT (Besta, Aug 2023); 9,468 output and
       16,826 input tokens per GPQA question against 4,965 and 247 for CoT (Liu, Mar 2026); mean cost 0.0099
       against 0.0003 for CoT and 0.0014 for CoT-SC, and the highest joint cost-quality failure rate of
-      nine strategies, 43.3% (Potamitis, Dec 2025); cheaper than ToT: over 31% at 128 elements (Besta,
-      Aug 2023), 5.0 against 15.9 cents (Fricke, Feb 2026)'
+      nine strategies, 43.3% (Potamitis, Dec 2025); two calls per question for a reasoning graph, with
+      accuracy per call below one-call reflection on all three sets (Liu, Oct 2026); cheaper than ToT:
+      over 31% at 128 elements (Besta, Aug 2023), 5.0 against 15.9 cents (Fricke, Feb 2026)'
     basis: evidence
   performance:
     effect: degrades
@@ -103,12 +122,15 @@ impact:
     basis: evidence
   security:
     effect: none
+    when: no source measures a security effect; the graph adds calls, not new tools or data access
     basis: assessment
   governance:
     effect: none
+    when: no source measures a governance effect
     basis: assessment
   brand:
     effect: none
+    when: no source measures a brand effect
     basis: assessment
   primary:
   - quality
@@ -116,14 +138,15 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired eval of the graph against one chain-of-thought call and against self-consistency or best-of-N
-    at matched input-plus-output tokens, per model and sliced by input size, over repeated runs with a
-    deterministic grader: accuracy, tokens, wall-clock latency, cost per correct answer, and the share
-    of runs both costlier and worse'
+  how: 'paired eval of the graph against one chain-of-thought call on the current reasoning model and
+    against chain-of-thought self-consistency at matched input-plus-output tokens (or calls), per model
+    and sliced by input size, over repeated runs with a deterministic grader that also counts dropped
+    and added items, plus a same-calls ablation without the graph structure: accuracy, tokens, wall-clock
+    latency, cost per correct answer, and the share of runs both costlier and worse'
 - method: monitor
   how: 'per item: nodes and model calls, input and output tokens per node, aggregation and refine steps,
     budget-cap hits, latency p50 and p95; on a sampled subset, scorer verdicts against an independent
-    check'
+    check, and how often the graph''s own labels (conflicts, scores) change the final answer'
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -254,6 +277,61 @@ evidence:
   direction: mixed
   measured: true
   locator: Table 3; Table 5; Table 6; §5.1; §5.3; §5.4
+- source: 'Suxing Liu, Byungwon Min, Zhijian Zheng, Jiahao Wang, "GraphEvoResearcher: A Cost-Matched Mechanism
+    Analysis of Explicit Reasoning Graphs in Training-Free Self-Reflection", https://arxiv.org/abs/2610.25978'
+  date: '2026-10-19'
+  task: Builds an explicit reasoning graph per question (nodes are intermediate claims; support, contradict
+    and depends_on edges typed by the same model; a graph-aware reward and a structural stop rule) and
+    compares it with single-shot decoding, flat reflection, two-round reflection and self-consistency
+    at the graph's two calls per question, then ablates the graph mechanisms over a shared response cache
+  effect: 'deepseek-chat, accuracy single-shot / two-round flat reflection / chain-of-thought self-consistency
+    k=2 (cost-matched) / graph: GSM8K 76.0 / 88.0 / 98.0 / 98.0; MATH 68.0 / 80.0 / 90.0 / 92.0; BBH 74.0
+    / 78.0 / 82.0 / 82.0 (CoT-SC at k=3: 98, 90, 86). A vote without chain-of-thought reached 78/58/70
+    at k=2. "We do not claim the graph beats CoT-SC at matched cost". Paired ablation: the structural
+    stop rule and contradiction-driven repair "classify every item identically" to the depth rule; an
+    edge-consulting answer step repaired one BBH item; conflicts were declared on 4.0% of questions (5/125).
+    About 2 calls and 4.5 to 5.1 nodes per question; accuracy per call below one-call flat reflection
+    on all three sets. deepseek-reasoner on MATH: single-shot 92.0, graph 96.0, not significant.'
+  conditions: deepseek-chat at temperature 0.3; GSM8K, MATH and BBH, 50 questions each, one run with a
+    fixed seed (MATH ablation on a 25-item split); deepseek-reasoner check on 25 MATH items; rule-based
+    exact-match grader; calls counted, tokens not metered; not merge-shaped tasks
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.2 Table 2; §4.3 Table 3; §4.5 Table 5; §4.6 Table 6
+- source: 'Steffen Herbold, "SortBench: Benchmarking LLMs based on their ability to sort lists", https://arxiv.org/abs/2504.08312'
+  date: '2025-04-11'
+  task: Benchmarks one zero-shot call per list on sorting integers, floats, words and adversarial strings
+    at lengths 2 to 256, scoring order, faithfulness (items dropped or added) and output validity, for
+    reasoning and non-reasoning models
+  effect: 'All tasks, model / sorting / faithfulness / validity score: o3-mini 0.977 / 0.990 / 0.965 /
+    0.999; GPT-4o 0.914 / 0.940 / 0.937 / 0.969; Claude-3.5-Sonnet 0.819 / 0.962 / 0.891 / 0.875; DeepSeek-r1
+    0.524 / 0.887 / 0.677 / 0.638. o3-mini "almost solves the task"; its difference to GPT-4o "is only
+    significant for the longest lists with 256 items"; "all models have problems with the faithfulness
+    to the input of long lists, i.e., they drop items and add new ones"; reasoning "has a tendency to
+    overthink problems". No decomposition or GoT arm.'
+  conditions: o3-mini, DeepSeek-r1-70b (locally hosted), GPT-4o, GPT-4o-mini, Claude 3.5 Sonnet and Haiku,
+    Llama-3.1-70B; 1,440 lists (18 tasks, 8 lengths from 2 to 256, 10 lists each); length-weighted scores;
+    single author
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.3; §3 Table 1; §3.1; §3.5
+- source: Fengwei Teng, Quan Shi, Zhaoyang Yu, Jiayi Zhang, Yuyu Luo, Chenglin Wu, Zhijiang Guo, "Atom
+    of Thoughts for Markov LLM Test-Time Scaling", https://arxiv.org/abs/2502.12018
+  date: '2025-02-17'
+  task: Proposes Atom of Thoughts (decompose a question into a dependency graph of subquestions, then
+    contract it into a simpler question, repeated) and runs CoT, CoT-SC, ToT, GoT and other baselines
+    on non-reasoning and reasoning models
+  effect: 'Table 1, accuracy CoT / CoT-SC / ToT / GoT / AoT. o3-mini: AIME 79.6 / 81.0 / 81.2 / 81.5 /
+    83.0; LiveCodeBench 23.6 / 25.0 / 25.2 / 25.5 / 32.2; LongBench 56.3 / 57.5 / 56.5 / 56.8 / 65.3.
+    DeepSeek-R1: AIME 78.3 / 79.7 / 79.9 / 80.2 / 81.7; LiveCodeBench 24.5 / 25.9 / 26.1 / 26.4 / 30.9;
+    LongBench 55.1 / 56.2 / 57.0 / 57.5 / 67.9. No token or cost figures for GoT on the reasoning models.'
+  conditions: o3-mini and DeepSeek-R1 (GPT-4o-mini and DeepSeek-V3 on MATH, GSM8K, MBPP, LongBench); AIME
+    2024, LiveCodeBench, LongBench multi-hop QA; baselines run by the authors of a competing method; GoT
+    setup, self-consistency sample count and number of runs not described; temperature 1.0; figures from
+    v4 (Dec 2025)
+  direction: mixed
+  measured: true
+  locator: §4.1; §4.2 Table 1; Appendix A.3
 assessment:
   qa:
     unit: Graph operations terminate.
@@ -299,6 +377,7 @@ related:
 - 9.a.i
 - 6.c.ii
 - 7.c.iii
+- 7.c.i
 provenance:
   layer: target
   origin: observed
@@ -306,12 +385,17 @@ provenance:
   sub_type: planning
   library_group: Reasoning & Search
   library_source: catalog
-caveats: Most gains come from hand-built graphs on synthetic merge tasks run with GPT-3.5 on 100 samples
-  per task, or from papers proposing a successor method; in some independent comparisons graph methods
-  trailed chain-of-thought or direct answering on GPQA and step-by-step math, and GoT ranked below tree
-  search on a six-task suite and had the highest share of runs both costlier and worse. No source compares
-  GoT with self-consistency or best-of-N at matched tokens, and none tests the original GoT on reasoning
-  models. The later graph methods (Adaptive GoT, Network-of-Thought) are different designs; Adaptive GoT
-  reports no cost figures, and an independent rerun with token counts found it worse than chain-of-thought
-  on HotpotQA (72.0 vs 86.0) at substantially more tokens. Results vary run to run (the top strategy won only 77% of head-to-head runs in one benchmark),
-  and only two of these sources report repeated runs.
+caveats: 'Most gains come from hand-built graphs on synthetic merge tasks run with GPT-3.5 on 100 samples
+  per task, or from papers proposing a successor method; in independent comparisons graph methods trailed
+  chain-of-thought or direct answering on GPQA and step-by-step math, GoT ranked below tree search on
+  a six-task suite with the highest share of runs both costlier and worse, and the one cost-matched study
+  (one model, 50 items per set, not merge-shaped tasks) found a two-call reasoning graph tied chain-of-thought
+  self-consistency while its structure changed no answer. Evidence on reasoning models is thin: a competing
+  method''s paper reports a GoT baseline on o3-mini and DeepSeek-R1 between 0.7 below and 1.3 above self-consistency,
+  without describing the GoT setup or counting tokens, and a one-call benchmark found o3-mini already
+  sorts lists of up to 256 items with a sorting score of 0.990, so the original GPT-3.5 sorting gains
+  may not carry over; no source runs the original GoT on long merge tasks with a current model. The later
+  graph methods (Adaptive GoT, Network-of-Thought) are different designs; Adaptive GoT reports no cost
+  figures, and an independent rerun with token counts found it worse than chain-of-thought on HotpotQA
+  (72.0 vs 86.0) at substantially more tokens. Results vary run to run (the top strategy won only 77%
+  of head-to-head runs in one benchmark), and only two of these sources report repeated runs.'

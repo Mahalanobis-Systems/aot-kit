@@ -19,65 +19,108 @@ evidence_domains:
 - code-generation
 - judging
 - document-extraction
+- tool-use
+- retrieval
 categories:
 - orchestration.extra-compute
-summary: 'Several model instances answer the same question, read each other''s answers and revise over
-  one or more rounds, and a vote or judge settles the final answer. It beats a single answer on closed-form
-  reasoning (+3.3 to +6.6 points across 23 open models where tasks had headroom), but a plain majority
-  vote over the same number of independent samples gets the same gain: in budget-matched tests debate
-  tied or lost to the vote on every task, GPQA Diamond at full thinking budget included, at 1.6x the wall-clock
-  and 3.4x the tokens, and a vote over the first-round answers alone beat every debate variant on average, though mostly on
-  one arithmetic task (0.99 vs 0.76; Choi, NeurIPS 2025). Mixing model families lifted debate above the average of its single-model runs
-  in one study but lost to a vote over the same mixed roster in another (-1.04 points over 80 teams),
-  and with frontier models on real paper feedback, authors ranked a single pass above two debate tools
-  that spent 9x and 30x the tokens. Treat debate as an experiment against a vote at matched compute, worth
-  keeping only where the vote is often wrong while some agent has the right answer.'
-how: '1. Start from the cheap baselines on your own items: the single pass at full thinking budget (1.b.i)
+summary: 'Let several model instances answer the same question, read each other''s answers and revise
+  over one or more rounds, then settle the answer with a vote or a judge. It beats a single answer on
+  closed-form reasoning (+3.3 to +6.6 points across 23 open models where tasks had headroom), but cheaper
+  baselines get the same gain: a majority vote over as many samples tied or beat it on every task while
+  debate took 1.6x the wall-clock and 3.4x the tokens, and on current reasoning models (Gemini 2.5, Qwen3,
+  an R1 distill) one call given the same thinking cap matched it on multi-hop questions on average (0.427
+  vs 0.420). Mixing mostly frontier models let debate beat a vote over their first answers by 4 to 12
+  points, yet it beat the roster''s strongest model alone on only two of five benchmarks, and on paper
+  feedback authors ranked a single frontier pass above debate tools that spent 9x and 30x the tokens.
+  Debate also has costs beyond tokens: one round made a code-correctness judge panel nearly unanimous
+  (39.5% to 95.2%) with accuracy flat and every wrong verdict unanimous, and when debaters read untrusted
+  files an injected request led to unauthorized reads or writes on 96.43% of tasks, 1.93 times a single
+  agent''s rate. Treat it as an experiment against a vote and the strongest single model at matched compute,
+  worth keeping only where the vote is often wrong while some agent has the right answer.'
+how: '1. Start from the cheap baselines on your own items: one call with the whole thinking budget (1.b.i)
   and a majority vote over as many independent generations as the debate would spend (agents x rounds)
-  from the same model or roster (9.c.ii). Across 23 open models debate with 3 agents and 3 rounds tied
-  or lost to a 9-sample vote on every task, never significantly ahead (GPQA Diamond 54.9 vs 54.3, CommonsenseQA
-  80.6 vs 78.3), and a vote over 5 first-round answers beat every debate variant on average (Qwen2.5-7B 0.7691 vs at best
-  0.7377), mostly on one arithmetic task (0.99 vs 0.76); on the other six benchmarks the two averaged about
-  0.73 each. Build debate only where the vote leaves headroom. 2. Give every arm the same
-  final-answer format and extractor, and parse the last answer an agent states, since debate replies quote
-  their peers'' answers (9.b.i). With Du et al.''s parser debate beat the vote on GSM8K (0.7533 vs 0.6700);
-  with a fixed answer format the vote won (0.9400 vs 0.8867). 3. To use several models, pool them and
-  vote before adding debate, and compare any mixed debate against a vote over the same mixed roster and
-  against the strongest model alone. Mixing GPT-4o-mini and Llama-3.1-70B lifted every debate framework
-  over the mean of its single-model runs (Society of Minds 76.7 vs 74.3 and 69.9), but no vote over that
-  mix was run; across 80 three-model teams where it was, debate lost 1.04 points to it, and in the 19
-  team-task cells where mixed debate beat the team''s best member by 10 points or more, the roster vote
-  gained more (+16.4 vs +13.5). Do not add persona prompts on small models: they cost 2.1 to 4.4 points.
-  4. If debate stays, run one exchange after the first answers and stop. In mixed-team debate accuracy
-  went from 84.6% (vote over first answers) to 87.2% after one exchange and stayed at 87.0-87.5% through
-  five rounds; Decentralized debate fell from 0.7377 at two rounds to 0.7050 at five. Letting an agent
-  keep an answer that matched the last majority raised debate to 0.7625, still below the vote (0.7691).
-  5. Size the context window to agents x rounds x per-turn budget, thinking tokens included, and give
-  the debate and the vote the same thinking budget. With long-thinking models at 16-32K windows, 93-100%
-  of some cells'' final-round answers came back empty (one GPQA cell 0.24 at 16K vs 0.82 at 131K); three
-  40K-budget thinkers reached 100-112K-token prompts by round 3; and a 4,096-token thinking cap left on
-  some reasoning models hurt the single-shot arm more than debate, creating a 3.2-point debate lead that
-  became -0.6 at the full budget. 6. For open-ended output with no answer to vote on (reviews, critiques,
-  reports), compare against a single pass of equal length, ranked blind by the people who use it, not
-  by an LLM judge: authors ranked a single Claude Opus 4.8 pass (mean rank 1.59) above a cross-family
-  debate (2.25) and a multi-agent workshop (2.16) that cost 9x and 30x the tokens, and an external AI
-  judge agreed with them at only 0.14 and would have reversed the verdict. 7. Measure on held-out items
-  with ground truth: paired accuracy of debate against the vote at matched generations, with confidence
-  intervals; total tokens including re-read transcripts (3.4x the vote''s, though generated tokens matched
-  at 1.06x) and wall-clock (1.6x); empty or truncated final answers; and how often debate changes the
-  vote''s answer and in which direction. Re-run on model upgrades.'
+  from the same model or roster (9.c.ii). At the same thinking cap, one call matched or beat a two-debater
+  debate with a judge on multi-hop questions at every cap from 500 tokens up (averages 0.418 vs 0.388
+  at 1,000 and 0.427 vs 0.420 at 5,000 over Gemini 2.5 Flash and Pro, Qwen3-30B-A3B and DeepSeek-R1-Distill-Llama-70B)
+  while debate spent more of the cap (2,376 vs 635 thinking tokens in one cell); debate was clearly ahead
+  only on Gemini 2.5 Pro MuSiQue (0.470 vs 0.419 at 5,000, 0.455 for a longer-thinking single-call prompt).
+  Across 23 open models debate with 3 agents and 3 rounds tied or lost to a 9-sample vote on every task,
+  never significantly ahead (vote 54.9 vs debate 54.3 on GPQA Diamond, 80.6 vs 78.3 on CommonsenseQA),
+  and a vote over 5 first-round answers beat every debate variant on average (Qwen2.5-7B 0.7691 vs at
+  best 0.7377), mostly on one arithmetic task (0.99 vs 0.76); on the other six benchmarks the two averaged
+  about 0.73 each. Build debate only where these leave headroom. 2. Give every arm the same final-answer
+  format and extractor, and parse the last answer an agent states, since debate replies quote their peers''
+  answers (9.b.i). With Du et al.''s parser debate beat the vote on GSM8K (0.7533 vs 0.6700); with a fixed
+  answer format the vote won (0.9400 vs 0.8867). 3. To use several models, compare any mixed debate against
+  the roster''s strongest model alone and against a vote over the same roster at matched generations;
+  if the members are unequal, the strongest model alone is the bar. With four-model rosters mixing GPT-5,
+  o3-mini, o4-mini, Claude Opus 4 and 4.5, Sonnet 4.5 and older models on 100 problems per benchmark,
+  a vote over the members'' first answers fell below the strongest member on all five benchmarks (HLE
+  14 vs 29, MMLU-Pro 83.0 vs 86.5); debate recovered part of that (4 to 12 points over the vote) but beat
+  the strongest member alone only on MMLU-Pro (87.0 vs 86.5) and GPQA Diamond (80.0 vs 78.0) and trailed
+  it on SimpleQA (48.0 vs 52.0), HLE (26.0 vs 29.0) and MATH-500 (70.0 vs 73.5), with agents averaging
+  expert and non-expert views. Where generations were matched, across 80 open three-model teams debate
+  lost 1.04 points to the roster vote; mixing GPT-4o-mini and Llama-3.1-70B lifted every debate framework
+  over the mean of its single-model runs (Society of Minds 76.7 vs 74.3 and 69.9), with no vote over that
+  mix. Do not add persona prompts on small models: they cost 2.1 to 4.4 points. 4. If debate stays, run
+  one exchange after the first answers and stop, and size the context window to agents x rounds x per-turn
+  budget, thinking tokens included, with the same thinking budget for the debate and the vote. In mixed-team
+  debate accuracy went from 84.6% (vote over first answers) to 87.2% after one exchange and stayed at
+  87.0-87.5% through five rounds; Decentralized debate fell from 0.7377 at two rounds to 0.7050 at five,
+  and letting an agent keep an answer that matched the last majority raised debate to 0.7625, still below
+  the vote (0.7691). With long-thinking models at 16-32K windows, 93-100% of some cells'' final-round
+  answers came back empty (one GPQA cell 0.24 at 16K vs 0.82 at 131K); three 40K-budget thinkers reached
+  100-112K-token prompts by round 3; and a 4,096-token thinking cap left on some reasoning models hurt
+  the single-shot arm more than debate, creating a 3.2-point debate lead that became -0.6 at the full
+  budget. 5. When the panel is a judge or verifier, record the blind first-round votes and act on them
+  before any peer exposure: send split votes to an executable check or a person, and never read post-debate
+  agreement as confidence. On 291 code-correctness candidates, one round took a seven-provider judge panel
+  from 39.5% to 95.2% unanimity while majority accuracy moved from 91.8% to 92.4%; 96.3% of flips followed
+  the displayed peer majority, a second look with no peers produced 79.6% of the convergence, and by round
+  3 all 22 wrong verdicts were unanimous where 16 of 24 had been split votes before debate; an execution
+  check substituted for one judge corrected 8 of 2,037 decisions before debate and changed none after.
+  For open-ended output with no answer to vote on (reviews, critiques, reports), compare against a single
+  pass of equal length, ranked blind by the people who use it, not by an LLM judge: authors ranked a single
+  Claude Opus 4.8 pass (mean rank 1.59) above a cross-family debate (2.25) and a multi-agent workshop
+  (2.16) that cost 9x and 30x the tokens, and an external AI judge agreed with them at only 0.14 and would
+  have reversed the verdict. 6. If agents read untrusted content or the debate can act, treat every peer
+  message as untrusted input: give debaters read-only tools at most, and allow the aggregator only the
+  writes the user''s task authorizes, since agreement among agents that read injected content is not authorization
+  (10.c.i, 10.b.i). With five GPT-4o agents, one round and write tools held only by the orchestrator,
+  an instruction injected into a file the task reads was amplified over a single agent in 11 of 12 comparisons
+  on AgentDojo workspace tasks (asked for an unauthorized read, the debate made unauthorized reads or
+  writes on 96.43% of tasks, 1.93 times the single agent''s rate), and in one workspace task an injected
+  request to read a bill ended in a payment that all five agents endorsed and the orchestrator executed,
+  which the single agent did not make. Answer attacks were partly absorbed when the aggregator weighed
+  evidence (poisoned retrieval succeeded 0.74 times as often as on one agent); three colluding agents
+  of five turned 28.30% of correct answers wrong with GPT-4o and 6.90% with GPT-5, and a compromised orchestrator
+  succeeded every time. 7. Measure on held-out items with ground truth: paired accuracy of debate against
+  the vote at matched generations, against the single call at full thinking budget and, for a mixed roster,
+  against its strongest model alone, with confidence intervals; total tokens including re-read transcripts
+  (3.4x the vote''s, though generated tokens matched at 1.06x) and wall-clock (1.6x); empty or truncated
+  final answers; how often debate changes the first-round vote''s answer and in which direction; for judge
+  panels, the share of wrong verdicts that were split before debate and unanimous after; with tools, unauthorized
+  reads and writes under injected content against a single agent. Re-run on model upgrades.'
 detect:
   static: Several agents answer the same question, see each other's answers and revise over rounds, with
     a vote, judge or synthesizer at the end. Flag it when the eval has no majority-vote arm at the same
-    number of generations, when more than one exchange round runs, when transcripts can outgrow the context
-    window (agents x rounds x per-turn budget, thinking included), when agents get persona prompts, or
-    when arms parse answers differently.
+    number of generations, or, for a mixed roster, no arm for its strongest model alone; when more than
+    one exchange round runs; when transcripts can outgrow the context window (agents x rounds x per-turn
+    budget, thinking included); when agents get persona prompts; when arms parse answers differently;
+    when a judge panel's votes are recorded or routed only after judges have seen each other's verdicts;
+    or when debaters hold write tools, or the aggregator can make writes the user's task did not authorize,
+    while any agent reads untrusted content.
   traces: Rounds per item; share of items where the final answer differs from the first-round vote and,
     on items with ground truth, whether the change fixed or broke it; right-to-wrong and wrong-to-right
-    flips per round; empty or truncated final-round answers; prompt and total tokens per round.
+    flips per round; unanimity before and after the first exchange; empty or truncated final-round answers;
+    prompt and total tokens per round; tool calls outside the task's authorized set by any agent or the
+    aggregator.
   evals: Accuracy against a majority vote over the same number of independent generations (same model,
-    or the same mixed roster) and against the single pass at full thinking budget, with the same answer
-    extractor; for open-ended output, blind ranking by intended users against a single pass of equal length.
+    or the same mixed roster), against the single pass at full thinking budget and, for a mixed roster,
+    against its strongest model alone, with the same answer extractor; for judge panels, accuracy and
+    the share of errors flagged by split votes against the blind first-round vote; for debates that read
+    untrusted content or can act, unauthorized reads and writes under injected content against a single
+    agent; for open-ended output, blind ranking by intended users against a single pass of equal length.
   judge: 'Secondary only: an external AI judge agreed with paper authors at 0.14 and would have reversed
     their ranking of debate against a single pass; for open-ended output rank with intended users, and
     balance any judge panel across vendors.'
@@ -95,18 +138,25 @@ impact:
     effect: mixed
     size: medium
     when: 'over one answer +3.3 to +6.6 points where tasks had headroom (Ferreira, Sep 2026; GSM 85.0
-      vs 77.0, Du, May 2023); against a vote at matched or lower compute none or negative: ties or losses
-      on every task, -1.04 for mixed-model teams (Ferreira, Sep 2026), vote 0.7691 vs best debate 0.7377
-      (Choi, Aug 2025), debate beat CoT in at most 5 of 36 scenarios (13.9%) (Zhang, Feb 2025); paper
-      feedback from frontier models: single pass mean rank 1.59 vs 2.25 and 2.16 for debate tools (Havranek,
-      Jul 2026)'
+      vs 77.0, Du, May 2023); against cheaper baselines none or negative: ties or losses to a matched
+      vote on every task and -1.04 for mixed open-model teams (Ferreira, Sep 2026), vote 0.7691 vs best
+      debate 0.7377 (Choi, Aug 2025), debate beat CoT in at most 5 of 36 scenarios (13.9%) (Zhang, Feb
+      2025); one call at the same thinking cap 0.427 vs 0.420 on average with Gemini 2.5 and open reasoning
+      models, debate clearly ahead only on Gemini 2.5 Pro MuSiQue, 0.470 vs 0.419 (Tran, Apr 2026); mostly
+      frontier mixed rosters: debate 4 to 12 points over a vote of the members'' first answers but behind
+      the strongest member alone on 3 of 5 benchmarks (Pappu, Feb 2026); a code-correctness judge panel
+      went from 91.8% to 92.4% while unanimity rose from 39.5% to 95.2% (Shu, Aug 2026); paper feedback
+      from frontier models: single pass mean rank 1.59 vs 2.25 and 2.16 for debate tools (Havranek, Jul
+      2026)'
     basis: evidence
   cost:
     effect: degrades
     size: large
     when: 3.4x the total tokens of a matched 9-sample vote (2.3x to 4.1x by task) because each round re-reads
-      peers' transcripts (Ferreira, Sep 2026); 9x and 30x the tokens of a single pass, $1.87 and $7.20
-      vs $0.20 per paper (Havranek, Jul 2026)
+      peers' transcripts (Ferreira, Sep 2026); under the same thinking cap debate spent 2,376 vs 635 thinking
+      tokens on DeepSeek-R1-Distill-Llama-70B and 4,644 vs 1,526 (API-reported) on Gemini 2.5 Pro (Tran,
+      Apr 2026); 9x and 30x the tokens of a single pass, $1.87 and $7.20 vs $0.20 per paper (Havranek,
+      Jul 2026)
     basis: evidence
   performance:
     effect: degrades
@@ -115,13 +165,23 @@ impact:
       vote and single pass on local serving (Ferreira, Sep 2026); rounds run in series
     basis: evidence
   security:
-    effect: none
-    basis: assessment
+    effect: degrades
+    size: medium
+    when: 'when agents read untrusted content or the debate can act: an instruction injected into a file
+      was amplified over a single agent in 11 of 12 comparisons on AgentDojo workspace tasks (an injected
+      request for an unauthorized read led to unauthorized reads or writes on 96.43% of tasks, 1.93x)
+      and one injected read became an executed payment; three colluding agents of five turned 28.30% of
+      correct answers wrong with GPT-4o and 6.90% with GPT-5, and a compromised orchestrator succeeded
+      on 100%; answer-only poisoning of retrieval was partly absorbed (0.74x) (Liu, Sep 2026)'
+    basis: evidence
   governance:
-    effect: improves
+    effect: degrades
     size: small
-    when: Recorded arguments.
-    basis: assessment
+    when: 'transcripts record arguments, but one round erased the dissent that had flagged two-thirds
+      of a judge panel''s errors: by round 3 all 22 wrong verdicts were unanimous, and an execution check
+      that corrected 8 of 2,037 decisions before debate could change none after, so post-debate agreement
+      cannot serve as an audit or routing signal (Shu, Aug 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
@@ -132,15 +192,18 @@ measure:
 - method: experiment
   tier: 4
   how: 'paired eval on held-out items with ground truth: debate (agents x rounds) against a majority vote
-    over the same number of independent generations from the same model or the same mixed roster, and
-    against the single pass at full thinking budget; identical answer format and extractor in every arm;
-    context window at least agents x rounds x per-turn budget; accuracy with paired confidence intervals,
-    total tokens including re-read transcripts, wall-clock; for open-ended output, blind ranking by the
-    intended users against a single pass of equal length'
+    over the same number of independent generations from the same model or the same mixed roster, against
+    the single call at full thinking budget, and, for a mixed roster, against its strongest model alone;
+    identical answer format and extractor in every arm; context window at least agents x rounds x per-turn
+    budget; accuracy with paired confidence intervals, total tokens including re-read transcripts, wall-clock;
+    for judge panels, against the blind first-round vote with split votes sent to verification; with tools,
+    an injection test on workspace tasks counting unauthorized reads and writes against a single agent;
+    for open-ended output, blind ranking by the intended users against a single pass of equal length'
 - method: monitor
   how: 'per item: rounds run, empty or truncated final-round answers, prompt and total tokens, latency,
-    share of items where debate changes the first-round vote; on a regularly audited sample, whether those
-    changes fix or break the answer'
+    share of items where debate changes the first-round vote, unanimity before and after the first exchange,
+    tool calls outside the task''s authorized set; on a regularly audited sample, whether those changes
+    fix or break the answer and how many wrong verdicts were unanimous'
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -252,6 +315,109 @@ evidence:
   direction: mixed
   measured: true
   locator: §3.2 Figure 2, Table 3, Figure 4, Figure 6 (Appendix D); §4.2 Table 4
+- source: 'Yuwan Liu, Jiaming Zhang, Yue Huang, Sisi Duan (Tsinghua University), "MADBench: Benchmarking
+    the Security of Multi-Agent Debate", https://arxiv.org/abs/2609.39146'
+  date: '2026-09-30'
+  task: 'Six attack families on a five-agent debate run by an orchestrator that dispatches the task, aggregates
+    the answers and alone holds write tools, each attacked run paired with a clean run and with the same
+    attack on a single agent: injection in the task, indirect injection in a file or email the task reads,
+    poisoned retrieval documents, hijacked tool descriptions, colluding, independent or equivocating malicious
+    agents, and a compromised orchestrator'
+  effect: 'Amplification over a single agent (above 1 means debate fared worse): indirect injection on
+    AgentDojo workspace tasks was amplified "in 11 of the 12 reported comparisons"; with an injection
+    asking for an unauthorized read, debate made unauthorized reads or writes on 96.43% of tasks (1.93x).
+    In one workspace task the injection asked only for a file read; after one round all five agents endorsed,
+    and the orchestrator executed, the payment in that file, which the single agent did not make. Poisoned
+    retrieval on factual QA was absorbed (attack success 60.38%, 0.74x), though unauthorized writes still
+    rose (1.41x); a jailbreak in the task 0.88x. Three colluding agents of five turned 28.30% of correct
+    answers wrong with GPT-4o, 6.90% with GPT-5 and 3.28% with GPT-6 Astra (independent 11.32%, equivocating
+    5.66% with GPT-4o), while at most 3.26% of initially correct honest agents switched to a wrong answer;
+    payloads asking for an action instead of an answer got it at 100% (read) and 96% (write); 1, 2 or
+    3 debate rounds gave roughly the same results (attack success 28.30%, 26.92%, 33.33%); a compromised
+    orchestrator succeeded on 100%.'
+  conditions: GPT-4o for every agent unless noted (debaters at temperature 0.5, orchestrator at 0), 5
+    debaters with read and retrieval tools, one debate round by default, AutoGen AgentChat; 100 SealQA
+    and 100 StrategyQA questions, 56 AgentDojo workspace tasks, 100 JailbreakBench requests (356 source
+    tasks, 3,958 test cases); templated, non-optimized payloads; one benchmark from one group
+  direction: mixed
+  measured: true
+  locator: §2; §3.1-3.3; §4.1 Tables 2-3; §4.2 Table 4; Appendix B; Appendix D.1 Table 9, D.2 Table 10,
+    D.3, D.4 Table 11, D.5
+- source: 'Yang Shu (Zhejiang University), "Unanimity Without Persuasion: A Single Round of Debate Erases
+    the Disagreement That Verification Needs", https://arxiv.org/abs/2609.26145'
+  date: '2026-08-10'
+  task: Seven LLM judges from seven providers vote blind on whether candidate code is correct, then see
+    their peers' verdicts and up to 400 characters of each peer's reasoning and re-vote over three debate
+    rounds, majority vote deciding; an execution check on a fixed 20% of the tests is substituted for
+    each judge in turn; matched controls rerun round 1 with no peers (a second look), real labels only,
+    or random labels
+  effect: 'Fixed cohort of 291 candidates usable in every round: unanimity 39.5% blind, 95.2% after round
+    1, 98.6% and 99.3% after rounds 2 and 3 (93.1% of the collapse in round 1); majority-vote accuracy
+    91.8% to 92.4% (exact McNemar p=0.50). 96.3% of flips (260/270) moved toward the displayed peer majority.
+    Before debate 16 of 24 wrong verdicts were split votes; by round 3 all 22 wrong verdicts were unanimous
+    (unanimously wrong 8 to 22). Substituting the execution check for one judge changed 8 of 2,037 round-0
+    decisions, all corrections, and none in rounds 1-3. Matched controls (280 candidates): a no-peer second
+    look reproduced 79.6% of the unanimity jump, real labels without reasoning 91.5%, and full debate
+    added 4.3 points over labels only (clustered 95% CI 0.7-8.1). Usable candidates fell from 600 to 323,
+    300 and 291 because replies could not be parsed, and the dropped ones were far more often split at
+    round 0 (31.1% vs 3.7%). MATH-500 (141 items): unanimity 73.8% to 97.2%, unanimously wrong verdicts
+    1 to 7.'
+  conditions: Judges GPT-4o-mini, Claude Haiku, DeepSeek-V4-Flash, Qwen3-max, GLM-5-Turbo, Kimi-K2.6 and
+    Doubao-Seed-1.6 at temperature 0 with a 400-token cap; 600 HumanEval+ and MBPP+ solutions from seven
+    solver models, ground truth from the full extended test suites; one debate protocol, two extra real
+    runs and two fake-label seeds; the fixed cohort over-represents easy candidates; single-author preprint
+  direction: contradicts
+  measured: true
+  locator: §3; §4.1 Table 1; §4.2 Table 2; §4.3 Table 3; §4.4; §4.5; §5.1-5.2 Figure 3; §6
+- source: Dat Tran, Douwe Kiela (Stanford University), "Single-Agent LLMs Outperform Multi-Agent Systems
+    on Multi-Hop Reasoning Under Equal Thinking Token Budgets", https://arxiv.org/abs/2604.02460
+  date: '2026-04-02'
+  task: One call given the whole requested thinking-token budget (SAS, plus a variant prompted to analyze
+    the question before answering, SAS-L) against five multi-agent designs that split the same budget
+    across roles; in the debate design two debaters answer independently, each critiques the other's answer
+    and gives an improved one, and a judge picks the final answer; caps from 100 to 10,000 thinking tokens
+  effect: 'Average accuracy over the eight model-benchmark cells, SAS vs debate: 0.290 vs 0.370 at a 100-token
+    cap, 0.390 vs 0.380 at 500, 0.418 vs 0.388 at 1,000, 0.421 vs 0.403 at 2,000, 0.427 vs 0.420 at 5,000,
+    0.426 vs 0.420 at 10,000; independent answers with a judge (Ensemble) 0.411 and 0.420 at 5,000 and
+    10,000. "Debate is the most consistently strong MAS variant"; on Gemini 2.5 Pro MuSiQue it led: 0.444
+    [0.430, 0.456] vs SAS 0.413 [0.397, 0.420] and SAS-L 0.414 at 1,000, 0.470 [0.453, 0.482] vs 0.419
+    [0.410, 0.425] and SAS-L 0.455 at 5,000. Under the same cap debate spent more: DeepSeek-R1-Distill-Llama-70B
+    on MuSiQue at 5,000, 2,376 vs 635 average thinking tokens for 0.357 vs 0.419; Gemini 2.5 Pro MuSiQue
+    4,644 vs 1,526 (API-reported). Gemini''s API-reported thinking counts ran up to 4.7x the visible thought
+    text, so budgets were matched as requested caps, not as spend. With unlimited thinking on MuSiQue,
+    Gemini 3 Pro Preview scored 0.491 for one call and 0.489 for the sequential multi-agent design.'
+  conditions: Qwen3-30B-A3B and DeepSeek-R1-Distill-Llama-70B (temperature 0 except the Ensemble's 0.7),
+    Gemini 2.5 Flash and Pro through the thinkingBudget parameter; FRAMES and MuSiQue 4-hop (1,175 questions
+    in the error analysis), closed-book multi-hop questions; graded by an LLM judge (the same model) against
+    a fixed rubric; 95% bootstrap intervals; caps limit thinking but do not force its use; figures from
+    v2 (Apr 2026)
+  direction: contradicts
+  measured: true
+  locator: §4.2-4.4; §5.1 Table 1; §5.2; Appendix C; Appendix F Tables 3-10, Table 12; Appendix G
+- source: Aneesh Pappu, Batu El, Hancheng Cao, Carmelo di Nolfo, Yanchao Sun, Meng Cao, James Zou (Stanford
+    University, Emory University, Apple), "Multi-Agent Teams Hold Experts Back", https://arxiv.org/abs/2602.01011
+  date: '2026-02-01'
+  task: Teams of four different models answer independently, then interact (free discussion over four
+    rounds, Du et al.-style debate, or discussion with an opt-out) and take a majority vote of their final
+    answers, with or without being told which member is the expert; compared with a majority vote over
+    the same four models' independent chain-of-thought answers, the strongest member alone and the per-problem
+    ceiling (at least one member right)
+  effect: 'Accuracy on 100 problems per benchmark, debate with no expert named / vote over the roster
+    / strongest member alone / at least one right: MMLU-Pro 87.0 / 83.0 / 86.5 / 91.8; GPQA Diamond 80.0
+    / 73.0 / 78.0 / 88.8; SimpleQA 48.0 / 44.0 / 52.0 / 62.3; HLE text-only 26.0 / 14.0 / 29.0 / 47.5;
+    MATH-500 70.0 / 61.0 / 73.5 / 79.0. Naming the expert moved debate to 86.0, 83.0, 53.0, 23.0 and 75.0.
+    Free-discussion teams fell short of the ceiling by 6.3% to 41.1% (relative) while beating the member
+    average on every benchmark. Transcripts showed "integrative compromise", averaging expert and non-expert
+    views, which tracked larger gaps to the expert on two of three ranking tasks and grew with team size;
+    with one member told to sabotage, teams on two ranking tasks showed "minimal performance degradation".'
+  conditions: 'Rosters fixed before results: MMLU-Pro GPT-5, o3-mini, GPT-4o, Claude Haiku 3.5; GPQA Diamond
+    o4-mini, Opus 4, Haiku 4.5, GPT-4o; SimpleQA Opus 4.5, GPT-4o, Sonnet 4.5, Opus 4; HLE GPT-5, Opus
+    4, o4-mini, Sonnet 4.5; MATH-500 GPT-4o-mini, Haiku 3.5, Haiku 3, GPT-3.5 Turbo; 100 problems per
+    benchmark; no token or cost accounting and compute not matched (the vote uses each model''s first
+    answer); ICML 2026; figures from v4 (May 2026)'
+  direction: mixed
+  measured: true
+  locator: §3; §4.2 Table 2; §4.3; §4.4; Appendix E Tables 5-6; Appendix F Table 7; Appendix K
 assessment:
   qa:
     unit: null
@@ -297,6 +463,8 @@ related:
 - 9.a.i
 - 6.b.iii
 - 6.a.i
+- 10.c.i
+- 10.b.i
 provenance:
   layer: target
   origin: observed
@@ -304,16 +472,19 @@ provenance:
   sub_type: orchestration
   library_group: Multi-Agent
   library_source: catalog
-caveats: 'Most matched-compute evidence is closed-form QA and math on open models from 0.6B to 109B (100
-  problems per task in the 23-model study, an unreviewed preprint), where there is an answer to vote on;
-  the one frontier-model study measures how useful 44 authors found length-normalized reports, not correctness,
-  and its authors built the debate tools. Heterogeneity is contested: mixing GPT-4o-mini with Llama-3.1-70B
-  lifted every debate framework over the two models'' average, but no vote over that mix was run and one
-  mixed framework stayed below its GPT-4o-mini-only run (74.0 vs 75.7), while the study that did run a
-  roster vote found the vote ahead (-1.04 points for debate). Debate results are fragile to evaluation
-  details: a different answer parser reversed debate against the vote on GSM8K, and in one study a capped
+caveats: 'The matched-compute evidence is closed-form QA, math and multi-hop questions: open models from
+  0.6B to 109B in one unreviewed study (100 problems per task) and, on current reasoning models, one study
+  that matched the requested thinking cap rather than the spend (debate used several times the single
+  call''s thinking tokens), graded by an LLM judge and with Gemini''s token counts unreliable; the one
+  frontier study of open-ended output measures how useful 44 authors found length-normalized reports,
+  not correctness, and its authors built the debate tools. Heterogeneity is contested: mixing models lifted
+  debate over the models'' average and over a vote of their first answers, but not over the strongest
+  member on three of five benchmarks (100 problems each, so most single-benchmark gaps are within sampling
+  noise, and no token accounting), and the study that matched generations found the roster vote ahead
+  (-1.04 points). Debate results are fragile to evaluation details: a different answer parser, the one
+  behind Du et al.''s 2023 gains, reversed debate against the vote on GSM8K, and in one study a capped
   thinking budget and context overflow each moved the comparison by about two to four points before correction.
-  Biasing agents toward the last majority narrowed the gap to the vote but did not close it (0.7625 vs
-  0.7691), and Du et al.''s original gains (GSM 85.0 vs an 81.0 vote) came from a 2023 ChatGPT model with
-  an answer parser that, rerun on Qwen2.5-7B, cut the vote''s GSM8K score far more than debate''s (0.6700
-  vs 0.9400 for the vote, 0.7533 vs 0.8867 for debate).'
+  The judge-panel result is a single-author preprint on code correctness at temperature 0 with non-random
+  attrition (600 candidates down to 291), and the security results come from one benchmark, mostly GPT-4o
+  with one debate round and templated payloads, where stronger models resisted collusion far better (28.30%
+  against 6.90% and 3.28%).'

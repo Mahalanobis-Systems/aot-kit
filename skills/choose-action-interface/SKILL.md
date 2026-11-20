@@ -74,6 +74,7 @@ Much of the evidence is bundled, small or self-reported: the harness study chang
 - `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
 - `aot-kit:model-and-effort-per-call-site` (1.b.i, Match the model and its effort to each call site and query class)
+- `aot-kit:tune-search-tool` (8.b.i, Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality)
 - `aot-kit:semantic-layer-routing` (7.a.i, Route metric questions through a deterministic semantic layer; fall back to text-to-SQL)
 - `aot-kit:choose-retriever` (8.a.i, Choose the retriever by corpus size and question type)
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)

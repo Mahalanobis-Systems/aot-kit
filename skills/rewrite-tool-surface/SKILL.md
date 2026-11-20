@@ -73,6 +73,7 @@ Most of the controlled evidence is narrow: the parameter-name and privilege resu
 - `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:risky-action-policy` (10.b.i, Gate irreversible actions: allow, ask or deny by side effect)
 - `aot-kit:contain-untrusted-input` (10.c.i, Contain sensitive data and untrusted input)
+- `aot-kit:bound-tool-output` (2.c.i, Bound tool output: cap it, or write it to a file the agent can read)
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
 - `aot-kit:choose-action-interface` (2.a.iii, Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)

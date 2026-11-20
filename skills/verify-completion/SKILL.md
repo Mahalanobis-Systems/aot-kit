@@ -79,6 +79,7 @@ Most of the new evidence is one study per design, often by the method's own auth
 - `aot-kit:samples-before-verification` (9.c.ii, Spend extra samples before extra verification: parallel attempts with a vote or judge; verify only where it pays)
 - `aot-kit:multi-window-task-state` (4.b.iii, Keep plan, progress and results in files when work outlives one context window)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
 - `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
 - `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 - `aot-kit:test-first-fail-to-pass` (9.c.iv, Write a fail-to-pass test before the fix, and harden it against wrong fixes)

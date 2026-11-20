@@ -85,6 +85,7 @@ Most effort sweeps on agentic tasks run each setting once (the eight-model sweep
 - `aot-kit:reflection-loop` (7.c.i, Reflection loop)
 - `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
 - `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
 - `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
 - `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)

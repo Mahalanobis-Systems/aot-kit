@@ -18,57 +18,81 @@ evidence_domains:
 - code-generation
 - tool-use
 - incident-response
+- web-research
+- retrieval
 categories:
 - tools.lean-returns
 - context.filter-input
-summary: 'Keep big tool results from flooding the context: return what fits whole, cut larger ones by
-  whole lines or records and say so, and put the rest in a file the agent can read. A bounded view helps:
-  a 100-line file window resolved 18.0% of SWE-bench Lite against 12.7% for whole files (GPT-4 Turbo,
-  2024), and code run over a large JSON result beat reading it on filtering and aggregation questions
-  for all 15 models in one study. How you bound matters as much as whether: a cut by character position
-  broke every structured result it cut and cost 28% to 43% more tool calls, and file-only delivery cost
-  GPT-5.1 11.3 points but Claude Opus 4.6 and Sonnet 4.6 nothing detectable, while inlining what fits
-  or naming the authoritative output won back 4.6 to 8.0 points, so test the delivery for each model.'
+summary: 'Cap big tool results by whole lines or records and say plainly what was cut, because agents
+  rarely ask for the rest and neither they nor their verifiers notice a cut that is not marked. It pays
+  where results overflow, not as a general cost lever: with no cap, one broad search can end a run (a
+  harness that inlined every output aborted 65 of 100 BrowseComp-Plus tasks for GPT-5.6 Sol), while in
+  public coding-agent traces the median tool result was 118 to 286 tokens and result size explained 4%
+  of the variation in cost. How you bound matters as much as whether: a cut by character position broke
+  every structured result it cut and cost 28% to 43% more tool calls, a capped list that did not say so
+  led three current models to overclaim in 62% of answers (0% when it gave the true total), and file-only
+  delivery cost GPT-5.1 11.3 points but Claude Opus 4.6 and Sonnet 4.6 nothing detectable, so inline what
+  fits, offload the rest to a file the agent can read, and test the delivery for each model.'
 how: '1. Start from the harness as it is: from traces, list each tool''s result sizes (median, 95th percentile,
   largest) and their share of the context, the results that were cut or overflowed, and commands re-run
   after a cut; log what each tool produced next to what the model received, because a run log shows only
   what was delivered (one harness cut a third of its 11,189 tool results while its largest prompt used
-  5.75% of the window). 2. Return results that fit whole, and set the cap from result sizes on successful
-  cases, not a framework default (in one survey, langchain-core kept the first 500 characters of a tool
-  output and smolagents deleted the middle of any observation over 20,000 characters); VeRO''s optimizers
-  moved a 30 KB cap to 15-20 KB, and one that probed 15 KB found some tasks needed more output and settled
-  on 17 KB. 3. Above the cap, cut by structure, not by character position: keep whole lines, rows or records,
-  keep structured output parseable (trim long lists rather than the end of the text), and say in the result
-  that it was cut, how much was dropped and how to get the rest (a page, a line range, a narrower query).
-  A prefix slice at 6,000 characters broke every JSON result it cut and delivered one field in 4.7% of
-  calls against 99.3% for its neighbor, while a row-aware cut broke none. For file reads, return a window
-  with paging: a 100-line viewer resolved 18.0% of SWE-bench Lite against 14.3% at 30 lines and 12.7%
-  for the whole file. 4. For output too long to inline, write it to a file and return the path with a
-  short preview (Cursor''s agent reads the tail first; for JSON, the schema and one element of each list),
-  and when the agent can also write output files of its own, say which output is authoritative: under
-  file-only delivery two GPT models skipped the tool''s report in 53% and 60% of trajectories and answered
-  from their own higher-precision files; a three-sentence instruction naming the report as authoritative
-  raised accuracy 6.3 to 7.9 points for three GPT models, an instruction to round correctly did not help,
-  and inlining reports that fit (offloading only the rest) recovered 4.6 and 8.0 points for two of them.
-  5. When the agent can run code, have it filter and aggregate the full result there and return only the
-  slice it needs (Anthropic''s example: five rows of a 10,000-row sheet): in one study, code run over
-  large JSON responses beat reading them on filtering and aggregation questions for all 15 models, reading
-  won single-value lookups for 10 of 15, and giving the code a reduced response (one element per list)
-  beat giving it only the schema. 6. Re-run the cases that overflowed or were cut, then run paired comparisons
-  for each model you serve (old against new cap, position cut against whole-record cut, inline against
-  offload): task success, tool calls and tokens per task, overflow outcomes, and the share of produced
-  fields and records that reached the model; on the same tasks, file-only delivery cost GPT-5.1 11.3 points
-  and Claude Opus 4.6 and Sonnet 4.6 nothing detectable, and a bad cut showed up first as 28% to 43% more
+  5.75% of the window). Expect the cap to matter at the tail, not the median: in 600 public coding-agent
+  trajectories the median observation was 118 to 286 tokens and the 99th percentile 4,274 to 6,208, and
+  observation size explained 4% of the variation in cost against 84% for turn count, so bound output to
+  keep runs alive and evidence intact rather than to cut the bill. 2. Never run without a cap: a seed
+  harness that appended every output whole aborted 65 of 100 BrowseComp-Plus tasks on context overflow
+  with GPT-5.6 Sol, and each of four current models, editing its own harness, added output truncation
+  in its first round. Return results that fit whole, and set the cap from result sizes on successful cases,
+  not a framework default (in one survey, langchain-core kept the first 500 characters of a tool output
+  and smolagents deleted the middle of any observation over 20,000 characters); VeRO''s optimizers moved
+  a 30 KB cap to 15-20 KB, and one that probed 15 KB found some tasks needed more output and settled on
+  17 KB. 3. Above the cap, cut by structure, not by character position: keep whole lines, rows or records,
+  keep structured output parseable (trim long lists rather than the end of the text); a prefix slice at
+  6,000 characters broke every JSON result it cut and delivered one field in 4.7% of calls against 99.3%
+  for its neighbor, while a row-aware cut broke none. Say in the result that it was cut, the true total
+  and how to narrow the request (a line range, a filter, a more specific query): a capped search that
+  opened "Found 20 document(s)" when 4,772 matched led three current models to overclaim in 62% of answers,
+  against 0% when it said "Showing the first 20 of 4772", and verifiers accepted a false answer 30 of
+  30 times without the notice and 0 of 30 with it; in public coding-agent traces, 76.9% of actions after
+  a cut with recovery guidance narrowed the query, against 44.0% after a bare marker. Do not count on
+  paging: in one MCP middleware''s logs agents never asked for a second chunk, so put the records most
+  likely needed in the first one (whether the needed item was in the chunk mattered; its rank within it
+  did not). For file reads, return a window the agent can move: a 100-line viewer resolved 18.0% of SWE-bench
+  Lite against 14.3% at 30 lines and 12.7% for the whole file. 4. For output too long to inline, write
+  it to a file and return the path with a short preview (Claude Code does this, and Cursor''s agent reads
+  the tail first; for JSON, the schema and one element of each list), and when the agent can also write
+  output files of its own, say which output is authoritative: under file-only delivery two GPT models
+  skipped the tool''s report in 53% and 60% of trajectories and answered from their own higher-precision
+  files; a three-sentence instruction naming the report as authoritative raised accuracy 6.3 to 7.9 points
+  for three GPT models, an instruction to round correctly did not help, and inlining reports that fit
+  (offloading only the rest) recovered 4.6 and 8.0 points for two of them. 5. When the agent can run code,
+  have it filter and aggregate the full result there and return only the slice it needs (Anthropic''s
+  example: five rows of a 10,000-row sheet): in one study, code run over large JSON responses beat reading
+  them on filtering and aggregation questions for all 15 models, reading won single-value lookups for
+  10 of 15, and giving the code a reduced response (one element per list) beat giving it only the schema.
+  Treat a model-written summary of a large output as a quality bet, not a cost one: re-scoring 600 trajectories,
+  summarizing large observations with a cheaper model saved no more than cutting them (within 0.17 points),
+  and both saved 11% to 19% only when nearly every observation was reduced. 6. Re-run the cases that overflowed
+  or were cut, then run paired comparisons for each model you serve (old against new cap, position cut
+  against whole-record cut, a cut with and without a notice of the true total, inline against offload):
+  task success, tool calls and tokens per task, overflow outcomes, the share of produced fields and records
+  that reached the model, and whether the agent''s answer (and a reviewer given only the delivered output)
+  treats a cut result as complete; on the same tasks, file-only delivery cost GPT-5.1 11.3 points and
+  Claude Opus 4.6 and Sonnet 4.6 nothing detectable, and a bad cut showed up first as 28% to 43% more
   tool calls, not as wrong answers.'
 detect:
   static: tool results passed to the model whole, with no cap or file offload; a cap that slices serialized
     output at a fixed character position (keeping the front, or cutting the middle) instead of by whole
     lines or records; framework truncation defaults left as shipped; a cut result that does not say it
-    was cut or how to get the rest; offloaded output with nothing telling the agent which output is authoritative
+    was cut, the true total or how to narrow the request, or a capped list or bounded scan whose output
+    reads as complete ("Found 20 document(s)" when more matched, "searched the full text" after a scan
+    limit); offloaded output with nothing telling the agent which output is authoritative
   traces: a single tool result over about 10% of the context window; context-overflow outcomes; a truncated
-    result followed by re-running the same command; cut results that no longer parse (broken JSON); fields
-    or records the tool produced that never reached the model; with file offload, answers given without
-    the agent reading the tool's output
+    result followed by re-running the same command, or by no narrowed follow-up at all; no requests for
+    later pages although results were cut; cut results that no longer parse (broken JSON); fields or records
+    the tool produced that never reached the model; answers that report a capped count as the total; with
+    file offload, answers given without the agent reading the tool's output
   evals: context-overflow outcomes as a share of failures; task success, tool calls and tokens per task
     with results inline against offloaded, per model
   probes:
@@ -76,32 +100,40 @@ detect:
       the needed record or line near the end.
     construct: Return a result past the cap with the evidence in its last records or fields, and again
       with the keys reordered; pass when the agent still reaches the evidence (or is told the result was
-      cut and fetches the rest), the delivered payload still parses, and tool calls stay close to an uncut
-      control.
+      cut, with the true total, and narrows or fetches the rest), the delivered payload still parses,
+      the answer does not treat the cut result as complete, and tool calls stay close to an uncut control.
 impact:
   quality:
     effect: mixed
     size: medium
-    when: a 100-line file window resolved 18.0% of SWE-bench Lite against 12.7% for whole files and 14.3%
+    when: with no cap a seed harness aborted 65 of 100 BrowseComp-Plus tasks on context overflow for GPT-5.6
+      Sol, and the self-evolved harness that added truncation (with time limits, compaction and review)
+      answered 57 of them, 34% to 90% overall (Xu, Sep 2026); a capped result that did not say so led
+      Claude Sonnet 5, GPT-5.6 Sol and Gemini 3.1 Pro to overclaim in 62% (result totals), 100% (search
+      scope) and 100% (estimates) of answers, against 0%, 8% and 20% with a notice (Jeffries, Oct 2026);
+      a 100-line file window resolved 18.0% of SWE-bench Lite against 12.7% for whole files and 14.3%
       at 30 lines (Yang, May 2024); code over large JSON responses beat reading them on filtering and
-      aggregation for all 15 models but lost single-value lookups for 10 of 15, and exact-match accuracy
-      fell 7% (GPT-4o) to 91% (Mistral-large) as responses grew from 10K to 80K tokens (Kate, Oct 2025);
-      file-only delivery cost GPT-5.1 11.3 and GPT-5.2 7.9 points and Claude Opus 4.6, Sonnet 4.6 and
-      GPT-5.4 nothing detectable, and inlining what fits or naming the authoritative output won back 4.6
-      to 8.0 points (Zhang, Oct 2026); a cut by character position delivered one field in 4.7% of calls,
-      left answers unchanged where the agent had a second route (15/15 against 14/15) and got 0 of 5 right
-      against 3 of 6 on a production trace (Sehgal, Oct 2026); in VeRO the run that cut context-overflow
-      errors from 13 to 1 moved those tasks into timeouts (16 to 23) with passes unchanged (VeRO, Feb
-      2026)
+      aggregation for all 15 models but lost single-value lookups for 10 of 15 (Kate, Oct 2025); file-only
+      delivery cost GPT-5.1 11.3 and GPT-5.2 7.9 points and Claude Opus 4.6, Sonnet 4.6 and GPT-5.4 nothing
+      detectable, and inlining what fits or naming the authoritative output won back 4.6 to 8.0 points
+      (Zhang, Oct 2026); a cut by character position delivered one field in 4.7% of calls, left answers
+      unchanged where the agent had a second route (15/15 against 14/15) and got 0 of 5 right against
+      3 of 6 on a production trace (Sehgal, Oct 2026); raising how often the needed file came first in
+      a capped list from 50% to 70%-72% of test tasks moved file-localization accuracy by -2.8 to +2.2
+      points across five models (Petrova, Jun 2026); in VeRO the run that cut context-overflow errors
+      from 13 to 1 moved those tasks into timeouts (16 to 23) with passes unchanged (VeRO, Feb 2026)
     basis: evidence
   cost:
-    effect: improves
+    effect: mixed
     size: small
     when: file delivery cut mean input tokens per item from 60.9k to 52.8k (GPT-5.1), 65.7k to 61.8k (GPT-5.2)
       and 64.3k to 55.7k (GPT-5.4) (Zhang, Oct 2026); a cut by character position used 5% to 14% more
-      input tokens than a whole-record cut because the agent made more calls (Sehgal, Oct 2026); passing
-      data between tools in code rather than through context avoids about 50,000 tokens in Anthropic's
-      example (estimate, Nov 2025)
+      input tokens than a whole-record cut because the agent made more calls (Sehgal, Oct 2026); in 600
+      re-scored coding-agent trajectories (two open models) observation size explained 4% of the variation
+      in cost against 84% for turn count, cutting or summarizing large observations saved 11% to 19% only
+      when nearly every observation was reduced and fell toward zero, negative in two of four cells, when
+      only large ones were (Kumar, Oct 2026); passing data between tools in code rather than through context
+      avoids about 50,000 tokens in Anthropic's example (estimate, Nov 2025)
     basis: evidence
   performance:
     effect: mixed
@@ -113,7 +145,16 @@ impact:
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: improves
+    size: small
+    when: 'a cut the output does not mention cannot be caught downstream: given the same false answer,
+      three verifiers accepted it 30 of 30 times in each of three families when the tool output omitted
+      its cap or scan limit and 0 of 30 when it stated them, and an audit prompt run with Codex and Claude
+      Code found unmarked cuts in two open-source agents (a search tool that truncated matched lines at
+      500 characters without a marker) (Jeffries, Oct 2026); a run log shows only what the model received,
+      so logging what each tool produced beside it exposed fields that reached the model in 4.7% of calls
+      (Sehgal, Oct 2026); single-turn tests on one production archive'
+    basis: evidence
   brand:
     effect: unknown
   primary:
@@ -123,15 +164,18 @@ measure:
 - method: experiment
   tier: 3
   how: 'paired runs on the same tasks for each model you serve, cases that overflowed or were cut first:
-    the current delivery against the change (the old against the new cap; a cut by character position
-    against a cut by whole lines or records; inline-if-it-fits against file-only offload, with and without
-    naming the authoritative output); report task success, tool calls and tokens per task, context-overflow
-    outcomes, cut results that no longer parse, and the share of produced fields and records that reached
-    the model'
+    the current delivery against the change (no cap against a cap; the old against the new cap; a cut
+    by character position against a cut by whole lines or records; a cut with and without a notice of
+    the true total and how to narrow the request; inline-if-it-fits against file-only offload, with and
+    without naming the authoritative output); report task success, tool calls and tokens per task (priced
+    with cache reads), context-overflow outcomes, cut results that no longer parse, the share of produced
+    fields and records that reached the model, and answers that treat a cut result as complete, including
+    when a reviewer sees only the delivered output'
 - method: monitor
   how: 'in production traces: result size per tool (median, 95th percentile, largest) against the cap;
-    results cut and how much each lost; cut results that fail to parse; context-overflow outcomes; a command
-    re-run right after a cut; for offloaded outputs, whether the agent read the file before answering'
+    results cut and how much each lost; cut results that fail to parse or that do not say they were cut;
+    context-overflow outcomes; what follows a cut (a narrowed query, the same command re-run, a request
+    for the next page, or nothing); for offloaded outputs, whether the agent read the file before answering'
 evidence:
 - source: paper §A.4
   task: TerminalBench-2
@@ -310,18 +354,125 @@ evidence:
   direction: supports
   measured: true
   locator: Abstract; §3.1; §3.2 Table 1 (tool ladder); §3.3 tool-call mix
-caveats: 'How a result is bounded decides whether bounding helps: a cut by character position silently
-  dropped whole fields and broke every structured result it cut, with the cost showing first as extra
-  tool calls rather than wrong answers (one harness, one unnamed model, 15 runs per arm), and file-only
-  delivery cost two GPT models 7.9 and 11.3 points (the smaller loss not significant after correction)
-  but two Claude models nothing detectable on one simulator benchmark, because the GPT models answered
-  from their own files instead of the tool''s report. In VeRO''s TerminalBench-2 runs every cap change
-  came bundled with other edits: the run that cut context-overflow errors from 13 to 1 moved those tasks
-  into timeouts (16 to 23) with passes unchanged at 27 of 89, and three tasks that passed before regressed
-  in all three runs, which the authors put down to the output-length and prompt changes optimizers tend
-  to make. The file-window and search-cap results used GPT-4 Turbo in 2024 and the code-over-JSON results
-  come from single-turn question answering rather than an agent loop, so measure on your own agent and
-  models.'
+- source: William Jeffries, "Who Verifies the Tools? How Warped Formatters Mislead Agents and Their Verifiers",
+    https://arxiv.org/abs/2610.32110
+  date: '2026-10-23'
+  task: 'Render the same real tool result from a production archive research agent two ways: as shipped,
+    where the output omitted a scan limit, a result cap, an estimate label or an identifier namespace
+    ("Found 20 document(s)" for a search capped at 20 when 4,772 matched; "Searched the FULL text" after
+    scanning at most 1,000,000 characters), and with each stated; measure agent overclaim and verifier
+    acceptance; then run an audit prompt for such formatters with Codex and Claude Code'
+  effect: 'Agent overclaim, warped against clear wording (Table 3, 120 answers each): scope 120/120 (100%)
+    against 9/120 (8%), +92 pp [+80, +100]; completeness (result cap) 74/120 (62%) against 0/120 (0%),
+    +62 pp [+46, +78]; uncertainty 120/120 (100%) against 24/120 (20%), +80 pp [+73, +87]; provenance
+    changed little (+6 pp; 94% still overclaimed). Fixed-answer verifier test: "Verifiers accepted the
+    false answer 30/30 under the warped wording and 0/30 under the clear wording in each of the three
+    families: 90/90 flips"; provenance 18/30 to 14/30. Control (Table 1): verifiers given only the tool
+    output accepted 88/92 and 90/92 of 46 false answers; given the missing facts and asked whether the
+    answer was correct, 0/92. The audit found "twelve distinct additional instances" in the authors''
+    system, including a formatter that "silently returned only three of five results the tool retrieved",
+    and in Hermes a search_files tool that "truncates matched lines at 500 characters without a marker".
+    The recommended disclosures include: "Say when a result list was cut, or report the true total."'
+  conditions: 'One production RAG system over an archive of 17,807 documents; 32 holdout cases (8 per
+    family) of 40; Claude Sonnet 5, GPT-5.6 Sol and Gemini 3.1 Pro preview at temperature 1.0, 5 replicates,
+    960 graded answers; single turn: the agent receives one tool output and answers once, with no tool
+    loop and without the production system prompt; the repaired wording combines disclosures with instructions
+    on handling them, so disclosure is not isolated; two model graders with human adjudication of 53 answers;
+    total API spend $74.44; the author built the system and wrote the audit prompt knowing its defects'
+  direction: supports
+  measured: true
+  locator: Abstract; §2; §3.1-3.2 Figures 1-2; §4.1-4.2 Tables 1-2; §5; §6 Limitations; App. C Table 3
+- source: 'Pramod Kumar, Raj Kumar Pandey (Pennsylvania State University), "TurnCost: Turns, Not Observations:
+    Cache-Aware Loop Engineering for Coding Agents", https://arxiv.org/abs/2610.15093'
+  date: '2026-10-10'
+  task: 'Re-score 600 published coding-agent trajectories under an exact prefix-cache simulation: measure
+    tool-observation sizes, compare deterministic truncation of large observations with delegating them
+    to a cheaper model for summarization, decompose trajectory cost into turn count and observation size,
+    and classify the agent''s next action after a truncation marker'
+  effect: 'Observation size (Table 1): median 118 to 286 tokens by cell, 90th percentile 749 to 1,258,
+    99th percentile 4,274 to 6,208, maximum 12,854 to 33,494; edit tools, not logs, produced the largest
+    observations (mean 787 against 294 tokens for read and execute). "Across all twenty combinations of
+    cell and threshold, B3 [deterministic truncation] matches or very slightly beats R1 [delegation],
+    the largest gap being 0.17 percentage points"; "At aggressive thresholds, where nearly every observation
+    is delegated, both methods save 11-19%. At conservative thresholds, where only genuinely large observations
+    are touched, savings decline toward zero and turn negative in two of the four cells." Cost regression
+    over 600 trajectories: turn count R^2 = 0.844, mean observation size R^2 = 0.040. SWE-agent''s 100,000-character
+    cap "caps the tail, it does not set the median." Truncation markers appeared on 518 of 56,164 observations
+    (0.92%); "After guided truncation, 76.9% of next actions narrow the query and exactly one, 0.2%, terminates
+    the trajectory, compared with 44.0% narrowing after bare truncation; no agent repeats the identical
+    command."'
+  conditions: 'nvidia/Open-SWE-Traces: OpenHands and SWE-agent with Qwen3.5-122B-A10B and MiniMax-M2.5,
+    150 trajectories per cell, SWE-rebench-V2 tasks; costs simulated (o200k_base tokenizer, cached input
+    at 0.1x, near-ideal caching); the corpus excludes runs that hit the iteration limit, which may thin
+    the tail of large observations; quality of truncation or summaries not measured; the cost decomposition
+    is associational and partly mechanical; workshop paper (POVC ''26 at ASE 2026)'
+  direction: mixed
+  measured: true
+  locator: Abstract; §4; §5.1 Table 1; §5.2 Table 2; §5.4 Figure 3; §5.6 Figure 4; §5.7; §5.8; §7
+- source: Qiankai Xu, "Multi-Task Self-Evolving Harnesses with the Agent as Its Own Optimizer", https://arxiv.org/abs/2609.38372
+  date: '2026-09-29'
+  task: Let a frozen model solve tasks from a 49-line seed harness (one bash tool, every output appended
+    whole, no truncation, timeouts or compaction) and then edit that harness from its own run records
+    over five iterations; compare with the seed and with Codex or Claude Code on held-out and out-of-distribution
+    benchmarks
+  effect: '"All four models added output truncation in Iteration 1, passing only part of an overly long
+    output to the model." With GPT-5.6 Sol on BrowseComp-Plus, "a broad rg search can print tens of millions
+    of characters, and the seed aborted on 65 tasks for this reason. Receiving truncated output, Iteration
+    5 narrows its searches and reads candidate files one at a time, and it answers 57 of these 65 tasks
+    correctly." Table 5 (100 BrowseComp-Plus tasks): Seed 34.00, Codex 93.00, Iteration 5 90.00; out-of-distribution
+    average +12.47 [+8.6, +16.3] over Seed, "Most of this gain comes from BrowseComp-Plus", the other
+    four benchmarks +1.58 on average with an interval including zero. Case studies: a GLM-5.3 seed put
+    "a command output of nearly 400,000 characters" into history and failed, while Iteration 5 "shows
+    the model only the truncated part and saves the full output to a file"; on a Terminal-Bench 2.1 task
+    where about 6 MB was printed, "Claude Code saved the output to a file, showed the model only a short
+    preview, and went on to pass the task." Truncation triggered most in retrieval and document tasks,
+    never on GAIA2 or tau3-Bench banking, whose tools return short outputs.'
+  conditions: GPT-5.6 Sol and GPT-5.6 Luna at high reasoning effort, GLM-5.3 and GLM-5.3-Flash at max;
+    Codex or Claude Code as production baselines at the same effort; GPT-5.6 Sol evolved in three independent
+    runs, out-of-distribution results from Run 1 only; truncation arrived bundled with command time limits,
+    history compaction, completion checks and review and was not ablated alone, so the 34 to 90 gain is
+    the evolved harness, not the cap; the BrowseComp-Plus corpus is placed as files in the environment
+  direction: supports
+  measured: true
+  locator: Abstract; §4 (Models and baselines), Table 3; §4 Table 5; §5.1 (Output truncation and time
+    limits); §5.2; App. case studies; Figure 8
+- source: 'Tatiana Petrova, Andrei Mazniak, Radu State (University of Luxembourg), "Agents Don''t Paginate:
+    First-Chunk Selection for LLM Tool Responses", https://arxiv.org/abs/2608.26130'
+  date: '2026-06-23'
+  task: From session logs of a public MCP middleware serving Claude Code, Cursor, Codex CLI and Aider,
+    check whether agents request later pages of over-budget tool responses; then, offline on SWE-bench
+    Verified, rank the files of a capped file-search result six ways to fill a 1K to 8K-token first chunk,
+    and test whether placing the needed file first changes file localization for five models
+  effect: '"across the full corpus of session logs the rate of agent-initiated second-chunk requests is
+    exactly zero, and after a truncated response the agent moves directly to its next reasoning or editing
+    step"; 37% of get_epics and 28% of get_merge_request_diffs calls exceeded an 8K-token budget. Gold
+    file ranked first (500 tasks): tool order 24.2%, keyword scorer 35.0%, with fallback 35.8%; adding
+    four file-metadata signals cut it by 4.8 pp (p = 0.001). Downstream (Table 2, tool order against keyword
+    scorer): Claude Opus 4.7 94.0 against 93.8, Claude Sonnet 4.5 90.8 against 93.0, GLM-5.1 93.3 against
+    90.5, gemma4:26b 86.3 against 87.3, gpt-oss:20b 81.8 against 82.5; "accuracy moves by at most +/-2.8
+    p.p. and no model shows a significant change"; "what reaches its answer is first-chunk inclusion,
+    not the gold''s rank within it."'
+  conditions: Pagination finding from one middleware the authors build and deploy (2,607 sessions; the
+    number of over-budget responses and whether each advertised a cursor are not reported; "not verified
+    externally"); downstream test is a single-turn file-localization probe on 100 tasks where the needed
+    file was in the list, one call per cell at temperature 0, 4,800 calls, not a resolve-rate test; candidate
+    lists capped at 50 files; Python-only
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §2; §5.1 Table 1; §5.2 Table 2; Limitations; App. J Table 9; App. K Table 10
+caveats: 'Most of the evidence on how to bound is narrow: the position-cut result is one harness and one
+  unnamed model (15 runs per arm), file-only delivery cost two GPT models 7.9 and 11.3 points (the smaller
+  loss not significant after correction) but two Claude models nothing detectable on one simulator benchmark,
+  the cut-notice results are single-turn tests (one tool output, one answer) on one production archive
+  with notice wording that also carried instructions, and the file-window and code-over-JSON results come
+  from GPT-4 Turbo in 2024 and single-turn question answering. The current-model case for having a cap
+  at all is bundled: the self-evolved harness that took GPT-5.6 Sol from 34% to 90% on BrowseComp-Plus
+  also added time limits, compaction and review, and in VeRO''s TerminalBench-2 runs the commit that cut
+  context-overflow errors from 13 to 1 moved those tasks into timeouts (16 to 23) with passes unchanged
+  at 27 of 89. The cost bound comes from re-scoring public trajectories of two open models with simulated
+  caching, and the finding that agents never page from one middleware''s logs, published by its builders
+  without a count of the responses covered. No controlled study yet varies cap size, truncation style
+  or file offload on current frontier coding agents at matched compute, and none measures security.'
 related:
 - 5.a.i
 - 2.a.iii
@@ -329,6 +480,8 @@ related:
 - 2.b.i
 - 7.b.ii
 - 4.b.iii
+- 2.a.ii
+- 7.b.iii
 absorbs:
 - legacy_id: P11
   name: Token-efficient tool responses

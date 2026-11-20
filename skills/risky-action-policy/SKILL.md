@@ -78,9 +78,13 @@ The measured evidence is recent, from benchmarks and small samples, and mostly f
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 - `aot-kit:language-agent-tree-search` (7.c.v, Language Agent Tree Search (LATS))
+- `aot-kit:reflection-loop` (7.c.i, Reflection loop)
+- `aot-kit:oracle-worker-escalation` (6.a.i, Oracle-worker multi-model)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
 - `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
 - `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
 - `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
+- `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

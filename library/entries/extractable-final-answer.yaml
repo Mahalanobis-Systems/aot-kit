@@ -21,71 +21,103 @@ evidence_domains:
 - code-generation
 - web-research
 - data-analysis
+- computer-use
 categories:
 - verification.completion
 - prompts.structure
-summary: 'Ask for the final answer in one marked place after the reasoning, extract it with a parser you
-  have checked, and force an answer when a run hits its limit instead of returning nothing. It pays wherever
-  a parser or grader reads the answer: on the same questions and model, an instructed \boxed{} answer
-  scored 93.9% where pattern-matching free text scored 20.8%, and a JSON schema with the answer before
-  the reasoning took GPT-4o from 95.60% to 55.34% on GSM8K. Asking for a format cost open-weight models
-  accuracy, which a second formatting call or a thinking phase mostly recovered, while three recent closed
-  models paid little. The limits: the forced-answer evidence is one exploratory study on small models
-  whose output hit a token limit (no outside study here tests a final-answer turn at an agent''s turn
-  cap), the format reminder alone was mixed on GPQA in VeRO, and a lenient fallback parser flatters models
-  that ignore the format.'
+summary: 'Put the final answer in one marked place after the reasoning, read it with a parser you have
+  checked, and when a run hits its limit, spend a reserved last step on the answer and label it as forced.
+  It pays wherever a parser or grader reads the answer: an instructed \boxed{} answer scored 93.9% where
+  pattern-matching free text scored 20.8% on the same questions and model, answer-first JSON took GPT-4o
+  from 95.60% to 55.34% on GSM8K, a nine-token answer cue held inside a 2,048-token budget raised two
+  small thinking models by 8.0 and 7.0 points, and human review found 5.45 to 8.49 points of GPT-5.5 web-agent
+  successes that a strict grader had rejected. Formats still cost models working near their limits (a
+  long JSON schema took Claude Haiku 4.5 from 88.7% to 52.5% on hard math, and a forced submit-tool call
+  took GPT-4o-mini from 60% to 10%), which reasoning first and formatting second mostly recovered. The
+  limits: no study here tests a forced answer at an agent''s turn cap (in one audit no run that hit the
+  action limit had finished its task), the forced-answer results come from small models on math, and lenient
+  parsers and unlabeled fallback answers both hide failures.'
 how: '1. Start from a baseline that separates wrong answers from unreadable ones: score a run as is and
   report the parse rate beside accuracy, then list runs with no extractable answer (none at all, a refusal,
   an echoed placeholder, output cut off before the answer marker, a loop that ended at its turn cap) and
-  runs whose working holds the right value while the returned answer does not. Re-score a sample with
-  a symbolic or model-based equivalence check: a deterministic MATH-500 scorer rejected 3.3% (free text)
-  to 10.5% (Markdown) of responses an LLM judge accepted, with 0.1% the other way, and in another study
-  a computer-algebra grader turned roughly 28% of string-graded MATH rows from wrong to right. 2. State
-  the format once, in the prompt''s format section (3.a.iv): one marker the harness reads (\boxed{}, ''Final
-  answer:'' or a named field), placed at the end of the response, and the allowed values by name (''one
-  of A, B, C, D'') rather than a bracketed placeholder or an example value. On identical questions and
-  model, an instructed \boxed{} answer scored 93.9% where pattern-matching the bare question''s free text
-  scored 20.8%; an example letter from another alphabet made one model answer in that alphabet (58.2%,
-  last place) until the prompt named the letters (83.9%, 100% parse rate), and in another study a ''####
-  <answer>'' placeholder was echoed verbatim and scored as wrong. 3. Keep the reasoning ahead of the format:
-  let the model work in free text or a thinking phase and commit to the answer at the end, and in a JSON
-  or XML answer put the reasoning fields before the answer field (answer-first JSON took GPT-4o from 95.60%
+  runs whose working holds the right value while the returned answer does not; in one public corpus of
+  failed multi-agent runs, 23 of 95 ended with no answer at all (a stall, a cut-off output or an exhausted
+  budget). Re-score a sample with a symbolic or model-based equivalence check, and for agents read the
+  failed runs: a deterministic MATH-500 scorer rejected 3.3% (free text) to 10.5% (Markdown) of responses
+  an LLM judge accepted, with 0.1% the other way, in another study a computer-algebra grader turned roughly
+  28% of string-graded MATH rows from wrong to right, and human review of GPT-5.5 on WebArena-Lite recovered
+  5.45 to 8.49 points of success the automatic evaluator had rejected (answers in a strict format, completed
+  states a string rule missed, valid results followed by an invalid stop action). 2. State the format
+  once, in the prompt''s format section (3.a.iv): one marker the harness reads (\boxed{}, ''Final answer:''
+  or a named field), placed at the end of the response, and the allowed values by name (''one of A, B,
+  C, D'') rather than a bracketed placeholder or an example value. On identical questions and model, an
+  instructed \boxed{} answer scored 93.9% where pattern-matching the bare question''s free text scored
+  20.8%; an example letter from another alphabet made one model answer in that alphabet (58.2%, last place)
+  until the prompt named the letters (83.9%, 100% parse rate), and in another study a ''#### <answer>''
+  placeholder was echoed verbatim and scored as wrong. 3. Keep the reasoning ahead of the format: let
+  the model work in free text or a thinking phase and commit to the answer at the end, and in a JSON or
+  XML answer put the reasoning fields before the answer field (answer-first JSON took GPT-4o from 95.60%
   to 55.34% on GSM8K; answer-first XML left two small models at 10.98%). If a format request still costs
-  accuracy, as it did for every open-weight model in one study, answer freely first and convert the answer
-  to the format in a second call: that significantly improved 42 of 72 comparisons (6.8 points on average)
-  and significantly worsened 2, while a thinking phase significantly improved 43 and worsened 11 (thinking
-  settings are 1.b.i). Constrained decoding guarantees the shape (format compliance 55.7% to 92.2%) but
-  not the answer (accuracy 57.3% without it, 55.7% with it, 61.5% free-form), so apply it to the final
-  answer after the reasoning, not to the whole response. 4. Harden extraction: strip markup, normalize
-  numbers and units, compare by value, take the last marked answer, and record refusals, empty answers
-  and echoed placeholders as their own outcomes rather than as wrong answers. Do not let a lenient fallback
-  fill the gaps unseen: a leaderboard that read the marker where present and any option letter otherwise
-  scored models that ignored the format leniently and compliant ones strictly, and fixing it moved 185
-  of 215 published cells; keep strict and lenient scores side by side. 5. Force an answer when the loop
-  or the generation ends on a budget: make one more call that gives the model its work so far and asks
-  only for the answer in the stated format (for example by appending ''Therefore, my final answer is''),
-  constrained to the valid answers where they can be listed. In one small-model study this recovered correct
-  answers on 63.5% of no-answer rows in one cell, against 19.2% for a full revision turn, and passed its
-  decision rule in 6 of 8 cells; constrained re-extraction made every answer parseable. Raising the limit
-  is not the fix (sizing it is 7.b.iii): doubling a generation cap from 8,192 to 16,384 tokens cut unparsed
-  responses only from 15.9% to 14.0%. 6. Measure on the same cases, per model, before and after: accuracy
-  under one stated protocol, parse rate, no-answer, refusal and malformed-answer rates, strict against
-  lenient score, and answers that flip from right to wrong when the format changes. Format defects are
-  model-specific: the same placeholder left 828 of one model''s answers on one subject unparsed (827 of
-  them real answers in the wrong alphabet) and cost another model 17 of 60,389 responses.'
+  accuracy, as it did for every open-weight model in one study and for closed models on tasks near their
+  limits in another (a 1,774-character JSON schema took Claude Haiku 4.5 from 88.7% to 52.5% on hard math
+  while Claude Sonnet 4.6 held 88.7% against 89.3%, and Claude Opus 4.7 lost 5.3 points on AIME, not significant
+  on its own), answer freely first and convert the answer to the format in a second call: that significantly
+  improved 42 of 72 comparisons (6.8 points on average) and significantly worsened 2; reasoning first
+  and formatting second within one response recovered 80% (Haiku) and 87% (GPT-4o-mini) of the lost accuracy;
+  and a thinking phase significantly improved 43 comparisons and worsened 11 (thinking settings are 1.b.i).
+  If the answer is submitted through a tool, leave room to reason before the call: forcing the tool call
+  took GPT-4o-mini from 60% to 10% on 100 hard math problems because it emitted only the arguments, while
+  submitting through the tool in a second round held 59%. Constrained decoding guarantees the shape (format
+  compliance 55.7% to 92.2%) but not the answer (accuracy 57.3% without it, 55.7% with it, 61.5% free-form),
+  so apply it to the final answer after the reasoning, not to the whole response. 4. Harden extraction:
+  strip markup, normalize numbers and units, compare by value, take the last marked answer, and record
+  refusals, empty answers and echoed placeholders as their own outcomes rather than as wrong answers.
+  Do not let a lenient fallback fill the gaps unseen: a leaderboard that read the marker where present
+  and any option letter otherwise scored models that ignored the format leniently and compliant ones strictly,
+  and fixing it moved 185 of 215 published cells; keep strict and lenient (or raw and corrected) scores
+  side by side. 5. Hold back room for the answer inside the budget and force it when the loop or the generation
+  reaches that reserve: give the model its work so far and ask only for the answer in the stated format
+  (for example by closing the thinking block and appending ''Final answer: \boxed{'', or ''Therefore,
+  my final answer is''), constrained to the valid answers where they can be listed. With 64 of 2,048 output
+  tokens held back, a nine-token cue of that kind turned every empty endpoint into an answer in the main
+  run and raised two small thinking models by 8.0 and 7.0 points on 100 GSM8K questions (7.0 and 10.0
+  on a repeat) at under 1% change in tokens and wall time, and it beat reading the cut-off output with
+  a lenient parser (90 and 87 correct against 84 and 81); in an earlier small-model study a forced continuation
+  recovered correct answers on 63.5% of no-answer rows in one cell, against 19.2% for a full revision
+  turn, and constrained re-extraction made every answer parseable. Count forced answers apart from correct
+  ones: 6 and 5 of the newly answered questions were readable but wrong. In an agent, hold back the last
+  turn the same way, but expect it to return partial work: in the WebArena-Lite audit none of 40 failed
+  GPT-5.5 runs that used up a 25-action budget had completed the task (mean verified progress 56.2%).
+  Raising the limit is not the fix (sizing it is 7.b.iii): doubling a generation cap from 8,192 to 16,384
+  tokens cut unparsed responses only from 15.9% to 14.0%, though where a long format is what fills the
+  output a higher cap does help (Claude Haiku 4.5 under JSON: 52.5% at 2,048 tokens, 84.0% at 8,192).
+  6. Record where each returned answer came from (the agent''s own answer, a forced answer at the limit,
+  a harness fallback, or none) and report runs the harness ended apart from agent errors: in one public
+  corpus of multi-agent failures, a provider''s content filter killed the orchestrator in 26 of 58 runs
+  and the experiment script then printed a final answer in 25 of them that no agent had produced, which
+  the corpus blamed on another agent in 21. 7. Measure on the same cases, per model, before and after:
+  accuracy under one stated protocol, parse rate, no-answer, refusal and malformed-answer rates, strict
+  against lenient score, and answers that flip from right to wrong when the format changes; for agents,
+  also how each run ended (answered, forced at the limit, harness fallback, crash) and the accuracy of
+  each group. Format defects are model-specific: the same placeholder left 828 of one model''s answers
+  on one subject unparsed (827 of them real answers in the wrong alphabet) and cost another model 17 of
+  60,389 responses.'
 detect:
   static: no answer-format statement, or one shown only as a bracketed placeholder or an example value
-    the model may copy; a structured answer schema with the answer field before the reasoning; extraction
-    that assumes a marker, or falls back to any matching letter or number anywhere in the text; string
-    matching with no number, unit or markup normalization; no forced answer when the loop or the generation
-    ends on a budget
+    the model may copy; a structured answer schema with the answer field before the reasoning; a submit
+    tool forced on the first call, with no room to reason before it; extraction that assumes a marker,
+    or falls back to any matching letter or number anywhere in the text; string matching with no number,
+    unit or markup normalization; no forced answer, and no budget held back for one, when the loop or
+    the generation ends on a budget; harness fallback answers written without a label saying where they
+    came from
   traces: runs ending with no extractable answer (none, an echoed placeholder, output cut off before the
     answer marker, a turn cap reached); refusals or explanations returned as answers; numbers in the wrong
-    format or wrapped in markup; runs ending at the limit with a correct value in context; parse rates
-    that differ sharply between models on the same prompt
+    format or wrapped in markup; runs ending at the limit with a correct value in context; runs ended
+    by a provider or harness error that still report a final answer; forced or fallback answers not marked
+    as such; parse rates that differ sharply between models on the same prompt
   evals: failures where the working was right but the submitted answer was not (instruction-grader-mismatch);
-    a gap between strict and lenient scores, or between the deterministic scorer and a symbolic or model-based
-    equivalence check
+    a gap between strict and lenient scores, between the deterministic scorer and a symbolic or model-based
+    equivalence check, or between an agent benchmark's automatic score and a human-corrected one
   probes:
     what: 'Solved cases whose answer the harness may fail to read: output cut off at the limit, answers
       in equivalent forms, and each candidate answer format.'
@@ -103,29 +135,48 @@ impact:
       reasoning-first against answer-first JSON on GSM8K: 95.60% against 55.34% for GPT-4o, 80.21% against
       31.01% for Llama-3.1-8B (Kumar, Oct 2026); a second formatting call significantly improved 42 of
       72 open-weight comparisons, by 6.8 points on average, and a deterministic scorer rejected 3.3% to
-      10.5% of responses an LLM judge accepted (Lee, Apr 2026); a forced short continuation recovered
-      correct answers on 63.5% of no-answer rows against 19.2% for a full revision, in one cell (Chen,
-      Aug 2026); limits: the format reminder alone was mixed on GPQA, train 0.54 to 0.60 and test 0.54
-      against a 0.61 baseline (VeRO, Feb 2026), Claude Sonnet 4.5 scored higher with answer-first JSON
-      on GSM8K (96.13% against 87.79%) (Kumar, Oct 2026), and three recent closed models paid little or
-      no format tax (Lee, Apr 2026)'
+      10.5% of responses an LLM judge accepted (Lee, Apr 2026); a nine-token answer cue charged to a 2,048-token
+      budget raised two small thinking models by 8.0 and 7.0 points on 100 GSM8K questions (Chang, Oct
+      2026), and a forced short continuation recovered correct answers on 63.5% of no-answer rows against
+      19.2% for a full revision, in one cell (Chen, Aug 2026); human review recovered 5.45 to 8.49 points
+      of GPT-5.5 web-agent successes a strict automatic evaluator had rejected (Gan, Oct 2026); limits:
+      none of 40 GPT-5.5 runs that used up a 25-action budget had finished the task (Gan, Oct 2026); a
+      long JSON schema cost Claude Haiku 4.5 36.2 points on hard math and Claude Opus 4.7 5.3 points on
+      AIME (not significant alone), Claude Sonnet 4.6 showed no significant loss (89.3% against 88.7%),
+      and a forced tool call took GPT-4o-mini from 60% to 10% (Fan, Jun 2026), while three recent closed
+      models, Claude Haiku 4.5 among them, paid little or no format tax on the benchmarks of another study
+      (Lee, Apr 2026); Claude Sonnet 4.5 scored higher with answer-first JSON on GSM8K (96.13% against
+      87.79%) (Kumar, Oct 2026); and the format reminder alone was mixed on GPQA, train 0.54 to 0.60 and
+      test 0.54 against a 0.61 baseline (VeRO, Feb 2026)'
     basis: evidence
   cost:
     effect: degrades
     size: small
     when: stating the format and hardening extraction add nothing per run; converting the answer to the
       format in a second call means two inference calls instead of one (Lee, Apr 2026); the forced answer
-      at the limit is one short call on the runs that need it (a 32-token continuation in Chen, Aug 2026)
+      at the limit is one short continuation or call on the runs that need it (a 32-token continuation
+      in Chen, Aug 2026), and held inside the budget a nine-token cue left total output tokens 0.63% and
+      0.60% below first-box stopping alone (Chang, Oct 2026)
     basis: evidence
   performance:
     effect: none
-    when: no added latency on runs that answer in the stated format; the optional second formatting call
-      and the forced answer each add one sequential call on the runs that use them
-    basis: assessment
+    when: no added latency on runs that answer in the stated format; with the answer cue held inside a
+      2,048-token budget, request wall time was 0.80% and 0.71% shorter than first-box stopping alone
+      in single-request runs (Chang, Oct 2026); the optional second formatting call, or a forced answer
+      turn in an agent, adds one sequential call on the runs that use it, which no source here times
+    basis: evidence
   security:
     effect: unknown
   governance:
-    effect: unknown
+    effect: mixed
+    size: small
+    when: 'a fallback answer that is not labeled hides harness failures: in 25 of 58 runs of one public
+      multi-agent failure corpus a script printed a final answer that no agent had produced after a provider
+      error, and the corpus blamed another agent for 21 of them (Wang, Nov 2026); keeping raw and corrected,
+      or strict and lenient, scores side by side exposed 5.45 to 8.49 points of grader false negatives
+      on a web-agent benchmark (Gan, Oct 2026) and a leaderboard parser whose fix moved 185 of 215 cells
+      (Huang, Oct 2026)'
+    basis: evidence
   brand:
     effect: unknown
   primary:
@@ -136,14 +187,17 @@ measure:
   how: 'same cases and model, before and after: accuracy under one stated extraction protocol, parse rate,
     and the rates of no answer, refusal, echoed placeholder, malformed answer and answer cut off by a
     limit; score strictly (the stated format) and leniently (any recognizable answer) side by side, and
-    re-score a sample with a symbolic or model-based equivalence check; when the answer format changes,
-    run old and new formats on the same questions for each model and count answers that flip from right
-    to wrong'
+    re-score a sample with a symbolic or model-based equivalence check (for agents, by reading failed
+    runs); when the answer format or submission path changes, run old and new on the same questions for
+    each model and count answers that flip from right to wrong; for the forced answer, cut runs at the
+    generation or turn budget and compare forcing the answer from a held-back reserve against returning
+    nothing, counting forced answers that are readable but wrong apart from correct ones'
 - method: monitor
   how: 'in production traces: parse rate and no-answer rate per model and prompt version (an outlier parse
     rate for one model on one prompt is a format defect, not a model result); refusals and explanations
-    returned as answers; how often the forced-answer path runs at the limit and how often its answers
-    are right; the share of answers read only by a fallback parser'
+    returned as answers; where each returned answer came from (agent, forced at the limit, harness fallback)
+    and how often each is right; runs ended by a provider or harness error that still report an answer;
+    and the share of answers read only by a fallback parser'
 evidence:
 - source: repo taxonomy.py role hints
   task: five follow-up benchmarks
@@ -262,9 +316,107 @@ evidence:
   direction: mixed
   measured: true
   locator: §3.3; §4.1-4.3, Tables 3-5; §5; §7; App. E Table 7; App. G Tables 8-9
+- source: 'Shaohuang Wang, Jinghao Wen, Xulei Zhang, Xun Jiao, "Dependable Long-Horizon LLM Agents: A
+    Trajectory-Centered Empirical Study of Where Errors Enter and Which Controls Reach Them", https://arxiv.org/abs/2611.13254'
+  date: '2026-11-09'
+  task: Annotate 95 failed runs of six multi-agent systems from the public Who&When and MAD corpora with
+    an episode record (fault origin, propagation, detection, response and consequence, plus whether the
+    harness rather than an agent ended the run), and scan all 184 raw Who&When trajectories for provider
+    errors followed by a harness-written final answer
+  effect: Of the 95 failed runs, 72 ended with a wrong output and 23 with no answer to the task (stall,
+    truncation or budget exhaustion). A deterministic scan found an HTTP 400 from the provider's content
+    filter on the orchestrator's progress-ledger call in 26 of 58 hand-crafted Who&When runs (45%) and
+    in 0 of 126 algorithm-generated runs; 25 of the 26 ended with a FINAL ANSWER "that no agent had produced",
+    and the corpus attributes those 25 failures to the orchestrator in 4 cases and to another agent (mostly
+    the web surfer) in 21. "Attribution benchmarks should mark such runs, and evaluations of agents should
+    report harness-terminated runs separately from agent errors." In 72% of failed runs the trajectory
+    already held evidence against the error, and in 88% of those no agent acted on it.
+  conditions: Who&When hand-crafted split (Magentic-One, 58 runs) and algorithm-generated split (CaptainAgent,
+    126 runs), plus 8 MAD traces; 96 records written by an LLM annotator following a written protocol,
+    with no human inter-annotator agreement yet; the fallback count is a deterministic text scan that
+    does not depend on the annotation; released traces, not new runs, with the models the corpora used
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.4; §4.4, Table 5; §4.6; §5 ('Harness faults belong in the denominator'); §5.1
+- source: 'Yupeng Chang, Linyuan Gao, Zhiyuan Li, Yuan Wu, Yi Chang, "Answer Delivery Under a Shared Token
+    Budget: An Audited Study of Stopping and Finalization", https://arxiv.org/abs/2610.26384'
+  date: '2026-10-19'
+  task: Under a fixed 2,048-token output budget, compare native completion, stopping at the first valid
+    boxed number, the same with a finalization cue injected when no valid box has appeared by token 1,984,
+    and the cue without early stopping, all physically generated on the same questions with the cue's
+    tokens charged to the budget
+  effect: 'Table 1, correct of 100 (no value): Qwen3-4B-Thinking-2507 full completion 83 (14), first-box
+    stopping 82 (14), first-box with the cue 90 (0); DeepSeek-R1-Distill-Llama-8B 80 (12), 80 (12), 87
+    (0). Against first-box stopping the cue gained 8.0 points (95% interval 3.0 to 14.0) and 7.0 (2.0
+    to 12.0), with 8 and 7 gains and 0 harms; a locked repeat gave 7.0 and 10.0 (one R1 null remained).
+    All gains came on formerly null endpoints, and 6 Qwen and 5 R1 formerly null questions became readable
+    but stayed wrong; the cue fired on 16 and 12 paths. The cue without early stopping returned 91 and
+    87 correct. A fixed post-hoc reader (last valid box, else the last number) raised full completion
+    only to 84 and 81. Against first-box stopping the cue policy used 0.63% and 0.60% fewer output tokens
+    and 0.80% and 0.71% less request wall time (Table 2).'
+  conditions: 'Qwen3-4B-Thinking-2507 and DeepSeek-R1-Distill-Llama-8B, BF16, one request at a time; 100
+    GSM8K test questions per model, one prompt family, two fixed seeds (the repeat reuses the questions);
+    cue ''\n</think>\n\nFinal answer: \boxed{'' (nine tokens) inside a 64-token reserve; the cue is prior
+    art from s1-style budget forcing, and the authors measure what it delivers; wall times are instrumented
+    single requests, not batched serving'
+  direction: supports
+  measured: true
+  locator: Abstract; §2.1; §3.1-3.4, Tables 1-2; §4; Limitations; App. A.3, A.9, A.10
+- source: 'Chengguang Gan, Zimeng He, Yoshihiro Tsujii, Ken-ichiro Kobayashi, Hiroki Itoh, Kotaro Funakoshi,
+    "Auditing Web Agent Evaluation on WebArena-Lite: Human Review of Outcomes and Trajectories", https://arxiv.org/abs/2610.01491'
+  date: '2026-10-01'
+  task: 'Run all 165 WebArena-Lite tasks under GPT-5.5 (four settings: with and without procedural guide
+    text, 15 and 25 actions) and Qwen3.5-9B, keep the automatic evaluator''s score, correct its false
+    negatives by human review against environment evidence, label the primary failure mode of each failed
+    run, and track human-verified progress at every step'
+  effect: Across four GPT-5.5 settings, "manual review recovers 47 successful outcomes, an average of
+    11.75 tasks or 7.12 percentage points per setting", from 9 tasks (+5.45 points) to 14 (+8.49; 43 to
+    57 of 165 at 25 steps without guide text), or 15.5% to 24.6% of corrected successes; "common causes
+    include semantically correct answers rejected by strict formatting, successful state changes missed
+    by the final rule, and valid results followed by an incompatible stop or answer action". Of 102 failed
+    GPT-5.5 runs (25 steps, guide text), premature answers were 13 (12.7%) and invalid action formats
+    9 (8.8%). "Among 40 analyzable failures that exhaust the action budget, the mean maximum verified
+    progress is 56.2%; eight reach at least 80%, and none reaches 100%", while 7 of the 102 failed runs
+    claimed 100% progress in the agent's own memory.
+  conditions: WebArena-Lite (165 tasks, five sites); GPT-5.5 with the authors' memory-and-analysis mechanism,
+    one rollout per task per condition; human correction only for the GPT-5.5 settings, under written
+    rules with a second reviewer for ambiguous cases; corrections are not broken down by cause, so answer-format
+    rejections are mixed with missed state changes and invalid stop actions; the action-limit progress
+    analysis covers one condition
+  direction: mixed
+  measured: true
+  locator: Abstract; §4.1; §5.1, Table 1; §5.5, Table 6; §5.6, Table 7; §6; App. B
+- source: 'Hengxin Fan, "Capacity, Not Format: Rethinking Structured Reasoning Failures", https://arxiv.org/abs/2606.09410'
+  date: '2026-06-08'
+  task: Compare free chain-of-thought answers with JSON and XML answers (and an equally detailed prose
+    control) across four API models and five benchmarks, then test a token-budget ablation, reasoning
+    first and formatting second, production structured-output modes (API JSON mode, forced function calling,
+    two-round tool submission) and Claude Opus 4.7 on AIME and GPQA Diamond
+  effect: 'MATH-Hard (100 Level 5 problems), chain of thought against a 1,774-character JSON schema, 3-run
+    means: Claude Sonnet 4.6 89.3% against 88.7%; Claude Haiku 4.5 88.7% against 52.5% (-36.2 points);
+    GPT-4o-mini 62.3% against 34.3% (-28.0); GPT-4o 56.2% against 44.0% (Table 1). Haiku hit the 2,048-token
+    limit on 49% of heavy-JSON responses, and raising max_tokens to 8,192 lifted it to 84.0% (4.7 points
+    below chain of thought); GPT-4o-mini went from 34% to 36% with 0% truncation at both budgets (Table
+    9). Reasoning first and formatting second recovered 80% (Haiku) and 87% (GPT-4o-mini) of the lost
+    accuracy (Table 4). GPT-4o-mini production modes: chain of thought 60%, API JSON mode 51% (not significant),
+    instruction JSON 34%, forced function calling 10%, where "models in practice emit only tool-call arguments
+    without reasoning content" (Table 3); a two-round tool submission scored 59%, and Claude''s text-plus-tool
+    format 88% for Haiku (Table 11). Claude Opus 4.7: AIME 2020-2024 (133 problems) 96.2% to 91.0% under
+    JSON (5.3 points, p = 0.092), GPQA Diamond 4.0 points (p = 0.169), pooled p = 0.024 (post hoc); with
+    extended thinking, JSON rose to 94.7%, a 2.3-point gap (not significant) (Table 10). No parse failures
+    among generated responses.'
+  conditions: Claude Sonnet 4.6, Claude Haiku 4.5, GPT-4o and GPT-4o-mini, plus Claude Opus 4.7 probes;
+    GSM8K, MATH Level 5 and two BBH tasks (100 problems each) and MMLU-Pro (300); temperature 0 with two
+    reruns at 0.3 for key cells, single runs elsewhere (including the production-mode and Opus comparisons);
+    closed API models only, no grammar-constrained decoding, mostly math; single author
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1-3.4; §4.1, Table 1; §4.4, Table 3; §4.5, Table 4; §5.3, Tables 9-10; §5.4, Table
+    11; §5.5
 related:
 - 3.a.iv
 - 7.b.iii
+- 7.b.i
 - 9.b.iii
 - 7.b.ii
 - 2.b.i
@@ -278,13 +430,18 @@ provenance:
   sub_type: parsing
   harness_role: submission
   action: fix
-caveats: 'Most of the evidence comes from single-call benchmarks, not agent loops: no outside study here
-  measures a final-answer turn at an agent''s turn cap, and the forced-answer result is one exploratory
-  probe on small models (up to 9B) whose parser fallback was added after inspecting failures, failing
-  its rule in 2 of 8 cells. Format costs depend on the model: three recent closed models paid little or
-  no format tax while every open-weight model tested did, Claude Sonnet 4.5 scored higher with answer-first
-  JSON on GSM8K (96.13% against 87.79%), and a thinking phase made 11 of 72 comparisons significantly
-  worse. The largest extraction effect (20.8% to 93.9%) is one subject and one model and changes the prompt
-  as well as the parser, and lenient fallback parsing is not a free fix: on one leaderboard it scored
-  models that ignored the format leniently and compliant ones strictly. In VeRO the format reminder alone
-  was mixed on GPQA (train 0.54 to 0.60, test 0.54 against a 0.61 baseline).'
+caveats: 'Most of the evidence comes from single-call benchmarks: no study here measures a forced final-answer
+  turn at an agent''s turn cap, the forced-answer results are small models on math (an exploratory probe
+  on models up to 9B whose fallback parser was added after inspecting failures, and a nine-token cue on
+  two 4B and 8B thinking models over 100 GSM8K questions, where 6 and 5 of the newly answered questions
+  were still wrong), and in the one agent audit none of the 40 GPT-5.5 runs that hit the action limit
+  had finished the task. Format costs depend on the model and on how hard the task is for it: Claude Haiku
+  4.5 paid little or no format tax in one study but lost 36.2 points on hard math in another (mostly output
+  cut off at 2,048 tokens), Claude Opus 4.7 lost 5.3 points on AIME (not significant on its own) while
+  Claude Sonnet 4.6 showed no significant loss, Claude Sonnet 4.5 scored higher with answer-first JSON
+  on GSM8K (96.13% against 87.79%), and a thinking phase made 11 of 72 comparisons significantly worse.
+  The largest extraction effect (20.8% to 93.9%) is one subject and one model and changes the prompt as
+  well as the parser, and the agent grader audit is one rollout per task on 165 tasks, with corrections
+  that mix answer formatting and missed state changes. The governance result comes from one corpus of
+  released multi-agent traces, and in VeRO the format reminder alone was mixed on GPQA (train 0.54 to
+  0.60, test 0.54 against a 0.61 baseline).'

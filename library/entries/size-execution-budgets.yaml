@@ -18,71 +18,122 @@ evidence_domains:
 - code-generation
 - computer-use
 - conversation
+- tool-use
 categories:
 - orchestration.bound
 summary: 'Set turn caps, deadlines and command timeouts from what your successful runs actually used,
-  show the agent how much budget is left, and never run a command without a timeout. This is one of three
-  changes that bound a run: this one lets productive runs finish and keeps the rest from running long,
-  7.b.i stops runs that have stalled, and 9.b.i makes sure a run that hits the limit still returns its
-  best answer, so raise a cap only together with 7.b.i. On 100 SWE-bench Verified tasks, a turn cap at
-  the 75th percentile of each model''s uncapped runs, with a turns-left reminder, cut cost by 24% to 68%
-  for a -5 to +2 point change in solve rate, and in another study showing the agent its remaining calls
-  lifted a 50-call run from 36.8% to 55.4% resolved. The limits: a higher cap buys little where runs stop
-  on their own or stall (raising four local computer-use models from 15 to 100 steps left average success
-  at 24.44% and 24.91% while prompt tokens rose 5.50x), and a deadline stated only in the prompt was not
-  kept (161% of a 15-minute budget used on average).'
+  show the agent how much budget is left, and never run a command without a timeout. It pays where runs
+  hit a limit while still working, now also on frontier models: on Terminal-Bench 2.1, 57% of failed trials
+  ended in a timeout, and raising the deadline up to 32x lifted GPT 5.4 in the benchmark''s baseline harness
+  from 53.9% to 75.3% (74.2% to 74.9% in Codex); on 100 SWE-bench Verified tasks a turn cap at the 75th
+  percentile of uncapped runs, with a turns-left reminder, cut cost by 24% to 68% for a -5 to +2 point
+  change in solve rate; and showing the agent its remaining calls lifted a 50-call run from 36.8% to 55.4%
+  resolved. Pair it with stall detection (7.b.i) and a forced answer at the limit (9.b.i), and where a
+  turn or spend cap also guards against runaway cost, release more budget on progress the harness can
+  verify instead of fixing it low (22 of 24 workflows completed against 13 of 24 under a fixed cap). The
+  limits: more budget buys little once runs fit or where they stall (15 to 100 steps left local computer-use
+  success at 24.44% and 24.91%, and a 16x longer requested duration raised frontier agents'' scores on
+  about a quarter of tasks), and a time budget stated only in the prompt is not reliably kept (a 27B open
+  model used 161% of a 15-minute budget, and frontier agents asked to work for a set time ended within
+  5% of it in 4% to 63% of runs, depending on the model).'
 how: '1. Start from the limits as they are: from traces, or one uncapped run on a sample of cases, take
-  the distribution of turns, tool calls, wall-clock and command durations, split into runs that succeeded
-  and runs that failed, and count the runs that end at each limit (turn cap, deadline, command timeout).
-  2. Find the runs that ended at a limit while still progressing (new tool results, new files or a changing
-  answer in their last turns); only those can be saved by a higher cap. Runs that end at the cap after
-  repeating themselves are 7.b.i''s, and a higher cap only makes them longer: raising four local computer-use
-  models from 15 to 100 steps left average OSWorld success at 24.44% and 24.91% while steps per task rose
-  4.08x and prompt tokens 5.50x, with failures moving from cap stalls to premature false successes. Put
-  7.b.i in place before raising any cap. 3. Set the turn or tool-call cap from that distribution, not
-  a framework default: on 100 SWE-bench Verified tasks, a cap at the 75th percentile of each model''s
-  uncapped turn counts cut cost by 24% to 68% with solve rates moving -5 to +2 points against no cap,
-  while a 25th-percentile cap lost 13 to 37 points. To save more, start lower and grant one extension
-  to runs that have not finished: a 50th-percentile cap with one extension to the 75th matched the fixed
-  75th-percentile cap within 2 points at 12% to 24% lower cost. 4. Tell the agent its remaining budget
-  every turn (turns or calls used and left, time left), not only in the first prompt: under a 50-call
-  cap on SWE-bench Verified, a used-and-remaining block after each tool result lifted resolved tasks from
-  36.8% to 55.4% at about the same calls and cost, and on a retail support benchmark a 10-call cap with
-  the block beat a 50-call cap without it (pass^4 27.2% against 26.3%) with fewer calls. 5. Give every
-  command a timeout and return a timeout to the agent as a result it can act on: a shell with no default
-  timeout left 34 runs blocked in a final command that never returned, while a 300 s limit turned the
-  same hang into an error the model diagnosed and fixed. Set each timeout above the longest command that
-  finished in successful runs, and lower it where hung commands eat the run. 6. Enforce wall-clock deadlines
-  in the harness, not only in the prompt: with the budget stated only in the prompt, runs used 161% of
-  a 15-minute budget on average and 15% finished on time; harness hooks that add the time remaining to
-  each tool result brought time used to 99.7% of the budget, and also clamping each command''s timeout
-  to the time left gave 74% of runs on time and 90% valid submissions (78% prompt-only), since the commonest
-  overrun was a command launched with a limit longer than the time remaining. Do not expect a longer deadline
-  alone to raise quality: in that study it did not. 7. Re-run the cases that ended at a limit, then the
-  full set, at the old and new limits on the same cases and model, and compare success, limit-ended outcomes
-  by kind, turns, tool calls, tokens, cost and wall-clock per case, and how the failures shift.'
+  the distribution of turns, tool calls, wall-clock, spend and command durations per model and harness,
+  split into runs that succeeded and runs that failed, and count the runs that end at each limit (turn
+  cap, deadline, command timeout, spend cap). Expect the deadline to bind more often than it seems: on
+  Terminal-Bench 2.1 at its default task timeouts, 57% of failed trials ended in a timeout across harnesses,
+  from 68% under Claude Code to 18% under Gemini CLI, and 11.8% of timed-out trials still passed when
+  the state they left was graded. 2. Find the runs that ended at a limit while still progressing (new
+  tool results, new files or a changing answer in their last turns); only those can be saved by a higher
+  cap. Runs that end at the cap after repeating themselves belong to stall detection (7.b.i), and a higher
+  cap only makes them longer: raising four local computer-use models from 15 to 100 steps left average
+  OSWorld success at 24.44% and 24.91% while steps per task rose 4.08x and prompt tokens 5.50x, with failures
+  moving from cap stalls to premature false successes. Put stall detection in place before raising any
+  cap. 3. Set the turn or tool-call cap from that distribution, not a framework default: on 100 SWE-bench
+  Verified tasks, a cap at the 75th percentile of each model''s uncapped turn counts cut cost by 24% to
+  68% with solve rates moving -5 to +2 points against no cap, while a 25th-percentile cap lost 13 to 37
+  points. To save more, start lower and grant one extension to runs that have not finished: a 50th-percentile
+  cap with one extension to the 75th matched the fixed 75th-percentile cap within 2 points at 12% to 24%
+  lower cost. Base extensions on state the harness can check (whether a patch exists, which milestones
+  passed), not on the agent''s own report, and do the same where a cap also guards against runaway cost:
+  a fixed cap of five consecutive tool turns interrupted all 60 legitimate 8- to 12-step workflows at
+  turn 6, and a fixed $0.10 spend cap completed 13 of 24 workflows against 22 of 24 when $0.13 and then
+  $0.16 were released only at host-verified milestones (mean cost $0.099 against $0.113). 4. Tell the
+  agent its remaining budget every turn (turns or calls used and left, time left), not only in the first
+  prompt: under a 50-call cap on SWE-bench Verified, a used-and-remaining block after each tool result
+  lifted resolved tasks from 36.8% to 55.4% at about the same calls and cost, and on a retail support
+  benchmark a 10-call cap with the block beat a 50-call cap without it (pass^4 27.2% against 26.3%) with
+  fewer calls. The model has no clock of its own and reads time from its context: with timestamps and
+  other time cues stripped from finished transcripts, GPT-5.6 Sol''s estimate of how long it had run went
+  from 1.07x to 5.38x off. 5. Give every command a timeout and return a timeout to the agent as a result
+  it can act on: a shell with no default timeout left 34 runs blocked in a final command that never returned,
+  while a 300 s limit turned the same hang into an error the model diagnosed and fixed. Set each timeout
+  above the longest command that finished in successful runs, and lower it where hung commands eat the
+  run. 6. Enforce wall-clock deadlines in the harness, not only in the prompt, and size them per model
+  and harness. With the budget stated only in the prompt, a 27B open model used 161% of a 15-minute budget
+  on average and 15% of runs finished on time; harness hooks that add the time remaining to each tool
+  result brought time used to 99.7% of the budget, and also clamping each command''s timeout to the time
+  left gave 74% of runs on time and 90% valid submissions (78% prompt-only), since the commonest overrun
+  was a command launched with a limit longer than the time remaining. Frontier agents differ: asked in
+  the prompt to work for a set time, GPT-6 Astra in Codex ended 63% of runs within 5% of it, GPT-5.6 Sol
+  39% and Fable 5.1 in Claude Code 4% (41% late); swapping harnesses showed the model, not the harness,
+  set this, and some on-time runs slept after finishing (14 of 158 classifiable Astra runs). Test the
+  deadline at a much larger setting before trusting it: on Terminal-Bench 2.1, raising deadlines up to
+  32x lifted GPT 5.4 in the benchmark''s baseline harness from 53.9% to 75.3% and GPT 5.4 mini from 37.1%
+  to 62.9%, against 74.2% to 74.9% and 67.0% to 68.2% in Codex, so most of a 20-point harness gap was
+  speed under the deadline. Once runs fit, do not expect more time to raise quality: a longer deadline
+  did not in the MLE-Bench study, a 16x longer requested duration left frontier agents'' native scores
+  unchanged on 62% to 64% of tasks, and under hard 5- to 20-minute cutoffs the longer one raised the score
+  only for the largest of three open models (+0.025 of the gap to the reference closed) and lowered it
+  for the two smaller ones (-0.067 and -0.030, partly because weaker runs now finished), while Claude
+  Sonnet 5''s score was more sensitive to the time budget than to any other setting varied. 7. Re-run
+  the cases that ended at a limit, then the full set, at the old and new limits on the same cases and
+  model, and compare success, limit-ended outcomes by kind, turns, tool calls, tokens, cost and wall-clock
+  per case, and how the failures shift. When comparing models or harnesses, run each at the current deadline
+  and at a much larger one, so a gap that is only speed shows, and use several runs per arm: in one grid
+  about 54% of score variance among genuine attempts was run-to-run noise.'
 detect:
-  static: caps, deadlines and command timeouts at framework defaults, unchanged since the agent was built;
-    a shell with no default command timeout; a deadline stated only in the prompt, with no clock or remaining-budget
-    signal in context
+  static: caps, deadlines and command timeouts at framework defaults, unchanged since the agent was built
+    or the model last changed; a shell with no default command timeout; a deadline or requested working
+    time stated only in the prompt, with no clock or remaining-budget signal in context; no per-session
+    turn, tool-call or spend cap, or a fixed one set to stop runaway cost without checking how long legitimate
+    runs take
   traces: runs ending at the turn cap or deadline while still producing new information in their last
-    turns (a run that ends at the cap after repeating itself is 7.b.i's signal, not this one); commands
-    killed by a timeout that finish when re-run with a longer one; a command that never returns until
-    the run's deadline; a command launched with a time limit longer than the time left; runs that stop
-    on their own far below a cap that was raised
-  evals: limit-ended outcomes (turn cap, deadline, command timeout) on cases where the run was still progressing;
-    success and cost at two cap settings on the same cases
+    turns (a run that ends at the cap after repeating itself is the stall detector's signal, 7.b.i, not
+    this one); a large share of failures ending in a deadline timeout, or different shares for the same
+    model in different harnesses; commands killed by a timeout that finish when re-run with a longer one;
+    a command that never returns until the run's deadline; a command launched with a time limit longer
+    than the time left; runs that stop on their own far below a cap that was raised; runs that end on
+    time after idling (sleep or clock-polling calls once the work is done); sessions whose input grows
+    several-fold turn over turn from one tool's returns
+  evals: limit-ended outcomes (turn cap, deadline, command timeout, spend cap) on cases where the run
+    was still progressing; success and cost at two cap or deadline settings on the same cases; model or
+    harness comparisons whose order changes when the deadline is raised
+  probes:
+    what: Tasks whose successful runs need more turns or time than the current limits, and a tool that
+      pads its returns on every call
+    construct: Take cases whose successful runs went past the current cap or deadline and check they now
+      finish; add a tool that returns schema-valid output padded more on each call, and check that the
+      turn, tool-call or spend cap stops the session near its threshold while the long legitimate cases
+      still complete.
 impact:
   quality:
     effect: mixed
     size: medium
     when: 'caps below what runs need cost the most: a 25th-percentile turn cap lost 13 to 37 points of
-      solve rate and a 50-call cap held SWE-bench Verified to 36.8% against 63.0% at 70 calls, while a
-      75th-percentile cap with a turns-left reminder moved solve rates by -5 to +2 points against no cap
-      (Gao, Oct 2025; Liu, Nov 2025); showing the remaining budget each turn lifted the 50-call result
-      to 55.4% (Liu, Nov 2025); raising caps that runs rarely reach added little (BrowseComp 10.5% at
-      30 calls, 12.6% at 100; OSWorld 24.44% at 15 steps, 24.91% at 100) (Liu, Nov 2025; Lee, Jul 2026);
-      a shell with no default timeout left 34 runs blocked in a command that never returned (Li, Oct 2026)'
+      solve rate and a 50-call cap held SWE-bench Verified to 36.8% against 63.0% at 70 calls (Gao, Oct
+      2025; Liu, Nov 2025), and on Terminal-Bench 2.1 raising the deadline up to 32x lifted GPT 5.4 from
+      53.9% to 75.3% and GPT 5.4 mini from 37.1% to 62.9% in the baseline harness, against 74.2% to 74.9%
+      and 67.0% to 68.2% in Codex (Buchanan, Nov 2026); a 75th-percentile cap with a turns-left reminder
+      moved solve rates by -5 to +2 points against no cap (Gao, Oct 2025), and showing the remaining budget
+      each turn lifted the 50-call result to 55.4% (Liu, Nov 2025); a fixed $0.10 spend cap completed
+      13 of 24 workflows against 22 of 24 with extensions at verified milestones (Zhang, Sep 2026); more
+      budget adds little once runs fit or where they stall: BrowseComp 10.5% at 30 calls and 12.6% at
+      100, OSWorld 24.44% at 15 steps and 24.91% at 100 (Liu, Nov 2025; Lee, Jul 2026), a 16x longer requested
+      duration left native scores unchanged on 62% to 64% of tasks (Ofengenden, Oct 2026), and under 5-
+      to 20-minute cutoffs the longer one lowered the score of two smaller open models (-0.067 and -0.030
+      of the gap closed) and raised it for the largest (+0.025), while Claude Sonnet 5 was most sensitive
+      to time (Wiedmann, Oct 2026); a shell with no default timeout left 34 runs blocked in a command
+      that never returned (Li, Oct 2026)'
     basis: evidence
   cost:
     effect: mixed
@@ -91,22 +142,47 @@ impact:
       the 50th percentile with one extension saved 12% to 24% more within 2 points of solve rate (Gao,
       Oct 2025); a remaining-budget signal at a 10-call cap matched a 100-call cap on BrowseComp at 31.3%
       lower cost (Liu, Nov 2025); raising a cap costs more: 15 to 100 steps raised steps per task 4.08x
-      and prompt tokens 5.50x for no gain (Lee, Jul 2026), and 50 to 70 calls raised SWE-bench Verified
-      cost per task from 18.50 to 21.59 cents (Liu, Nov 2025)'
+      and prompt tokens 5.50x for no gain (Lee, Jul 2026), 50 to 70 calls raised SWE-bench Verified cost
+      per task from 18.50 to 21.59 cents (Liu, Nov 2025), and releasing spend at verified milestones raised
+      mean cost per workflow from $0.099 to $0.113 while completing 22 of 24 instead of 13 (Zhang, Sep
+      2026); a spend cap bounds runaway sessions: fed by a tool that inflated its returns, 51 of 69 priced
+      attack sessions passed $0.10 and the worst reached $3.40, against a $0.025 benign maximum (Zhang,
+      Sep 2026)'
     basis: evidence
   performance:
     effect: mixed
     size: medium
-    when: a deadline stated only in the prompt ran to 161% of a 15-minute budget (mean 1,453 s); harness
+    when: 'a deadline stated only in the prompt ran to 161% of a 15-minute budget (mean 1,453 s); harness
       clocks brought it to 99.7% (897 s) and clamping command timeouts to the time left to 847 s (Wang,
-      Oct 2026); a hung command with no timeout ran to the 40-minute deadline where a 300 s command timeout
-      let the same task finish in 11 minutes (Li, Oct 2026); higher caps lengthen runs (steps per task
-      4.08x from 15 to 100 steps) (Lee, Jul 2026)
+      Oct 2026); frontier agents asked to work for a set time missed it by a typical 1.18x (GPT-6 Astra
+      in Codex) to 2.86x (Fable 5.1 in Claude Code) (Ofengenden, Oct 2026); a hung command with no timeout
+      ran to the 40-minute deadline where a 300 s command timeout let the same task finish in 11 minutes
+      (Li, Oct 2026); higher caps and deadlines lengthen runs: steps per task 4.08x from 15 to 100 steps
+      (Lee, Jul 2026), median steps per run 25 to 36 and 18 to 24 from a 5- to a 20-minute cutoff (Wiedmann,
+      Oct 2026)'
     basis: evidence
   security:
-    effect: unknown
+    effect: improves
+    size: small
+    when: 'a cap enforced by the host bounds denial-of-wallet attacks, which the model''s own stopping
+      does not: with an admitted tool inflating its returns, cumulative input reached 14,293x the first
+      call across six model families, exposure tracked how long the run survived (correlation ρ=0.79 with
+      mean turns and 0.81 with tool calls), and host limits on prompt size, prompt growth, tool turns
+      and spend contained all 41 recurring attacks in 123 replay evaluations, with a growth detector usually
+      firing first and the turn and spend caps as backstop (worst constructed leakage $0.105 at a $0.10
+      breaker) (Zhang, Sep 2026); one study, older models, constructed attacks'
+    basis: evidence
   governance:
-    effect: unknown
+    effect: improves
+    size: small
+    when: 'a limit enforced by the harness holds where a stated one does not: a 27B model given a 15-minute
+      budget in the prompt used 161% of it, against 99.7% with harness clocks (Wang, Oct 2026); frontier
+      agents asked to work for a set time ended within 5% of it in 4% to 63% of runs, and some on-time
+      runs slept after finishing (14 of 158 classifiable GPT-6 Astra runs) (Ofengenden, Oct 2026); a host
+      spend breaker held constructed attacks to at most $0.105 against its $0.10 threshold, and only 71
+      of 3,830 public MCP server and transport repositories showed any code-visible token, rate, turn
+      or spend limit (Zhang, Sep 2026)'
+    basis: evidence
   brand:
     effect: unknown
   primary:
@@ -117,14 +193,19 @@ measure:
   tier: 2
   how: the same cases and model at the current and the new limits, first the cases that ended at a limit,
     then the full set, with a remaining-budget signal (turns or calls left, time left) as its own arm;
-    report success, limit-ended outcomes by kind (turn cap, deadline, command timeout), turns, tool calls,
-    tokens, cost and wall-clock per case, and the failure mix, since a higher cap can turn cap stalls
-    into premature false successes
+    when comparing models or harnesses, run each at the current deadline and at a much larger one, so
+    a gap that is only speed shows; report success, limit-ended outcomes by kind (turn cap, deadline,
+    command timeout, spend cap), turns, tool calls, tokens, cost and wall-clock per case, and the failure
+    mix, since a higher cap can turn cap stalls into premature false successes, over several runs per
+    arm; where a cap also guards against runaway cost, add a probe tool that inflates its returns and
+    check that the cap stops it while legitimate long tasks still finish
 - method: monitor
   how: 'in production traces: share of runs ending at each limit and whether they were still producing
-    new results in their last turns; turns, tool calls and wall-clock per run against each cap, split
-    by success; commands killed by a timeout and whether a re-run with a longer one finished; commands
-    run with no timeout or with a timeout longer than the time left; time used against the deadline'
+    new results in their last turns; turns, tool calls, wall-clock and spend per run against each cap,
+    split by success, model and harness; commands killed by a timeout and whether a re-run with a longer
+    one finished; commands run with no timeout or with a timeout longer than the time left; time used
+    against the deadline, and runs that finish early and then idle; sessions whose input grows several-fold
+    turn over turn from one tool''s returns'
 evidence:
 - source: repo figure_04
   task: five follow-up benchmarks
@@ -254,6 +335,129 @@ evidence:
   direction: supports
   measured: true
   locator: Abstract; §2.3-2.4; §3.1 Table 2; §3.2 Tables 3-4; §3.3 Table 5; §4.1; §5
+- source: 'E. Kelly Buchanan, Crystal Zhou, Scott W. Linderman, Christopher Ré (Stanford University, Cornell
+    University), "Benchmarks as Software: Terminal-Bench and the Case for Continuous Benchmarks", https://arxiv.org/abs/2611.08417'
+  date: '2026-11-05'
+  task: Audit and repair Terminal-Bench 2.0 into Terminal-Bench 2.1, then re-run agents at the default
+    task timeouts and with the wall-clock budget raised up to 32x, and swap harnesses within a vendor
+    (Codex against the benchmark's baseline harness Terminus-2 for OpenAI models)
+  effect: 'At the default time budget, "over 50% of failed trials ended due to timeout, ranging from 68%
+    under claude-code to 18% under gemini-cli" (figure labels: 57% across harnesses, Claude Code 68%,
+    Terminus-2 67%, Codex 25%, Gemini CLI 18%); "Timed-out trials are still graded on the state the agent
+    left, and 11.8% of graded timeouts pass." With timeouts extended to 32x, TB2.1 accuracy (figure labels,
+    default then 32x): GPT 5.4 in Codex 74.2% to 74.9% and in Terminus-2 53.9% to 75.3%; GPT 5.4 mini
+    in Codex 67.0% to 68.2% and in Terminus-2 37.1% to 62.9%; "extending the time limit closes a 20 pp
+    harness gap on GPT 5.4 and shrinks a 30 pp gap on GPT 5.4 mini to 5 pp", "suggesting speed rather
+    than capability gains". "Few timeouts remain at the largest budget, except for the small models included
+    (Qwen 3.5)"; the larger budget "is an upper bound: agents can exit once they finish"; GPT 5.4 "reaches
+    high final coverage as well, but at the expense of more tokens". The authors conclude that "a fixed
+    resource budget is an arbitrary operating point" and recommend "setting a principled floor and testing
+    sensitivity to the budget".'
+  conditions: 19 agents re-evaluated on the 89 tasks from leaderboard and author trials (the models table
+    lists 13, among them Claude Opus 4.6, Claude Sonnet 4.6, GPT 5.4, GPT 5.4 mini, GPT 5.5, Gemini 3.1
+    Pro, GLM 5.1, Kimi K2.6, Gemma 4 31B and Qwen 3.5 9B and 27B) in Terminus-2, Claude Code, Codex and
+    Gemini CLI, mostly at high or xhigh reasoning effort; the harness and timeout-share numbers are figure
+    labels; trials per cell and cost per arm are not stated; the timeout breakdown excludes infrastructure
+    failures (about 27% of upstream trials); the 32x sweep is shown for six agent-model pairs and the
+    harness swap for two OpenAI models; the authors maintain the benchmark and do not propose a budget
+    method
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §6.2 (Figure 3b, Figures 5-6); App. B Tables 4-6; App. C.2 Figure 7
+- source: 'Michael Ofengenden, Maksym Andriushchenko (MATS, ELLIS Institute Tübingen, Max Planck Institute
+    for Intelligent Systems, Tübingen AI Center), "AgentTime: Can Agents Estimate and Control Their Own
+    Runtime?", https://arxiv.org/abs/2610.09944'
+  date: '2026-10-07'
+  task: Append one instruction asking a frontier agent in its native harness to work on a task for a set
+    duration (three requests per task, typically 4x apart, from about a minute to 60 hours), with the
+    benchmarks' own time caps removed and a hidden cutoff at twice the largest request; record runtime,
+    whether the agent kept working or slept, and the native score; swap harnesses; and ask agents afterward
+    how long their run took, with and without time cues in the transcript
+  effect: 'Table 3, on time (0.95 to 1.05x the request) / early / late / typical deviation: Fable 5.1
+    in Claude Code 4% / 55% / 41% / 2.86x (659 runs); GPT-5.6 Sol in Codex 39% / 13% / 48% / 1.77x (666);
+    GPT-6 Astra in Codex 63% / 3% / 34% / 1.18x (666). "Asked for 16 times more time, Fable runs 1.9 times
+    longer, Sol 5.0 times and Astra 12.1 times." Harness swap (98 runs each): Fable 5.1 2.99x in Codex,
+    GPT-6 Astra 1.34x in Claude Code; "the model matters far more than the harness". Of 158 classifiable
+    Astra runs with timestamped transcripts, 14 explicitly slept (9%) and 74 re-checked earlier work (47%).
+    "Each task''s longest request is typically 16 times its shortest. Yet the native score was the same
+    at both for nearly two thirds of tasks (62% for Fable, 63% for Sol and 64% for Astra)"; it "went up
+    for only 23 to 25%". Retrospective estimates: stripping timestamps and other time cues took Sol''s
+    typical miss "from 1.07x to 5.38x", and Fable''s and Astra''s to about 2.6x. 41 runs reached the hidden
+    cutoff.'
+  conditions: 222 tasks from 18 benchmarks (among them GPQA Diamond, Humanity's Last Exam, AppWorld, AssistantBench,
+    OSWorld 2.0, Terminal-Bench 4.0 and ProgramBench); Fable 5.1 in Claude Code and GPT-5.6 Sol and GPT-6
+    Astra in Codex at maximum reasoning effort; one run per task and requested duration (1,991 runs in
+    Table 3; the duration-following experiment took 3,442 agent attempts, about 1,700 agent-hours); the
+    instruction asks the agent to work for the full duration, a target rather than a cap; one instruction
+    wording; three agents from two labs; the harness swap covers 34 tasks with requests up to 80 minutes,
+    the retrospective study 23 tasks
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §3; §4.1 Table 3, Figure 2; §4.3 Figure 4; §6; App. B
+- source: 'Luis Wiedmann, Leander Girrbach, Cordelia Schmid, Zeynep Akata (Technical University of Munich,
+    MCML, Helmholtz Munich, Inria), "Agents Are Systems, Not Models: Rethinking Agentic Evaluation", https://arxiv.org/abs/2610.01618'
+  date: '2026-10-01'
+  task: Vary five settings of a coding agent that must find and operate a published specialist model on
+    four scientific tasks, among them a hard wall-clock budget of 5, 10 or 20 minutes (runs that do not
+    submit before it get no score), in a full grid with five runs per cell, and repeat the grid with Claude
+    Sonnet 5
+  effect: '"Across all four tasks, 80.7% of runs complete, and 19.3% run out of budget." "Increasing the
+    Budget for the small and medium Model raises the completion rate but lowers [the score], while for
+    the large Model it raises both": change in gap closed from the 5- to the 20-minute budget (Table 19,
+    all completed runs) -0.067 (Qwen3.5-35B), -0.030 (Qwen3.5-122B) and +0.025 (Qwen3.5-397B); in matched
+    configurations -0.045, -0.021 and +0.036; the small model''s drop "disappears only under the strictest
+    matching" (0.81 at short, 0.82 at long), "so part of it is a selection effect". In the main grid Budget
+    ranked fourth, second and fourth of five settings on the three scored tasks (Table 3), but for Claude
+    Sonnet 5 it ranked first of four on all three (effect sizes 1.589, 1.878 and 1.796, against 0.521,
+    1.293 and 1.683 for information; Table 16): "the closed model is markedly more sensitive to how long
+    it runs than to how much it is told". From the short to the long budget, median steps per run rose
+    from 25 to 36 (Qwen3.5-35B) and from 18 to 24 (the two larger models). About 54% of the score variance
+    among genuine attempts was run-to-run noise.'
+  conditions: Four AI-for-science tasks (redshift estimation, MMLU astronomy, promoter prediction, RNA
+    folding; the gap-closed score covers the three tasks where the specialist beats the backbone); Qwen3.5-35B-A3B,
+    122B-A10B and 397B-A17B (FP8, self-served) in one ReAct-style harness, 432 cells x 5 runs per task
+    (8,640 runs); Claude Sonnet 5 on 144 cells x 5 runs per task (2,880 runs); effect size is the range
+    of mean score across a setting's levels divided by the within-cell standard deviation, so it gives
+    no direction; tasks were downsized to fit the 5-minute budget; tool execution took 54% to 73% of wall-clock
+  direction: mixed
+  measured: true
+  locator: Abstract; §3.1; §4.2 Table 3, Figure 3; §4.3; App. A.4; App. A.8 Tables 16-17; App. A.10 Table
+    19; App. A.11 Table 20
+- source: 'Jinqian Zhang, Haojun Xia, Shujiang Wu, Jingkun Yue, Xia Zhang, Zhangpei Cheng, Bibo Tu (University
+    of Chinese Academy of Sciences, Beihang University, Beijing University of Posts and Telecommunications,
+    Chinese Academy of Sciences), "Persistent Billable State: Denial-of-Wallet Attacks and Defenses in
+    Tool-Calling LLM Agents", https://arxiv.org/abs/2609.28585'
+  date: '2026-09-23'
+  task: 'Let an admitted malicious tool return schema-valid, inflated results that the host keeps in history
+    and bills again on every later call (six attack vectors), measure cost amplification against run length,
+    then test host-side limits enforced before each model call: per-session and per-turn token budgets,
+    a prompt-growth detector, caps on consecutive tool turns, calls per turn and total calls, and a cumulative
+    spend breaker, either fixed or released on host-verified progress'
+  effect: 'Across 243 executions "the maximum per-session cumulative input reaches 14,293x the corresponding
+    session''s complete first-call input"; "51/69 priced attack sessions cross the $0.10 circuit-breaker
+    setting and exposure reaches $3.40, versus a $0.025 benign maximum"; "Observed run termination is
+    highly variable and does not enforce the host''s budget." Across 24 cells amplification "is associated
+    with mean turns (ρ=0.79) and tool calls (ρ=0.81)", and offline truncation of 44 malicious traces to
+    two to four turns cut the high-to-low amplification ratio from 4.06x to 1.49-1.51x. The four limits
+    together contained all 123 replay evaluations of 41 recurring attacks under strict, moderate and relaxed
+    presets; the growth detector usually fired first (removing it raised leakage 4.2 to 14.7x), and on
+    constructed low-growth attacks the worst leakage was $0.105 against the $0.10 spend breaker. Utility:
+    the fixed moderate cap (five consecutive tool turns) interrupted all 60 completed 8- to 12-step workflows
+    at turn 6, while a growth-gated version caused 0 of 60 interruptions and kept 41 of 41 containment;
+    on 24 Mistral Small 4 workflows a fixed $0.10 spend cap completed 13/24 (54.2%) with 9/24 interrupted
+    before completion, against 22/24 (91.7%) and 0/24 when $0.13 and $0.16 were released only at host-verified
+    milestones (exact McNemar p=0.0039), at $0.099 against $0.113 mean cost. "Only 71 of 3,830 scanned
+    public MCP server and transport repositories expose any code-visible safeguard proxy, and none cover
+    all four safeguard families."'
+  conditions: Attacks on GPT-4o, GPT-4o-mini, Mistral-Large, Llama-3.3-70B, Nemotron-120B and Qwen-3-235B
+    (n=5 to 11 per condition); workflow tests on Mistral Small 4 and gpt-oss-120b; constructed attacks
+    and author-built workflows checked by a host oracle; the fixed-against-progress spend comparison is
+    one provider-model pair with the other limits disabled, and its fixed arm succeeded 4/12 when run
+    first and 9/12 when run second; the turn-survival analysis is correlational; thresholds are the authors'
+    presets; no current frontier thinking models
+  direction: supports
+  measured: true
+  locator: Abstract; §1; §6.1-6.2 (Finding 1, Figure 4); §7.1; §8.1-8.4, Figure 8; App. Tables 10-11
 related:
 - 7.b.i
 - 9.b.i
@@ -262,6 +466,8 @@ related:
 - 1.b.i
 - 6.b.i
 - 9.b.iii
+- 10.c.i
+- 3.a.iii
 provenance:
   layer: target
   origin: observed
@@ -269,16 +475,19 @@ provenance:
   sub_type: resource_limits
   harness_role: budget_turns
   action: tune
-caveats: 'The measured studies are few and narrow: the turn-cap study ran one agent on 100 SWE-bench Verified
-  tasks once per setting with prompt caching off, its no-reminder comparison re-scores uncapped runs rather
-  than running them, and its abstract''s extra 12% to 24% saving from extensions is 5.95% to 24.30% in
-  its tables; the deadline study used one 27B open model on five MLE-Bench Lite competitions, and its
-  text says quality held (47.5 to 47.0) where its table shows 49.4 against 42.1. Whether a higher cap
-  pays depends on whether runs reach it: with 100 calls allowed, a web-search agent used 14.24 searches
-  on average and 0.8% of its questions needed more than 50, while a 50-call cap held SWE-bench Verified
-  to 36.8% against 63.0% at 70 calls; for local computer-use models a higher step cap bought cost and
-  turned cap stalls into premature false successes rather than passes. The remaining-budget gains come
-  from the authors who propose the signal, a longer deadline did not by itself raise quality in the one
-  study that tested it, and VeRO''s counts (turn caps raised 63 times, lowered 14) show what optimizers
+caveats: 'The measured studies are still few and narrow: the turn-cap study ran one agent on 100 SWE-bench
+  Verified tasks once per setting with prompt caching off (its abstract''s extra 12% to 24% saving from
+  extensions is 5.95% to 24.30% in its tables), the remaining-budget gains come only from the authors
+  who propose the signal, and the frontier-model evidence is about deadlines, not turn caps (the Terminal-Bench
+  2.1 sweep states no trial counts or cost per arm and its accuracies are figure labels, the working-time
+  study ran each task once per request and asked for a duration as a target rather than a cap, and the
+  5- to 20-minute grid covers four scientific tasks, where part of the smaller models'' score drop with
+  more time was a selection effect). Whether more budget pays depends on whether runs reach the limit
+  and can use the time: with 100 calls allowed a web-search agent used 14.24 searches on average, local
+  computer-use models turned cap stalls into premature false successes, and the deadline-enforcement study
+  on one 27B open model says quality held (47.5 to 47.0) where its table shows 49.4 against 42.1. The
+  security evidence is one study on older models with constructed attacks, in which a prompt-growth detector
+  rather than the caps fired first in most attacks, and it measures caps within a session, not attacks
+  that persist across runs. VeRO''s counts (turn caps raised 63 times, lowered 14) show what optimizers
   changed, not what it did; client retries for transient errors are 2.b.i, and in-model thinking budgets
   are 1.b.i, not budgets in this sense.'

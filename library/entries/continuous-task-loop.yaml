@@ -19,70 +19,101 @@ evidence_domains:
 - planning
 categories:
 - orchestration.loop
-summary: 'Run the coding agent from a shell or harness loop that starts a fresh headless session every
-  iteration with the same short prompt; each session reads the plan, progress notes and git history, does
-  one item, runs its tests, commits and exits, until an iteration cap, a budget or a stop rule ends the
-  run. It pays on long backlogs with a near-perfect automatic check: 16 such loops on Opus 4.6 built a
-  100,000-line C compiler that builds Linux 6.9 over nearly 2,000 sessions for just under $20,000, though
-  new features kept breaking existing ones and the author had to add a CI gate. In one controlled study,
-  a harness that rebuilt a fresh context for every invocation and assigned each next experiment reached
-  the strongest baseline''s kernel result with 93.1% fewer tokens, while a framework that resumed long-running
-  sessions kept spending until 1B tokens though its last improvement came at 231M. No study compares a
-  plain loop with one long session on the same backlog, and fresh contexts do not stop drift: across fresh-container
-  iterations code erosion rose in 77% of agent trajectories.'
+summary: 'Restart the coding agent in a fresh session for every item, from a shell loop, and let the repository
+  (plan, progress notes, git history) carry the state between sessions until a cap, budget or stop rule
+  ends the run. It pays on long backlogs with a near-perfect automatic check: 16 such loops on Opus 4.6
+  built a 100,000-line C compiler that builds Linux 6.9 over nearly 2,000 sessions for just under $20,000,
+  and on 112 long-horizon coding tasks restarting a fresh session on the remaining work raised Opus 4.7''s
+  resolve rate from 16.96% to 25.00%. On the strongest models restarting costs speed rather than final
+  quality: against one persistent session at the same budget, a fresh session per task matched final results
+  on Opus 5 and GPT-5.6-Sol but took 11.1 against 7.7 minutes to a first valid solution on Opus 5, and
+  a harness that rebuilt a fresh context for every invocation matched the strongest baseline with 93.1%
+  fewer tokens. The limits: no study compares the plain loop with one long session on the same backlog
+  at matched tokens, a Ralph loop scored lowest of four loop designs (7.84%) in a comparison not controlled
+  for model, new features kept breaking old ones until a CI gate was added, and code erosion rose in 77%
+  of agent trajectories across fresh-container iterations.'
 how: '1. Start from the baseline: the same backlog run as one long agent session with the harness''s own
   compaction, or an operator re-prompting it, and log where it stops: it waits for input, declares the
-  job done early, or fills its context. Use the loop only for a long list of checkable items with an automatic
-  check you trust, since the agent "will solve the wrong problem" unless the verifier is "nearly perfect"
-  (Carlini, Feb 2026); tests, type checkers and builds are the loop''s back pressure (Huntley, Jul 2025).
-  2. Start a new headless process every iteration with the same short prompt file, inside a container
-  that holds only the repository, and log each iteration to its own file: while true; do claude --dangerously-skip-permissions
+  job done early, or fills its context. On 112 long-horizon coding tasks one session "usually reaches
+  a shallow dependency prefix", and an outer loop that restarted a fresh session on the remaining work
+  raised resolve rate for every configuration but one (Opus 4.7 16.96% to 25.00%, GPT-5.5 14.29% to 21.43%)
+  (Li, Jul 2026). Use the loop only for a long list of checkable items with an automatic check you trust,
+  since the agent "will solve the wrong problem" unless the verifier is "nearly perfect" (Carlini, Feb
+  2026); tests, type checkers and builds are the loop''s back pressure (Huntley, Jul 2025). 2. Start a
+  new headless process every iteration with the same short prompt file, inside a container that holds
+  only the repository, and log each iteration to its own file: while true; do claude --dangerously-skip-permissions
   -p "$(cat AGENT_PROMPT.md)" &> agent_logs/agent_$(git rev-parse --short=6 HEAD).log; done (Carlini,
-  Feb 2026). Do not resume the previous session: the official Claude Code plugin re-feeds the prompt inside
-  one session through a stop hook (Anthropic, Nov 2025), and in a framework that resumed each agent''s
-  own session after restarts, agents that had declared their work optimal kept repeating that decision,
-  with 98% of the last 1,500 sessions making no tool calls (Zhang, Oct 2026). 3. Keep state in the repository,
-  not the conversation, and load the same files every iteration: the spec, a plan or fix list, a progress
-  file and README the agent updates, and the git log (see 4.b.iii). Ask for one item per iteration and
-  have the agent search the code before implementing, since a wrong "not implemented" conclusion produces
-  duplicate implementations (Huntley, Jul 2025). Letting the agent pick "the next most obvious" problem
-  works while failing tests are independent (Carlini, Feb 2026); in one controlled study a stateless planner
-  that assigned each next experiment from a harness-built summary beat independent worker choices in all
-  four checkpoint comparisons (Zhang, Oct 2026). For parallel loops, claim an item by pushing a lock file
-  through git so a second claim fails (Carlini, Feb 2026); posted notes did not stop two agents from building
-  the same feature twice (Zhang, Oct 2026). 4. Gate every commit: a CI run so new commits can''t break
-  existing tests (added once the agents began breaking existing functionality with each new feature),
-  a --fast mode that runs a 1% or 10% sample of the tests, deterministic per agent, for checks inside
-  an iteration, short test output with details in log files (see 7.b.ii), and a known-good oracle to split
-  a monolithic target (GCC compiled most of the kernel so agents could fix different files) (Carlini,
-  Feb 2026). Schedule cleanup as well: across fresh-container iterations structural erosion rose in 77%
-  of trajectories and verbosity in 75.5%, and quality prompts lowered the level but not the rate of decline
-  (Orlanski, Mar 2026); Carlini gave one agent the job of coalescing duplicate code. 5. Bound and stop
-  the run: always set an iteration cap (the plugin''s default is unlimited), a token or dollar budget
-  and a time limit per iteration; stop when the list is done and a check the agent does not control passes,
-  or when several iterations add no passing test or score gain, not on the agent''s own completion phrase
-  (the plugin''s exact-match phrase cannot express "blocked") (see 7.b.i, 7.b.iii, 9.b.iii). Budget for
-  scale: 16 loops used 2 billion input and 140 million output tokens, just under $20,000, over two weeks
-  (Carlini, Feb 2026). 6. Measure: run the baseline and the loop on the same backlog, model and dollar
-  budget; score with an end-to-end suite the agents never see plus complexity and duplication of the final
-  code, read at several budget points (one harness trailed on all four software tasks at 25% of the budget
-  and led on all four at 100%, Zhang, Oct 2026); per iteration, log tokens, dollars, commits, tests gained
-  and broken, iterations with no tool calls and tokens since the last improvement.'
+  Feb 2026). Prefer this to resuming one session: in a framework that resumed each agent''s own session
+  after restarts, agents that had declared their work optimal kept repeating that decision, with 98% of
+  the last 1,500 sessions making no tool calls (Zhang, Oct 2026). On the strongest models expect a fresh
+  session to start slower, not finish worse: against one session kept across related 30-minute tasks at
+  the same budget, a fresh session per task reached a first valid solution later (11.1 against 7.7 minutes
+  on Opus 5) but matched final results on Opus 5 and GPT-5.6-Sol (-0.9 and -0.8 points for the persistent
+  session, though it helped Sonnet 4.6 by 7.6) (Qin, Nov 2026). The official Claude Code plugin instead
+  re-feeds the prompt inside one session through a stop hook (Anthropic, Nov 2025): restating the same
+  goal inside one session until the agent declared it complete raised full-task success from 27.50% to
+  31.25% at 3.6 times the estimated cost, a gain absent in that benchmark''s first version (Wang, Aug
+  2026), and in a comparison not controlled for model a Ralph loop resolved 7.84% against 17.65% and 20.59%
+  for the Claude Code and Codex goal modes (Li, Jul 2026), so run both designs on your own backlog before
+  choosing. 3. Keep state in the repository, not the conversation, and load the same files every iteration:
+  the spec, a plan or fix list, a progress file and README the agent updates, and the git log (see 4.b.iii).
+  Ask for one item per iteration and have the agent search the code before implementing, since a wrong
+  "not implemented" conclusion produces duplicate implementations (Huntley, Jul 2025). Record failed attempts
+  as well as progress, and check each proposed change against them before an expensive run: a production
+  loop re-tested one setting at least six times "despite program.md explicitly stating" not to (Chandran,
+  Sep 2026), and agent-written insight notes handed to fresh sessions did not reliably improve final results
+  (Qin, Nov 2026). Letting the agent pick "the next most obvious" problem works while failing tests are
+  independent (Carlini, Feb 2026); in one controlled study a stateless planner that assigned each next
+  experiment from a harness-built summary beat independent worker choices in all four checkpoint comparisons
+  (Zhang, Oct 2026). For parallel loops, claim an item by pushing a lock file through git so a second
+  claim fails (Carlini, Feb 2026); posted notes did not stop two agents from building the same feature
+  twice (Zhang, Oct 2026). 4. Gate every commit: a CI run so new commits can''t break existing tests (added
+  once the agents began breaking existing functionality with each new feature), a --fast mode that runs
+  a 1% or 10% sample of the tests, deterministic per agent, for checks inside an iteration, short test
+  output with details in log files (see 7.b.ii), and a known-good oracle to split a monolithic target
+  (GCC compiled most of the kernel so agents could fix different files) (Carlini, Feb 2026). Keep every
+  completed item''s tests enforced as regression checks: regression events appeared under every loop design
+  tested, and agents wrote far fewer tests than the native suites (Li, Jul 2026). Where one iteration
+  costs hours, review the change before it runs: a pre-execution fixer caught 14 latent bugs in its first
+  pass, one of which would have run an 8-GPU job on one device for 10+ hours (Chandran, Sep 2026). Schedule
+  cleanup as well: across fresh-container iterations structural erosion rose in 77% of trajectories and
+  verbosity in 75.5%, and quality prompts lowered the level but not the rate of decline (Orlanski, Mar
+  2026); Carlini gave one agent the job of coalescing duplicate code. 5. Bound and stop the run: always
+  set an iteration cap (the plugin''s default is unlimited), a token or dollar budget and a time limit
+  per iteration; stop when the list is done and a check the agent does not control passes, not on the
+  agent''s own completion phrase (the plugin''s exact-match phrase cannot express "blocked") (see 7.b.i,
+  7.b.iii, 9.b.iii). Stop or page a person after a few consecutive failed iterations (one production loop
+  lost 11 in a row to an evaluator timeout "before a human intervened"), and redirect or stop when several
+  iterations add no passing test or score gain: one team''s trigger, no 8% relative gain over 5 iterations,
+  was chosen over windows of 3 ("too frequent (firing on noise)") and 8 ("too late") (Chandran, Sep 2026).
+  A model that reads a progress summary and decides the next step or the stop is no free fix: on full
+  coding tasks such controllers ranged from 24.17% (below the 27.50% of no control) to 36.25%, at up to
+  $34.68 against $9.47 per run for restating the goal (Wang, Aug 2026). Budget for scale: 16 loops used
+  2 billion input and 140 million output tokens, just under $20,000, over two weeks (Carlini, Feb 2026).
+  6. Measure: run the baseline, the in-session re-prompting design and the fresh-process loop on the same
+  backlog, model and dollar budget, several runs each; score with an end-to-end suite the agents never
+  see plus complexity and duplication of the final code, read at several budget points (one harness trailed
+  on all four software tasks at 25% of the budget and led on all four at 100%, Zhang, Oct 2026; a persistent
+  session''s mean lead of 24.0 points at 25% of the budget shrank to 1.2 at the deadline, Qin, Nov 2026);
+  per iteration, log tokens, dollars, wall time, commits, tests gained and broken, failed iterations,
+  iterations with no tool calls and tokens since the last improvement.'
 detect:
   static: A shell or harness loop that starts a headless agent each iteration with the same prompt file
     over a plan, task list or progress file, committing per iteration; whether it resumes the previous
     session (a stop hook or resume flag) or starts a fresh one; iteration, budget and time caps; permission
     prompts turned off outside a container.
-  traces: Iterations; commits; rate-limit events; iterations with no tool calls; tokens since the last
-    test or score gain; the same item claimed or built twice; previously passing tests broken; completion
-    claims while hidden tests fail.
+  traces: Iterations; commits; rate-limit events; iterations with no tool calls; consecutive failed iterations;
+    tokens since the last test or score gain; the same item claimed or built twice; approaches retried
+    after being recorded as failed; previously passing tests broken; completion claims while hidden tests
+    fail.
   evals: Throughput; defect rate of produced work.
   judge: Rate produced commits.
   probes:
     what: A queue with a poison task.
     construct: Include one unsolvable task and confirm the loop moves on; after the list is done, confirm
       it stops instead of adding unrequested work; commit a change that breaks a passing test and confirm
-      the gate rejects it.
+      the gate rejects it; record one approach as failed in the notes and confirm later sessions do not
+      retry it.
   primary:
   - traces
 impact:
@@ -92,10 +123,15 @@ impact:
     when: 'long backlogs with a near-perfect check: 16 loops built a 100,000-line C compiler that builds
       Linux 6.9 on x86, ARM and RISC-V and passes 99% of most compiler test suites, but its output is
       less efficient than GCC with all optimizations disabled and new features frequently broke existing
-      ones (Carlini, Feb 2026); a fresh-context harness had the best final result on every task, 1112.0
-      against 1275.7 kernel cycles for the strongest baseline (Zhang, Oct 2026); across fresh-container
+      ones (Carlini, Feb 2026); restarting a fresh session on the remaining work raised resolve rate from
+      16.96% to 25.00% for Opus 4.7 on 112 long-horizon tasks, but a Ralph loop resolved 7.84% against
+      17.65% to 24.11% for goal modes and dynamic workflows, not controlled for model (Li, Jul 2026);
+      a fresh session per task matched a persistent session''s final results on Opus 5 and GPT-5.6-Sol
+      and trailed it by 7.6 points on Sonnet 4.6 (Qin, Nov 2026); restating the goal inside one session
+      27.50% to 31.25% (Wang, Aug 2026); a fresh-context harness had the best final result on every task,
+      1112.0 against 1275.7 kernel cycles for the strongest baseline (Zhang, Oct 2026); across fresh-container
       iterations erosion rose in 77% of trajectories and core pass rate fell from 64.6% to 35.5% (Orlanski,
-      Mar 2026); no study against one long session on the same backlog'
+      Mar 2026); no study against one long session on the same backlog at matched tokens'
     basis: evidence
   cost:
     effect: degrades
@@ -103,17 +139,24 @@ impact:
     when: nearly 2,000 sessions, 2 billion input and 140 million output tokens, just under $20,000 (Carlini,
       Feb 2026); a framework resuming long sessions kept spending until 1B tokens after its last improvement
       at 231M, while a fresh-context harness reached the strongest baseline's kernel result with 67.9M
-      against 986.3M tokens and its planner used under 0.6% of tokens (Zhang, Oct 2026); mean cost per
-      iteration grew 2.2x from first to last checkpoint (Orlanski, Mar 2026)
+      against 986.3M tokens and its planner used under 0.6% of tokens (Zhang, Oct 2026); restating the
+      goal inside one session cost $9.47 against $2.61 per run, and a model controller up to $34.68 (Wang,
+      Aug 2026); 6.91M billed tokens per task for Opus 4.7 with fresh continuation rounds (Li, Jul 2026);
+      infrastructure failures cost 18% of iterations in one production loop (Chandran, Sep 2026); mean
+      cost per iteration grew 2.2x from first to last checkpoint (Orlanski, Mar 2026)
     basis: evidence
   performance:
     effect: mixed
     size: small
-    when: unattended runs of hours to weeks (two weeks for the compiler) replace operator turns, but each
-      fresh session spends significant time re-orienting on a large project and agents will spend hours
-      running tests without a sampled fast mode (Carlini, Feb 2026); going from 1 to 15 parallel workers
-      cut elapsed time 6.6 to 7.3x (Zhang, Oct 2026); no source compares wall time with one long session
-    basis: assessment
+    when: 'a fresh session per task reached a first valid solution later than one persistent session at
+      the same budget (11.1 against 7.7 minutes on Opus 5, 8.5 against 6.1 on GPT-5.6-Sol, 18.7 against
+      9.5 on Kimi K3) but largely caught up by the deadline, a mean gap of 1.2 points (Qin, Nov 2026);
+      unattended runs replace operator turns: 150+ experiments in three weeks in one production loop,
+      which also lost 11 consecutive iterations before a human intervened (Chandran, Sep 2026); each fresh
+      session spends significant time re-orienting on a large project and agents will spend hours running
+      tests without a sampled fast mode (Carlini, Feb 2026); going from 1 to 15 parallel workers cut elapsed
+      time 6.6 to 7.3x (Zhang, Oct 2026)'
+    basis: evidence
   security:
     effect: degrades
     size: medium
@@ -128,7 +171,9 @@ impact:
     when: 'each iteration leaves a commit, a log named by commit and lock files in git history (Carlini,
       Feb 2026), but no one reviews each commit and the agent''s own "done" is weak: "it is easy to see
       tests pass and assume the job is done, when this is rarely the case" (Carlini, Feb 2026); the vendor
-      plugin stops on an exact completion phrase and has no iteration cap by default (Anthropic, Nov 2025)'
+      plugin stops on an exact completion phrase and has no iteration cap by default (Anthropic, Nov 2025);
+      a production loop optimized its metric but "never questioned the metric", needed human QA between
+      runs and could not run "completely hands-free" (Chandran, Sep 2026)'
     basis: evidence
   brand:
     effect: none
@@ -139,15 +184,18 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired runs on the same backlog, model and dollar budget: one long session with compaction (or
-    resumed sessions), the fresh-process loop with state files, and the loop with a CI gate, assigned
-    next items and a stop-on-no-progress rule; score with an end-to-end suite the agents never see plus
-    cyclomatic complexity and duplicated code of the final tree, read at 25%, 50% and 100% of the budget;
-    report dollars per accepted commit, regressions introduced and human hours needed to finish'
+  how: 'paired runs on the same backlog, model and dollar budget, several runs each: one long session
+    with compaction (or resumed sessions), the same session re-prompted with the goal until a completion
+    phrase, the fresh-process loop with state files, and the loop with a CI gate, assigned next items
+    and a stop-on-no-progress rule; score with an end-to-end suite the agents never see plus cyclomatic
+    complexity and duplicated code of the final tree, read at 25%, 50% and 100% of the budget; report
+    time to the first passing item, dollars per accepted commit, regressions introduced and human hours
+    needed to finish'
 - method: monitor
   how: 'per iteration: tokens and dollars, wall time, tool calls (zero means idle), commits, tests gained
-    and broken, CI rejections, items claimed or built twice, rate-limit waits, tokens since the last improvement,
-    complexity and duplication trend, and completion claims checked against the hidden suite'
+    and broken, CI rejections, failed iterations in a row, approaches retried after being recorded as
+    failed, items claimed or built twice, rate-limit waits, tokens since the last improvement, complexity
+    and duplication trend, and completion claims checked against the hidden suite'
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -271,6 +319,116 @@ evidence:
   measured: false
   locator: Core Concept; Commands; Prompt Writing Best Practices (4. Escape Hatches); When to Use Ralph;
     Real-World Results; hooks/stop-hook.sh
+- source: 'Jeremy Qin, Ruizhi Deng, Mohamed Osama Ahmed, Frederick Tung, Leo Feng (RBC Borealis; ELLIS
+    Institute Tübingen and Max Planck Institute for Intelligent Systems), "From AutoResearch to Continual
+    AutoResearch: Do Agents Learn Across Tasks?", https://arxiv.org/abs/2611.05108'
+  date: '2026-11-03'
+  task: Ordered streams of three to five related machine-learning research tasks in nine families (synthetic
+    AutoML, symbolic regression, time-series forecasting, tabular AutoML), each an autoresearch loop with
+    a 30-minute wall-clock budget and hidden test scoring. The same agent either resumes one native session
+    and workspace across the stream (stateful) or starts a fresh session and clean workspace for every
+    task (reset), with task, model, environment, budget and evaluation matched; a memory ablation gives
+    fresh sessions agent-authored insight cards (matched, shuffled or none)
+  effect: 'Final outcome, stateful minus reset, in normalized reward points over 32 transfer tasks per
+    agent: Opus 5 -0.9, GPT-5.6-Sol -0.8, Kimi K3 +0.4, GPT-5.4 +0.2, Sonnet 4.6 +7.6 (reset outcomes
+    79.9, 80.5, 73.1, 72.9 and 70.3). Time-convergence gain was positive for all five (+3.0 to +21.3);
+    the mean best-reward gap fell from +24.0 points at 25% of the budget to +1.2 at the deadline, where
+    only Kimi K3 and Sonnet 4.6 stayed ahead. Time to first valid solution, stateful/reset: Opus 5 7.7/11.1
+    min, GPT-5.6-Sol 6.1/8.5, Kimi K3 9.5/18.7, Sonnet 4.6 7.7/16.3, GPT-5.4 8.4/9.2. With candidate counts
+    matched, the Opus 5 and GPT-5.6-Sol gains fell near zero. Insight cards given to fresh sessions changed
+    initialization and search but did not consistently improve final results; failure cases show agents
+    applying an earlier lesson too broadly. Persistence is "most valuable when budgets are tight".'
+  conditions: Sonnet 4.6 and Opus 5 in Claude Code, GPT-5.4 and GPT-5.6-Sol in Codex, Kimi K3 in OpenCode;
+    one matched run pair per agent except three for GPT-5.6-Sol (gains varied by at most 0.75 points for
+    outcome and 7.14 for time-convergence); separate related tasks rather than one backlog in one repository,
+    and the reset arm also loses its files, so it is a lower bound for a loop that keeps state in the
+    repository; 30-minute tasks; the authors' own benchmark
+  direction: mixed
+  measured: true
+  locator: §3.2; §5.1; §5.2 Table 2; §5.3; §5.5; §6.2; Appendix B.1 Tables 7-8
+- source: 'Han Li, Zhemin Fang, Rili Feng, Yingqi Zhao, Jiaheng Liu, Pengfei Gao, He Ye, Dayi Lin, Qingwei
+    Lin, Saravan Rajmohan, Dongmei Zhang (Microsoft, Nanjing University, University College London, Shanghai
+    Jiao Tong University), "LoopsBench: From Harness Engineering to Loop Engineering in Coding Agent Evaluation",
+    https://arxiv.org/abs/2608.00267'
+  date: '2026-07-31'
+  task: '112 long-horizon coding tasks (pull-request sequences, course labs, research-code evolutions;
+    over 5,300 development units; median dependency depth 6), each a dependency graph whose unit tests
+    are released as prerequisites pass and then kept as regression checks, with per-task wall-clock budgets
+    of 2 to 24 hours. Each model and loop runs as a single session, and again with an outer loop that
+    starts a fresh session on the residual work while keeping the workspace (the runtime default is three
+    rounds); a separate comparison of four loop designs: Codex goal mode, Claude Code goal mode, Claude
+    dynamic workflows and a Ralph loop'
+  effect: 'Resolve rate without and with the fresh-session outer loop: Opus 4.7 in Claude Code 16.96%
+    to 25.00%, GPT-5.5 in Codex 14.29% to 21.43%, GPT-5.4 in Codex 13.39% to 18.75%; it rose for every
+    configuration except Qwen2.5-72B (0.00% both), and test pass rate rose for all. Without the outer
+    loop "a single evaluated execution segment usually reaches a shallow dependency prefix"; "External
+    continuation reduces early stalls and increases partial progress". Loop designs: Claude dynamic workflows
+    24.11%, Codex goal mode 20.59%, Claude Code goal mode 17.65%, Ralph loop 7.84%, with 0.36, 0.34, 0.13
+    and 0.17 regression events per run; the four runs "are not a model controlled causal comparison".
+    Regression rate over previously passing obligations 7.11% for Claude Code and 4.83% for Codex; agents
+    wrote far fewer tests than the native suites. Mean billed tokens per task with continuation: 6.91M
+    (Opus 4.7), 8.36M (GPT-5.5).'
+  conditions: Twelve models across three vendor loops, eight models in Claude Code and six loops on GPT-5.4;
+    one trial per pairing (pass@3 in an appendix keeps the ordering); tokens reported only with continuation,
+    so the single-session arm is not budget-matched; in the four-loop comparison each loop ran its native
+    model (run identifiers indicate GPT-5.5, Opus 4.6, Opus 4.7 and Opus 4.8) on 102 or 112 tasks; benchmark
+    authors independent of the loop's originators
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.6; §3.1 Table 2; §3.2 Table 3; §3.3 Table 4; Appendix F; Appendix I Table 10;
+    Appendix J Table 11; Appendix N.2-N.3; Appendix Q
+- source: 'Yi Wang, Haopeng Zhang, Chengxiang Huang, Rui Dai, Kaikui Liu, Piotr Koniusz, Xiangxiang Chu
+    (Alibaba Group, Beijing University of Posts and Telecommunications, UNSW Sydney and CSIRO Data61),
+    "LoopArena: Benchmarking Models as Runtime Controllers for Loop Engineering", https://arxiv.org/abs/2608.28281'
+  date: '2026-08-28'
+  task: '80 full long-horizon coding tasks from SlopCodeBench, BeyondSWE and LoopsBench (and 80 task slices),
+    run by one fixed coding Worker in one persistent conversation with a 600-turn budget under three policies:
+    no control (the task once, run to completion); fixed control, inspired by Codex /goal (at every handoff
+    the harness restates the same goal and asks the Worker to continue, stopping when the Worker writes
+    the exact line "Goal complete."); and a model Controller that reads a summary after each round and
+    assigns the next work, asks for verification or stops'
+  effect: 'Full tasks, strict success and estimated cost per run without prompt caching: no control 27.50%
+    at $2.61; fixed control 31.25% at $9.47; Controllers from 24.17% (GLM 5.2) to 36.25% (GPT-5.5, $34.68),
+    Claude Opus 4.8 33.75% at $20.63 and Qwen3.6-35B-A3B 33.75% at $11.58. Task slices: no control 49.17%,
+    fixed control 55.00%, best Controller 58.75% (Opus 4.8). The cheapest Controller calls ($0.15 per
+    run, DeepSeek-V4-Flash) came with a $32.66 run, 93.53% of it Worker cost. In the first version (Aug
+    2026), fixed control matched no control on full tasks (18.52% both, $5.58 against $2.01 per run).'
+  conditions: Worker and Reporter Qwen3.7-Plus in all main runs; three runs per policy and task; the Worker
+    keeps one conversation, so this measures continuing inside one session, not restarting a fresh process;
+    cost estimated from list prices without caching; numbers from v2 (Oct 2026), whose task panel and
+    results differ from v1; the authors' own benchmark
+  direction: mixed
+  measured: true
+  locator: §1; §2.2; §4.2; §5.1; §5.2 Tables 2-3; Appendix 11.4; Appendix 12; Appendix 17.6; v1 §5.2 Table
+    2
+- source: 'Aparajith Chandran, Juwon Kim, Saurav Jha, Pablo Castells, Florian Hottier (Amazon), "AutoResearch
+    at Production Scale: Failure Modes and a Multi-Agent Framework", https://arxiv.org/abs/2609.30541'
+  date: '2026-09-24'
+  task: 'Twelve weeks of unattended AutoResearch loops (an LLM edits a training script and keeps changes
+    that improve a held-out metric) on two production book-recommendation systems: System A with 9-19
+    hour multi-GPU iterations (60+ iterations over six runs), System B with 6-52 minute single-GPU iterations
+    (150+). A durable program file carries findings across jobs and context resets; a pre-execution Code
+    Fixer and a stagnation-triggered Criticizer were added as failure modes appeared'
+  effect: 'Failure incidence (Table II): infrastructure failures cost 18% of System A iterations and 37%
+    of System B''s worst run, including 11 consecutive failed iterations on an evaluator timeout "before
+    a human intervened". In System B the agent re-tested 100-epoch training at least six times "despite
+    program.md explicitly stating" not to, and in System A about five iterations were lost re-exploring
+    recorded failures; stagnation runs of 5+ iterations in both systems; 10 iterations spent on one unproductive
+    direction; none of 15 runs met all three usability criteria. The Criticizer fires when the best score
+    has not improved by 8% (relative) over 5 iterations: "3 iterations was too frequent (firing on noise);
+    8 iterations was too late". The Code Fixer corrected 14 latent bugs in its first pass, one of which
+    would have run an 8-GPU job on one device for 10+ hours. Single-agent code-level AutoResearch stalled
+    at 4.17% Recall@6 (1.10x the 3.79% hand-tuned baseline) "regardless of iteration count"; with both
+    added agents it peaked at 6.90% (1.82x; 1.63x mean across 11 evaluation dates). About 65% of System
+    B iterations were productive; 150+ experiments in three weeks; the authors estimate about 8 engineer-weeks
+    saved.'
+  conditions: Researcher claude-sonnet-4-6, Code Fixer and Criticizer claude-opus-4-6 (System A); one
+    production campaign with components added in sequence, so their effects are confounded with campaign
+    time; machine-learning experimentation against a scalar metric with an immutable evaluator, not a
+    code backlog; the authors' own deployment, independent of the loop's originators
+  direction: mixed
+  measured: true
+  locator: §I; §III-A to III-E, Table II; §IV (Criticizer; persistence); Table IV; §V Table V; §VI
 assessment:
   qa:
     unit: Iteration cap; rate-limit backoff.
@@ -317,6 +475,8 @@ related:
 - 6.b.iii
 - 5.c.ii
 - 10.a.i
+- 5.a.i
+- 7.d.ii
 provenance:
   layer: target
   origin: observed
@@ -324,13 +484,14 @@ provenance:
   sub_type: control_flow
   library_group: Control Flow
   library_source: catalog
-caveats: 'No study compares a plain fresh-process loop with one long session, or an operator re-prompting,
-  on the same backlog, model and budget: the largest account is one build judged by its author on the
-  vendor''s own model, and the one controlled comparison is an automated-research harness whose gain mixes
-  fresh contexts with planner-assigned work and harness summaries, with three runs on one task and one
-  run elsewhere. Fresh contexts do not stop drift: across fresh-container iterations code erosion rose
-  in 77% of agent trajectories (against 53% of human repositories) and quality prompts lowered the level
-  but not the rate, on a benchmark with a two-hour limit per run. The vendor''s own plugin loops inside
-  one session rather than restarting, and no source measures that design against a fresh process. What
-  the loop can finish depends on the model: earlier Opus 4 models "were barely capable of producing a
-  functional compiler" and Opus 4.5 could not compile real large projects.'
+caveats: 'Still no study runs the plain fresh-process loop against one long session with compaction on
+  the same backlog at matched tokens: the benchmark that adds fresh continuation rounds reports tokens
+  only with them, its four-loop comparison (Ralph loop lowest at 7.84%) is not controlled for model, and
+  the matched-budget persistent-versus-reset study uses separate 30-minute research tasks with one run
+  pair per agent. The in-session design''s measured gain is small and unstable: restating the goal raised
+  full-task success from 27.50% to 31.25% in the current version of one benchmark but matched no control
+  (18.52%) in its first version, both with one open worker model. Fresh contexts and durable notes do
+  not stop drift or repeats: erosion rose in 77% of agent trajectories, regressions appeared under every
+  loop design tested, and a production loop re-tested a failed setting at least six times despite a note
+  forbidding it. The largest builds are single runs judged by their authors, and what a loop can finish
+  depends on the model: earlier Opus 4 models "were barely capable of producing a functional compiler".'

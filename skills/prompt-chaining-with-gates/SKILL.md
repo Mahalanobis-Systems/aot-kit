@@ -76,6 +76,7 @@ Chains cost latency and tokens: on tasks a current strong model already solved, 
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:initializer-maintainer-agents` (4.b.ii, Initializer-maintainer dual agent)
 - `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

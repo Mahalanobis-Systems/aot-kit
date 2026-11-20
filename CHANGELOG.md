@@ -7,6 +7,8 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-20
+
 - 27 cards are revised from the Nov 11-19 refinements and the Nov 17 review, with 111 new
   sources (each dated, quoted and located in its entry; 66 of them contradict or are mixed on the
   entry): bound tool output (2.c.i, 4 new sources), fail-soft tools (2.b.i, 4), few-shot examples

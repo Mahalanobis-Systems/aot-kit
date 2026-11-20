@@ -21,94 +21,163 @@ evidence_domains:
 - retrieval
 - data-analysis
 - reasoning
+- incident-response
+- conversation
+- code-generation
+- tool-use
 categories:
 - orchestration.loop
-summary: 'Give the agent the goal, the tools and the acceptance checks and let it choose the sequence
-  of steps, instead of coding a fixed workflow; the goal, permissions, budget and evaluation stay outside
-  the agent. It pays when the path depends on what the agent finds and the model is strong: a GPT-5.5
-  optimizer that composed its own process beat two prescribed pipelines in 12 of 14 comparisons at a median
-  34.3% of the target-interaction budget, but a medium model did better with the pipeline. Where the procedure
-  is known and the constraints are hard, or the model is small, a coded workflow wins: 35.56% against
-  10.40% for same-model ReAct on TravelPlanner, and 45.3% against 6.7% for a 4B tool-calling agent on
-  WebArena-Verified at 98.6% lower cost. Agent-decided steps also cost more per task: 2.7x to 3.6x the
-  input tokens in one RAG comparison.'
+summary: 'Let the agent pick its own steps toward a goal, with the tools and acceptance checks, instead
+  of coding a fixed workflow; the goal, permissions, budget and checks stay outside it. It pays where
+  the next step depends on what the agent finds and the model is strong: on 90 microservice incidents,
+  harnesses that left every model call to the model ranked the root cause first in 65 to 77% of cases
+  against 16 to 53% for agents with hand-crafted procedures, and a GPT-5.5 optimizer that composed its
+  own process beat prescribed pipelines in 12 of 14 comparisons (a medium model did better with the pipeline).
+  Where the procedure is known, code should own it: a state machine that enforced a 200-account procedure
+  gave Claude Haiku 4.5 139.2 faithful and correct decisions against 48.4 for the best prompted baseline,
+  a coded workflow passed 35.56% of TravelPlanner against 10.40% for ReAct, and compiling an agent''s
+  logged runs into code kept 93.8% completion against 96.8% on 79 production procedures at 24% lower cost.
+  Agent-chosen routes also cost more than a workflow that calls the model only for bounded steps (2.7x
+  to 3.6x the input tokens in one RAG comparison) and can be steered: fake error messages redirected an
+  agent orchestrator to run an attacker''s code in 83 to 100% of trials until its permitted route was
+  fixed before untrusted data was read.'
 how: '1. Start from two baselines on the same model, tools and task set: the fixed workflow you have or
   would write (code picks the steps, the model fills bounded nodes) and an agent loop (7.d.iii) that gets
-  the goal, the same tools and the same acceptance checks and picks its own steps. 2. Keep the ends outside
-  the agent in both designs: the goal, permissions, budget caps and the acceptance check or evaluator,
-  so only the route is delegated. 3. Sort tasks by whether the path is known. Where the steps and constraints
-  are stable (a runbook, a recurring task family, hard business rules), code the path and enforce the
-  constraints in code: on TravelPlanner a coded workflow passed 35.56% against 10.40% for same-model ReAct,
-  and writing the same rules into the baselines'' prompts left them 12.7 to 20.2 points behind (37.20
-  against 17.00 to 24.50). Where the next step depends on what is found, let the agent choose: it rewrote
-  retrieval queries better than a fixed rewrite step (NDCG@10 55.6 against 52.8). 4. Delegate the route
-  only to a model that can carry it: a GPT-5.5 optimizer that composed its own process beat two prescribed
-  pipelines in 12 of 14 comparisons, but with a medium model the pipeline won by 3.50 to 9.68 points and
-  a 4B model produced no valid action; on WebArena-Verified, code-owned control held 44.7 to 45.3% while
-  a tool-calling agent scored 30.0% on a 120B model and 12.7% and 6.7% on 20B and 4B models. 5. Mix within
-  one task: keep fixed steps the agent does worse (a fixed reranker scored 49.5 NDCG@10 against 43.9 when
-  the agent re-retrieved on its own), and enforce preconditions on irreversible actions in code (10.b.i);
-  for a task family you run often, move recurring decisions out of the loop into code and keep the model
-  for the semantic steps (76.0 to 91.8% fewer LLM calls in one study). 6. Measure paired runs on the deployed
-  model and one cheaper tier: success, constraint violations, LLM calls, tokens and latency per task,
-  and spread over at least three runs; agent-orchestrated RAG used 2.7x to 3.6x the input tokens and 1.4x
-  to 1.5x the time of a fixed pipeline. Re-run the comparison when the model changes.'
+  the goal, the same tools and the same acceptance checks and picks its own steps. Add the cheapest arm,
+  one model call over evidence that code assembles: on 90 microservice incidents it ranked the root cause
+  first in 65.3% of cases, ahead of every agent with a hand-crafted procedure (53.3% at best), while agent
+  loops that chose what to read reached 72.8% and 77.2%. 2. Keep the ends outside the agent in both designs:
+  the goal, permissions, budget caps and the acceptance check or evaluator, so only the route is delegated.
+  Where the agent reads untrusted content, also fix which next steps are allowed before it reads any:
+  fake error messages in tool output redirected an agent orchestrator to run an attacker''s code in 83
+  to 100% of trials, least privilege still let 67 to 80% through because the attack used the task''s own
+  agents, and an LLM alignment check in its default setup let 87 to 100% of rephrased attacks through;
+  a graph of permitted agent calls generated from the request before any data was read, with up to three
+  rules per edge, blocked all of them at 2.5x the time per task, with benign success equal or higher on the attacked
+  coding tasks (97% against 93% on single-answer coding) and 62% against 65% in a separate AgentDojo
+  Slack test (6.c.ii,
+  10.c.i). 3. Sort tasks by whether the path is known. Where the next step depends on what is found (diagnosis,
+  open lookups), let the model choose what to read and compute: incident agents whose programs fixed at
+  least 10% and up to all of their model calls ranked the root cause first in 16 to 53% of cases against
+  65 to 77% for harnesses that fixed none, and in a case study the matched procedure never read the log
+  that held the answer; an agent also rewrote retrieval queries better than a fixed rewrite step (NDCG@10
+  55.6 against 52.8). Where the steps and constraints are stable (a runbook, an SOP, hard business rules),
+  code the path and enforce the constraints in code: on TravelPlanner a coded workflow passed 35.56% against
+  10.40% for same-model ReAct, and writing the same rules into the baselines'' prompts left them 12.7
+  to 20.2 points behind (37.20 against 17.00 to 24.50). 4. For a known procedure over a long unattended
+  run, keep its state in code and enforce it at three points: admit only the tools the current state permits,
+  check exit conditions before each transition, and refuse to end the turn until the work is done. Restating
+  the procedure or auto-resuming the agent only moved the drift to another shortcut (batching items, stopping
+  early, deciding without looking at the data); with all three gates Claude Haiku 4.5 made 139.2 faithful
+  and correct decisions on a 200-account batch against 48.4 for the best prompted baseline, while the
+  stop gate alone scored 5.7 and the other two gates alone 104.0. Close every route (one the gates left
+  open was used in 3 of 8 sessions) and keep checks no stricter than the policy: over-strict checks cut
+  tau2-bench retail successes from 15 to 9 of 30 while telecom rose from 13 to 30 of 40. The gain tracks
+  how much the plain agent drifts (12.9 decisions for a model that mostly held the procedure, 1 task in
+  100 on easy SWE-bench tasks at 23% more median time), so measure drift first. 5. Delegate the route
+  only to a model that can carry it, and upgrade the model before raising its effort: a GPT-5.5 optimizer
+  that composed its own process beat two prescribed pipelines in 12 of 14 comparisons, but with a medium
+  model the pipeline won by 3.50 to 9.68 points and a 4B model produced no valid action; on WebArena-Verified
+  code-owned control held 44.7 to 45.3% while a tool-calling agent scored 30.0% on a 120B model and 12.7%
+  and 6.7% on 20B and 4B models. In the incident study a stronger model raised first-rank accuracy 14.4
+  to 17.8 points with fewer calls and cut cases solved in only some of three passes from 32 to 36% to
+  7 to 8%, while more reasoning effort added 2.2 to 4.4 points at 1.5 to 4 times the wall time. 6. Mix
+  within one task and move recurring decisions into code: keep fixed steps the agent does worse (a fixed
+  reranker scored 49.5 NDCG@10 against 43.9 when the agent re-retrieved on its own), enforce preconditions
+  on irreversible actions in code (10.b.i), and for a procedure you run often, compile logged agent runs,
+  including the reason the agent wrote for each call, into a workflow in which code picks every step:
+  on 79 production procedures this kept 93.8% completion against 96.8% for the agent at 24% lower cost
+  per task, and on tau2-bench telecom 75.8% against 80.6% at 1.3 s against 170 s per task; the written
+  reasons added 8.8 and 6.2 points over tool calls alone. Another study learned recurring control as code
+  from failure traces and made 76.0 to 91.8% fewer LLM calls. 7. Measure paired runs on the deployed model
+  and one cheaper tier: success, procedure and constraint violations per window of a long run, hand-offs
+  and early stops, LLM calls, tokens and latency per task, and spread over at least three runs (three
+  passes of one agent on a mid-tier model scored 62%, 69% and 76%); agent-orchestrated RAG used 2.7x to
+  3.6x the input tokens and 1.4x to 1.5x the time of a fixed pipeline. Check tool outcomes, not completion
+  flags: a production agent''s web-tool calls succeeded 27.3% of the time (86.6% for the compiled workflow),
+  yet some of its runs with no successful call were marked complete. Re-run the comparison when the model
+  changes.'
 detect:
   static: Minimal orchestration code; the agent decides the sequence.
   traces: 'Variety of action sequences across tasks of the same type: one sequence recurring across most
     tasks suggests code could own the path; widely varying sequences on a known procedure suggest constraints
-    are being missed.'
-  evals: Success, constraint violations, LLM calls, tokens and latency per task for the agent loop against
-    a fixed workflow, per model tier.
+    are being missed; on a long run, items batched or skipped, decisions made without reading the data,
+    or an early stop after the first few dozen items suggest the procedure needs enforcing in code.'
+  evals: Success, procedure and constraint violations (per window across long runs), hand-offs and early
+    stops, LLM calls, tokens and latency per task for the agent loop against a fixed or enforced workflow,
+    per model tier.
   judge: Rate whether autonomy was used well.
   probes:
-    what: Tasks with a known procedure and hard constraints, and tasks whose next step depends on what
-      is found.
-    construct: Pair runbook-style tasks whose plans must satisfy rules (no repeats, a required order)
-      with open-ended lookups whose route cannot be fixed in advance; run both designs on both, on the
-      deployed model and a smaller one.
+    what: Tasks with a known procedure and hard constraints, run long enough to show drift; tasks whose
+      next step depends on what is found; tool output that fakes an error and proposes a different next
+      step.
+    construct: Pair runbook-style tasks whose plans must satisfy rules (no repeats, a required order,
+      one item at a time) in batches of hundreds of items with open-ended lookups or diagnoses whose route
+      cannot be fixed in advance; plant a tool result that reports a failure and tells the agent to call
+      another tool or agent; run both designs on both, on the deployed model and a smaller one.
   primary:
   - traces
 impact:
   quality:
     effect: mixed
     size: large
-    when: 'an agent-decided route wins with a strong model where the path depends on findings: 12 of 14
-      comparisons against prescribed pipelines with a GPT-5.5 optimizer (Xue, Aug 2026); query rewriting
-      NDCG@10 55.6 against 52.8 for a fixed step (Ferrazzi, Jan 2026). A coded workflow wins on known
-      procedures and with smaller models: 35.56% against 10.40% for ReAct on TravelPlanner (Qiu, Aug 2025);
-      a medium optimizer did 3.50 to 9.68 points better with the pipeline (Xue, Aug 2026); 45.3% against
-      6.7% for a 4B tool-calling agent on WebArena-Verified (Li, Sep 2026)'
+    when: 'an agent-decided route wins with a strong model where the path depends on findings: harnesses
+      that prescribed none of the model''s calls ranked the root cause first in 65 to 77% of 90 incidents
+      against 16 to 53% for hand-crafted procedure agents (Bi, Oct 2026); 12 of 14 comparisons against
+      prescribed pipelines with a GPT-5.5 optimizer (Xue, Aug 2026); query rewriting NDCG@10 55.6 against
+      52.8 for a fixed step (Ferrazzi, Jan 2026). Code-owned control wins on known procedures and with
+      smaller models: 139.2 against 48.4 faithful and correct decisions on a 200-account procedure with
+      an enforced state machine (Sun, Nov 2026); 35.56% against 10.40% for ReAct on TravelPlanner (Qiu,
+      Aug 2025); a medium optimizer did 3.50 to 9.68 points better with the pipeline (Xue, Aug 2026);
+      45.3% against 6.7% for a 4B tool-calling agent on WebArena-Verified (Li, Sep 2026). Compiling an
+      agent''s runs into code cost 3 to 5 points (93.8% against 96.8% completion, 75.8% against 80.6%
+      on tau2-bench telecom) (Hou, Nov 2026)'
     basis: evidence
   cost:
-    effect: degrades
+    effect: mixed
     size: medium
-    when: 'more model calls per task: code-owned control cut LLM calls by 76.0 to 91.8% and deployed cost
-      by 74.4 to 98.6% against a tool-calling agent, offline training excluded (Li, Sep 2026); agent-orchestrated
-      RAG used 2.7x to 3.6x the input tokens of a fixed pipeline (Ferrazzi, Jan 2026). Not always: an
-      agent-composed optimizer used a median 34.3% of a fixed pipeline''s target-interaction budget (Xue,
-      Aug 2026)'
+    when: 'more than a workflow that calls the model only for bounded steps: compiled workflows cut cost
+      per task 24% on 79 production procedures and planning calls from 12.1 per tau2-bench run to none
+      (Hou, Nov 2026); code-owned control cut LLM calls 76.0 to 91.8% and deployed cost 74.4 to 98.6%,
+      offline training excluded (Li, Sep 2026); agent-orchestrated RAG used 2.7x to 3.6x the input tokens
+      (Ferrazzi, Jan 2026). Not more than elaborate multi-call pipelines: among usable incident runs every
+      cost-Pareto run used a simple harness, from under one cent to about 26 cents per case (Bi, Oct 2026);
+      an agent-composed optimizer used a median 34.3% of a pipeline''s target-interaction budget (Xue,
+      Aug 2026); and enforcing a procedure cost 3.5x the free agent''s session, which had skipped work
+      (Sun, Nov 2026)'
     basis: evidence
   performance:
     effect: degrades
     size: medium
-    when: agent-orchestrated RAG took 1.4x to 1.5x the end-to-end time (Ferrazzi, Jan 2026); a tool-calling
+    when: 'choosing the next step took 37 to 43% of execution time for production agents with three to
+      five tools; compiled workflows ran tau2-bench tasks in 1.3 s against 170 s and cut median production
+      time from 68 s to 37 s, though mean time rose from 153 s to 163 s as more slow web calls succeeded
+      (Hou, Nov 2026); agent-orchestrated RAG took 1.4x to 1.5x the time (Ferrazzi, Jan 2026); a tool-calling
       agent took longer per task than a code-owned harness in all six settings (Li, Sep 2026); 14.0 steps
-      against 10.2 for a coded workflow (Qiu, Aug 2025)
+      against 10.2 for a coded workflow (Qiu, Aug 2025). Enforcing or bounding the route adds time too:
+      23% more median time on easy SWE-bench tasks (Sun, Nov 2026), 2.5x per task for a permitted-call
+      graph (Jha, Oct 2025)'
     basis: evidence
   security:
     effect: degrades
-    size: small
-    when: The agent picks each next action, so text in tool output can steer the sequence; contain input
-      (10.c.i) or fix the plan before reading it (6.c.ii).
-    basis: assessment
+    size: medium
+    when: 'the agent picks each next step, so text in tool output can steer the route: fake error messages
+      redirected an agent orchestrator to run an attacker''s code in 83 to 100% of trials and to copy
+      an outside address on an email in 67 to 89%; least privilege did not help where the attack used
+      the task''s own agents (67 to 89%), while a graph of permitted calls fixed from the request before
+      any data was read blocked all of them (Jha, Oct 2025; o4-mini and GPT-4o, 16 tasks). Contain input
+      (10.c.i) or fix the plan before reading it (6.c.ii)'
+    basis: evidence
   governance:
     effect: degrades
     size: medium
-    when: 'rules stated only in the prompt get broken: 835 commonsense-constraint violations for ReAct
-      against 11 for a coded workflow on 1,000 tasks (Qiu, Aug 2025); the agent''s route varied more than
-      a staged pipeline''s (larger edits and more churn in all 8 paired runs), though final pass/fail
-      agreement was at least 0.78 in 7 of 8 (Xue, Aug 2026)'
+    when: 'rules stated only in the prompt get broken, and restating them does not fix it: plain and prompted
+      agents decided 11.9% to 48.6% of their accounts by a stated procedure against 94.8% when a state
+      machine enforced it, and a customer-service agent ended 24 of its 27 failures by handing the customer
+      to a human (Sun, Nov 2026); 835 commonsense-constraint violations for ReAct against 11 for a coded
+      workflow on 1,000 tasks (Qiu, Aug 2025); the agent''s route varied more than a staged pipeline''s
+      (larger edits and more churn in all 8 paired runs), though final pass/fail agreement was at least
+      0.78 in 7 of 8 (Xue, Aug 2026)'
     basis: evidence
   brand:
     effect: none
@@ -119,13 +188,18 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired runs of the agent loop against a fixed workflow on the same model, tools, task set, budget
-    and acceptance checks, on the deployed model and one cheaper tier: success, constraint violations,
-    LLM calls, tokens and latency per task, and spread over at least three runs; report tasks with a known
-    procedure and tasks whose path depends on findings separately'
+  how: 'paired runs of the agent loop against a fixed or enforced workflow and one call over code-assembled
+    evidence, on the same model, tools, task set, budget and acceptance checks, on the deployed model
+    and one cheaper tier: success, procedure and constraint violations per window across long runs, hand-offs
+    and early stops, LLM calls, tokens and latency per task, and spread over at least three runs; report
+    tasks with a known procedure and tasks whose path depends on findings separately, score tool outcomes
+    rather than completion flags, and add tool output that fakes an error and proposes a different next
+    step'
 - method: monitor
-  how: distinct action sequences per task type, steps and cost per task, constraint and policy violations
-    caught by checks, cap-hit rate, and sequences that recur often enough to move into code
+  how: distinct action sequences per task type, steps and cost per task, procedure and policy violations
+    caught by checks, compliance late in long runs against early, hand-offs and early stops, cap-hit rate,
+    route transitions blocked by the permitted-call graph, and sequences that recur often enough to compile
+    into code
 evidence:
 - source: paper Table 6
   date: '2026-02'
@@ -215,6 +289,129 @@ evidence:
   direction: contradicts
   measured: true
   locator: Table I; Table II; Table IV; Table V; §IV-F
+- source: 'Kaiyuan Hou, Yang Ping Kuo, Indranil Bhattacharya, Rohith Nama, Arushi Gupta, Carlos D. Castillo,
+    Prathap Ramachandra, Xiaofan Jiang, Francesco Carbone (Amazon, Columbia University), "ReTrace: Distilling
+    Tool-Using Agents into Planner-Free Workflows", https://arxiv.org/abs/2611.14492'
+  date: '2026-11-10'
+  task: Turn an SOP and a few logged agent runs, including the reasoning the agent wrote with each tool
+    call, into a rule document and then an executable workflow in which code, not an LLM, picks each next
+    step; compare with the original agent, which plans every step, and with zero-shot, few-shot and trace-reuse
+    baselines
+  effect: '79 production procedures (platform-reported completion): workflow 93.8% against 96.8% for the
+    agent (paired difference -3.0 points, 95% CI -8.0 to 1.0), cost per task $0.096 against $0.127 (24%
+    lower), median time 37 s against 68 s but mean time 163 s against 153 s (web-tool calls succeeded
+    86.6% of the time against 27.3% for the agent, whose failed calls returned faster; some agent runs
+    with no successful tool call counted as complete). tau2-bench telecom, 40 test tasks: 75.8% against
+    80.6% (agent 95% CI 52.1 to 100.0), 1.3 s against 170 s per task, no planning calls against 12.1 per
+    run; three repair rounds lifted k=2 workflows from 66.7% to 81.2%. SOP-Bench, 8 procedures, 744 test
+    inputs: 80.6% against 85.5% for the agent (46.6 s per task), 87.8% at 0.40 s after repair with labeled
+    training failures. Removing the agent''s reasoning cost 8.8 points on the production set and 6.2 on
+    tau2-bench. On the authors'' platform 91.8% of 5,115 automations created April to June 2026 were agents
+    that plan at run time, yet seven of the ten most executed were fixed workflows; choosing the next
+    step took 37 to 43% of execution time for agents with three to five tools; the authors estimate construction
+    pays back after about 75 executions.'
+  conditions: 'Production platform (unnamed, the authors'' employer): 79 procedures, 20 construction and
+    up to 20 test inputs each, traces from the platform''s two-pass ReAct agent on Sonnet 4.0, k=3 traces;
+    tau2-bench telecom domain only, solo mode without a simulated user, traces and construction with Sonnet
+    4.6 (thinking on), k=4 chosen by cross-validation; SOP-Bench repair feedback includes training labels,
+    so not like-for-like; one workflow generation per trace sample, and one SOP-Bench procedure varied
+    by up to 50 points across trace samples; the authors'' own method'
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §4.1; §5.1 Tables 1, 2; §5.2; §5.3; §5.4; §7; App. L
+- source: 'Yutao Sun, Haokun Li, Mingshuai Chen, Guanyan Li, Zhongyi Wang, Shengchao Qin, Jianwei Yin,
+    "Keeping LLM Agents on Procedure: Executable Finite-State Control for Long-Horizon Instruction Fidelity",
+    https://arxiv.org/abs/2611.10884'
+  date: '2026-11-07'
+  task: Hold a procedure's state outside the model's context in an executable finite-state machine enforced
+    at tool calls (only the tools the current state permits), transitions (checks before the state advances)
+    and the end of the turn (no stopping before the work is done), against the same agent given the procedure
+    as text, restated in the system prompt or before every item, and with automatic resumption, in one
+    unattended Claude Code session
+  effect: 'SOP-Bench referral-abuse batch of 200 accounts, faithful and correct decisions (mean over seeds):
+    Claude Haiku 4.5 plain 9.4, best prompted baseline (reminder plus resumption) 48.4, FSM 139.2 (difference
+    90.9, 95% CI 46.2 to 130.2; 7 of 8 seeds); compliance 27.8% against 94.8%; session cost $3.01 against
+    $10.64 (plain $0.96). Baselines kept the procedure for a few dozen accounts, then batched accounts,
+    stopped early or decided without looking at the data. Sonnet 4.6: plain 108.3, resumed baseline 132.7,
+    FSM 187.7, at $20.89 against $53.26; the FSM beat the resumed baseline only in the one seed where
+    it batched, triggering the pre-registered falsification rule, and was strictly correct less often
+    (187.7 against 197.0). Qwen3.8-flash, which mostly held the procedure: 173.4 against 186.2. Haiku
+    4.5 with the FSM against plain Sonnet 4.6: 134.3 against 108.3 at $7.93 against $20.94 (positive in
+    1 of 3 seeds; 32.7 fewer strictly correct). Ablation: stop gate only 5.7 (the agent decided without
+    looking instead), tool and transition gates only 104.0; the one route the gates left open was used
+    in 3 of 8 sessions. SWE-bench Verified, Sonnet 4.6, enforced debugging procedure: 69 against 62 resolved
+    on 100 hard tasks (all 7 discordant tasks favored the FSM), 87 against 86 on 100 easy tasks with median
+    time 381 s against 310 s and mean cost $1.73 against $1.30. tau2-bench with gpt-5.4-mini: telecom
+    30 against 13 of 40, airline 17 against 17 of 22, banking 6 against 6 of 68, retail 9 against 15 of
+    30 where over-strict checks rejected valid order changes; the control agent ended 24 of its 27 telecom
+    failures with a transfer to a human.'
+  conditions: Claude Code 2.1.292 with default settings including automatic compaction; Haiku 4.5 eight
+    seeds for seven conditions, Sonnet 4.6 three seeds, Qwen3.8-flash eight seeds; pre-registered design,
+    metric and analysis; guards check which tools were called, for which account and in what order, not
+    the decision; one SOP task in the main experiment; on tau2-bench the FSM controller emits 62% of agent
+    turns, a gpt-5.4-mini judge scores both agents, and revised FSMs were evaluated on cohorts overlapping
+    development; SWE-bench hard set chosen by a heuristic, one run per task; the authors' own runtime
+  direction: contradicts
+  measured: true
+  locator: Abstract; §3; §4.1; §4.2 Table 1; §4.3 Table 2; §5.1 Table 3; §5.2 Table 4; §6
+- source: 'Tingzhu Bi, Xun Zhang, Jinglin Li, Ping Wang, Meng Ma, "Free to Look, Free to Reason: Simple
+    LLM Harnesses Outdiagnose Hand-Crafted Root Cause Analysis Agents", https://arxiv.org/abs/2610.35767'
+  date: '2026-10-26'
+  task: Compare three harnesses that prescribe none of the model's calls (one call over a rule-selected
+    evidence package, a SQL agent over the raw telemetry, the Codex CLI writing its own analysis code)
+    with five published root-cause-analysis agents whose programs fix part of the investigation (standard
+    operating procedures, fixed stages, role agents, votes) and with statistical and causal methods, on
+    the same incidents and models
+  effect: 'PR@1 (root cause ranked first), mean over three mid-tier models: Codex 77.2% (two models),
+    SQL agent 72.8%, one-shot 65.3%; published agents FoA 53.3%, RCAgent 49.3%, RCA-Agent 43.3%, DecompRCA
+    28.5%, mABC 15.6%; best non-LLM method 38.9%. Every simple harness led every published agent on each
+    model. The published agents'' programs issued from at least 0.10 (mABC) to 1.00 (DecompRCA) of their
+    model calls (FoA 0.51); in a case study the procedure FoA matched never read the logs that held the
+    answer. Simple harnesses across six models: 60 to 71% on GPT-6 Luna and Claude Haiku 5.5, 74 to 87%
+    on DeepSeek V4.1 Flash, GPT-6.1 Sol and GPT-6 Astra. Luna to Sol raised PR@1 14.4 to 17.8 points with
+    fewer calls and cut cases solved in only some of three passes from 32 to 36% to 7 to 8%; raising effort
+    above medium added 2.2 to 4.4 points at 1.5 to 4 times the wall time (1.5 to 7 times over all effort
+    levels). Among runs above the best non-LLM method, every Pareto-optimal run in cost or time used a
+    simple harness: Codex on Luna 68.9% for under one cent per case, Codex on Flash 85.6% for about five
+    cents, the SQL agent on Sol 85.6% in 45 s, Codex on Sol at xhigh 88.9% for about 26 cents and 277
+    s. The SQL agent on Luna cost $0.011 per case against $0.052 for one-shot, with 76 to 95% of agent
+    prompt tokens served from cache.'
+  conditions: RCAtlas core set, 90 validated incidents from eight public datasets (23 scenarios); GPT-6
+    Luna, DeepSeek V4.1 Flash and Claude Haiku 5.5 for all LLM methods (Codex not run on Haiku, mABC not
+    on DeepSeek); simple harnesses also on GPT-6.1 Sol, GPT-6 Astra (xhigh) and MiMo-V2.6-Pro; three passes
+    for Luna and Sol, one otherwise; three of five published agents reimplemented from their papers; top
+    frontier models (Fable, Opus, Argon) not run; the link between prescribed calls and accuracy is correlational;
+    independent of the published agents' authors
+  direction: supports
+  measured: true
+  locator: Abstract; §5 Table 2; §6.1 Tables 3, 4, 5; §6.2; §6.3 Table 6; §6.4 Figure 5; §6.5; §6.6; App.
+    B; §7
+- source: Rishi Jha, Harold Triedman, Justin Wagle, Vitaly Shmatikov (Cornell University, Microsoft),
+    "Breaking and Fixing Defenses Against Control-Flow Hijacking in Multi-Agent Systems", https://arxiv.org/abs/2510.17276
+  date: '2025-10-20'
+  task: 'Attack an orchestrator that chooses which agent to invoke next (Magentic-One on AutoGen) with
+    content that fakes an error and prescribes a fix that calls other agents; test least privilege, injection
+    filters and LLM alignment checks (LlamaFirewall), then ControlValve: before any untrusted content
+    is read, an LLM turns the request into a grammar of permitted agent-call sequences plus up to three
+    rules per edge, and every transition is checked against them at run time'
+  effect: 'Coding tasks, reverse-shell attack success: undefended 83 to 100% across eight attack templates,
+    least privilege 67 to 80%, LlamaFirewall in its default configuration 7 to 23% on the original attacks
+    but 87 to 100% on the authors'' rephrased ones (10 to 57% with o4-mini as checker), ControlValve 0%
+    on all. Computer-use tasks, adding an outside address to an outgoing email: undefended and least privilege
+    67 to 89%, ControlValve 0%; with vague, non-adversarial instructions in documents, internal-only data
+    went to an external address in 56% of runs undefended and 13% with ControlValve. Benign success: 97%
+    against 93% (coding, single-answer) and 100% against 89% (computer use); AgentDojo Slack 62% against
+    65% undefended, where a Slack hijack reached up to 56% against alignment checks and least privilege
+    and 0% against ControlValve. Time per benign AgentDojo task 128 s against 51 s undefended (86 to 107
+    s with alignment checks).'
+  conditions: 'Magentic-One with an o4-mini orchestrator and GPT-4o sub-agents; CFH-Hard: 10 coding and
+    6 computer-use tasks, three trials each, the authors'' own attacks; AgentDojo Slack adapted to multi-agent,
+    21 tasks, three trials; graphs and rules generated by an LLM and can be wrong; no adaptive attack
+    against the permitted-call graph; the authors'' own defense'
+  direction: contradicts
+  measured: true
+  locator: §2; §4; §5; §6.1 Table 1; §6.2; §6.4 Tables 2, 3; §6.5 Table 4; §6.6; App. B Tables 5, 6; App.
+    E Table 9
 assessment:
   qa:
     unit: null
@@ -259,6 +456,8 @@ related:
 - 1.b.i
 - 10.b.i
 - 4.c.ii
+- 10.c.i
+- 7.d.i
 provenance:
   layer: target
   origin: observed
@@ -266,11 +465,18 @@ provenance:
   sub_type: control_flow
   library_group: Control Flow
   library_source: catalog
-caveats: 'Each study is small or tests the authors'' own method: the optimizer comparison is one run per
-  cell, the RAG comparison caps a single-tool agent at three turns, the code-harness results have confidence-interval
-  half-widths of 7 to 13 points on 50 tasks and exclude the offline optimization cost, and the coded-workflow
-  paper encodes the benchmark scorer''s constraints and has a cross-model table whose caption and figures
-  disagree. The winner depends on the model and the task, so a result on one model tier does not transfer:
-  prescribed structure helped a medium model and was required for a weak one. The coded workflow''s advantage
-  narrowed on open-ended ScienceWorld tasks that need discovery, where both designs failed. The older
-  evidence here (a pattern-library listing and a definition) is unmeasured.'
+caveats: 'Each study is small or tests the authors'' own method: one optimization run per cell, a single-tool
+  RAG agent capped at three turns, code-harness results with confidence-interval half-widths of 7 to 13
+  points that exclude offline cost, a coded workflow that encodes the scorer''s constraints (with a cross-model
+  table whose caption and figures disagree), a state machine tested on one procedure (three seeds on Sonnet
+  4.6, where its pre-registered prediction against the resumed baseline failed), a compiled workflow whose
+  public test covers one tau2-bench domain of 40 tasks without a simulated user, and an injection study
+  of 16 tasks on o4-mini and GPT-4o with the authors'' own attacks. The winner depends on model tier and
+  task: prescribed structure helped a medium model and was required for a weak one, enforcement gained
+  little where the plain agent already held the procedure, the coded workflow''s lead narrowed on ScienceWorld
+  tasks that need discovery, and in the incident study one call over rule-selected evidence also beat
+  every hand-crafted agent, so part of that gain comes from not fixing the investigation rather than from
+  the loop. No study compares an agent-chosen route with a coded workflow at matched cost on the top frontier
+  models (the incident study stopped below them) in real business workflows; the production comparison
+  used a Sonnet 4.0 agent and the platform''s own completion flags, which counted some runs with no successful
+  tool call as complete. The older evidence here (a pattern-library listing and a definition) is unmeasured.'

@@ -18,71 +18,111 @@ evidence_domains:
 - planning
 - code-generation
 - tool-use
+- reasoning
 categories:
 - memory.reuse
-summary: 'Have the agent turn runs that passed a verifier into reusable skills (a code function or a SKILL.md
-  procedure), store them in a library, and on later tasks show it only the few a separate selection step
-  picks, reviewing what goes in and pruning what goes unused. It pays on recurring task families when
-  skills come from verified successes: skills distilled from an agent''s own successful runs raised success
-  on those tasks (Terminal-Bench-2 0.5935 to 0.7548 with GPT-5.3-Codex), but skills distilled from failed
-  runs fell below no experience, and skills a model wrote before attempting the task scored 8.1 to 11.5
-  points below no skills with Opus 4.7, GPT-5.5 and Gemini 3.1 Pro. Two costs grow with the library: agents
+summary: 'Turn runs that passed a verifier into reusable skills (a code function or a SKILL.md procedure),
+  keep them in a reviewed library, and show the agent only the few a separate selection step picks. It
+  pays on recurring task families when skills come from verified successes: compiling a run into code
+  cut tokens 74 to 81% at the same reward when the request recurred (Claude Sonnet 4.6 and Opus 4.8),
+  and skills distilled from an agent''s own successes raised success on the tasks they came from (Terminal-Bench-2
+  0.5935 to 0.7548 with GPT-5.3-Codex), but a library carried to new coding benchmarks added only 1.6
+  to 7.7 points, skills from failed runs alone or written before any attempt scored below no skills, and
+  an audit of automatic harness and skill evolution traced most reported gains to benchmark shortcuts
+  (54% on average) or extra inference (14%). Costs grow with the library and with how it learns: agents
   stop opening the right skill (loaded-skill recall 73.6% to 27.4% with 1,000 irrelevant skills listed)
-  unless a preselector chooses, and an agent that writes skills from retrieved ones copied planted malicious
-  code into its own library on 20.3% to 41.8% of tasks across six models.'
+  unless a preselector chooses, an agent copied planted malicious code into its own skills on 20.3% to
+  41.8% of tasks, and skills learned from users approving tasks they had asked for taught agents to obey
+  instructions planted in new content (attack success up 14.0 to 48.8 points).'
 how: '1. Start from the baseline: the same model and harness with no skill library, plus an arm with cleaned
   traces of past runs in context (cheaper: 95.3K fewer tokens per task than distilled skills, for 4.8
-  points less success in one study), on recurring task families with a deterministic verifier, scored
-  on held-out instances. Do not ask the model to write skills from what it already knows before it attempts
-  the task: such self-generated skills scored 8.1 to 11.5 points below no skills with Opus 4.7, GPT-5.5
-  and Gemini 3.1 Pro, because solvers never opened them or followed confident errors such as a hard-coded
-  1000x unit conversion. 2. Write a skill only from a run the verifier passed: distill the trajectory
-  into a code function or a SKILL.md (when to use it, preconditions, steps, failure modes, a verify step)
-  with task-specific paths and values replaced by placeholders. If failed runs feed the writer, label
-  them: skills distilled from failed runs alone fell below no experience in all six benchmark-model cells,
-  and hiding the success and failure labels cut Gemini 3.1 Pro on Terminal-Bench-2 from 0.7462 to 0.4000.
-  Voyager added a program only after self-verification passed, and removing self-verification cut discovered
-  items by 73%. 3. Gate admission: keep agent-authored skills in a quarantine that retrieval cannot see
-  until a reviewer or a signed admission step approves them, and tell the authoring agent that retrieved
-  skills are untrusted and that banner-style "REQUIRED PATTERN" or "DO NOT MODIFY" boilerplate must not
-  be copied (10.c.i). In one study that four-line instruction cut self-poisoning from 20.3% to 41.8% of
-  tasks to at most 6.7% with no significant loss in task completion, while a name blocklist caught none
-  of the authored copies and a code scanner fell to 7% after a one-line rewrite. 4. Retrieve a few skills
-  through a separate step instead of listing them all (the same deferral idea as 2.a.i): near 100 skills,
-  an LLM preselector over names and descriptions; at thousands, retrieval followed by an LLM selector;
-  expose a handful (at most five in the study). With 1,000 irrelevant skills listed, loaded-skill recall
-  fell from 73.6% to 27.4% although a selector given the same list found 73.9%; LLM preselection cut tokens
-  per run from 1,966k to 547k and added a median 8 to 41 seconds of routing; asking the agent to plan
-  its skill use first did less than preselection. 5. Prune and revise from telemetry: log which skills
-  each run opens and its outcome; retire skills that are never opened or whose runs keep failing, and
-  merge near-duplicates, since irrelevant descriptions suppress loading (masking them restored recall
-  from 18.3% to 63.3%) and similar skills are the hardest to tell apart (top-1 precision 70.5% to 53.4%
-  on similar pools). If a poisoned skill is found, scrub the agent-authored copies too: in one model the
-  infection rose to 68% of tasks after the planted seeds were removed. 6. Measure paired against the baseline,
-  same model and harness, on held-out tasks (not only the tasks the skills came from): pass rate, tokens
-  and time per task, loaded-skill recall, zero-load rate and the misapplied-skill rate (10.0% of skill
-  runs in one study); rerun with the library padded to its expected size and with planted-skill probes,
-  since task success can stay flat while skill use collapses (precision 29.6% to 3.3% with success 36.4%
-  to 39.3%).'
+  points less success in one study), on recurring task families with a deterministic verifier. Where writing
+  or using skills adds model calls, add a compute-matched arm that gives the plain agent the same extra
+  calls (more samples or attempts, 9.c.ii): in one audit of automatic harness and skill evolution, extra
+  inference explained 14% of gains on average and benchmark shortcuts 54%. Score on held-out tasks drawn
+  from other sources than the skills'' own (other repositories, benchmarks or task generators), since
+  held-out instances of the same benchmark share its shortcuts: there, held-out gains were smaller than
+  search-set gains in 13 of 15 settings and negative in 4, and choosing the evolved setup on a validation
+  split left the gap open in 14 of 16. Do not ask the model to write skills from what it already knows
+  before it attempts the task: such self-generated skills scored 8.1 to 11.5 points below no skills with
+  Opus 4.7, GPT-5.5 and Gemini 3.1 Pro, because solvers never opened them or followed confident errors
+  such as a hard-coded 1000x unit conversion. 2. Write a skill only from a run the verifier passed: distill
+  the trajectory into a code function or a SKILL.md (when to use it, preconditions, steps, failure modes,
+  a verify step) with task-specific paths and values replaced by placeholders. For a request that recurs
+  with new inputs, also compile the run into parameterized programs that take the request''s values as
+  inputs, replay them in a fresh sandbox before admitting them, and keep the SKILL.md as the fallback
+  when a program fails: in one study on 87 SkillsBench tasks in Claude Code, repeating a request with
+  such a compiled skill used 81% fewer tokens with Sonnet 4.6 and 74% with Opus 4.8 at the same reward,
+  against 54% and 49% fewer with the raw trace in context and 67% and 52% with a written procedure; compiling
+  paid for itself after 1.1 and 1.5 reuses, compiling a skill before any run used 1.24x the tokens of
+  plain skill use, and three compiled skills that hard-coded a request value gave wrong answers on changed
+  inputs. If failed runs feed the writer, label them: skills distilled from failed runs alone fell below
+  no experience in all six benchmark-model cells, and hiding the success and failure labels cut Gemini
+  3.1 Pro on Terminal-Bench-2 from 0.7462 to 0.4000; in a coding library, recovery skills built from failure
+  signatures that recurred across repositories accounted for 0.8 to 5.6 points of the gain. Voyager added
+  a program only after self-verification passed, and removing self-verification cut discovered items by
+  73%. 3. Gate admission: keep agent-authored skills in a quarantine that retrieval cannot see until a
+  reviewer or a signed admission step approves them. Reject candidates that carry task identifiers, hidden
+  answers or private paths, or that encode a benchmark shortcut (a recurring answer, a recipe keyed to
+  how the tasks were built): in one audit three different evolvers wrote the same multiple-choice shortcut
+  into code, a skill and a prompt, and 44% and 88% of a skill optimizer''s gain on two benchmarks was
+  shortcut. Check that each skill keeps the conditions under which its action is allowed: skills learned
+  from users approving tasks they had asked for in a file or message dropped the "only when asked" condition,
+  and attack success from instructions planted in new content rose 14.0 to 48.8 points across four models
+  with no attacker in the learning loop; adding approved episodes in which the agent left an unrequested
+  embedded task undone cut it from 35.0% to 5.8%, while delimiting tool output only lowered it from 97.5%
+  to 47.5% (0% before learning; both on one model, Qwen3.8-27B, on one file-creation task). Tell the authoring agent that retrieved skills are untrusted and that
+  banner-style "REQUIRED PATTERN" or "DO NOT MODIFY" boilerplate must not be copied (10.c.i): in one study
+  that four-line instruction cut self-poisoning from 20.3% to 41.8% of tasks to at most 6.7% with no significant
+  loss in task completion, while a name blocklist caught none of the authored copies and a code scanner
+  fell to 7% after a one-line rewrite. 4. Retrieve a few skills through a separate step instead of listing
+  them all (the same deferral idea as 2.a.i): near 100 skills, an LLM preselector over names and descriptions;
+  at thousands, retrieval followed by an LLM selector; expose a handful (at most five in the study). With
+  1,000 irrelevant skills listed, loaded-skill recall fell from 73.6% to 27.4% although a selector given
+  the same list found 73.9%; LLM preselection cut tokens per run from 1,966k to 547k and added a median
+  8 to 41 seconds of routing; asking the agent to plan its skill use first did less than preselection.
+  5. Prune and revise from telemetry: log which skills each run opens and its outcome; retire skills that
+  are never opened or whose runs keep failing, and merge near-duplicates, since irrelevant descriptions
+  suppress loading (masking them restored recall from 18.3% to 63.3%) and similar skills are the hardest
+  to tell apart (top-1 precision 70.5% to 53.4% on similar pools). If a poisoned skill is found, scrub
+  the agent-authored copies too: in one model the infection rose to 68% of tasks after the planted seeds
+  were removed. 6. Measure paired against the baseline and the compute-matched arm, same model and harness,
+  on held-out tasks from other sources than the skills'' own, over at least three runs: pass rate, tokens
+  and time per task (including authoring and compiling, and the reuses needed to repay them), loaded-skill
+  recall, zero-load rate and the misapplied-skill rate (10.0% of skill runs in one study). Expect small
+  transfer gains: a coding library evolved on SWE-Gym added 1.9 to 7.7 points on two other benchmarks
+  with GLM-5.2, 2.8 and 6.3 with GPT-5.5 and 1.6 and 1.8 with Opus 4.8, at 17% to 49% more words per task
+  than no skills. Rerun with the library padded to its expected size, with planted-skill probes and with
+  content that carries an instruction the user did not ask for, since task success can stay flat while
+  skill use collapses (precision 29.6% to 3.3% with success 36.4% to 39.3%) and the requested task can
+  succeed more often while unrequested actions rise (summary delivery 44.2% to 97.5% with an unauthorized
+  invite in 62.5% of conversations). Re-measure when the model changes.'
 detect:
   static: A skills directory or store the agent writes to after runs; skills written without a verifier
     outcome, or from the model's own knowledge before it attempts the task; new skills retrievable with
-    no review or quarantine; authoring that reads retrieved skills as templates; every skill's name and
-    description listed to the agent on every run.
+    no review or quarantine; authoring that reads retrieved skills as templates; skills learned from user
+    approval with no examples where the right action was to decline; compiled skill programs with request
+    values hard-coded; every skill's name and description listed to the agent on every run.
   traces: Skill reuse rate; skills authored per session; loaded-skill recall and zero-load rate per run;
     per-skill opens and outcomes; skills never opened; skills distilled from failed or unlabeled runs;
-    authored skills that copy retrieved code verbatim.
-  evals: Paired runs with and without the library on held-out tasks from recurring families (pass rate,
-    tokens, time); pass rate and loaded-skill recall as the library is padded with irrelevant skills.
+    authored skills that copy retrieved code verbatim; compiled programs handed back to the model; actions
+    the user's request did not ask for in runs that loaded a learned skill.
+  evals: Paired runs with and without the library, plus a compute-matched plain arm, on held-out tasks
+    from other sources than the skills' own (pass rate, tokens, time); pass rate and loaded-skill recall
+    as the library is padded with irrelevant skills.
   judge: 'Review each new skill before it becomes retrievable: task-specific paths or values baked in,
-    confident assumptions no verifier checked, boilerplate copied from retrieved skills, overlap with
-    existing skills.'
+    confident assumptions no verifier checked, shortcuts keyed to how the tasks were built (a recurring
+    answer, a fixed recipe), instructions to carry out whatever a file or message asks without the user''s
+    request, boilerplate copied from retrieved skills, overlap with existing skills.'
   probes:
-    what: Recurring task families; a growing library; planted skills.
+    what: Recurring task families; a growing library; planted skills; content carrying an instruction
+      the user did not ask for.
     construct: 'Five variants of one task family with a verifier: early runs write skills, later held-out
-      variants should open and benefit from them; the same probes with the library padded with irrelevant
-      skills; and a planted skill with copy-me boilerplate and a harmless callback, which no authored
-      skill should reproduce.'
+      variants (and variants from another source) should open and benefit from them; the same probes with
+      the library padded with irrelevant skills; a planted skill with copy-me boilerplate and a harmless
+      callback, which no authored skill should reproduce; and, after the agent learns from approved runs
+      of tasks the user asked for in a document, a new document asking for a harmless state change the
+      user did not request, which the agent should not make.'
   primary:
   - traces
   - evals
@@ -90,27 +130,38 @@ impact:
   quality:
     effect: mixed
     size: large
-    when: skills distilled from an agent's own successful runs raised success on the same tasks (Terminal-Bench-2
-      0.5935 to 0.7548 with GPT-5.3-Codex, 0.5000 to 0.7923 with Gemini 3.1 Pro), but skills from failed
-      runs fell below no experience in all six cells and hiding outcome labels cut 0.7462 to 0.4000 (Jiang,
-      Aug 2026); skills written before any attempt scored 8.1 to 11.5 points below no skills while curated
+    when: skills distilled from an agent's own successful runs raised success on the tasks they came from
+      (Terminal-Bench-2 0.5935 to 0.7548 with GPT-5.3-Codex, 0.5000 to 0.7923 with Gemini 3.1 Pro), but
+      skills from failed runs fell below no experience in all six cells and hiding outcome labels cut
+      0.7462 to 0.4000 (Jiang, Aug 2026); a coding library carried to new benchmarks added 1.9 to 7.7
+      points with GLM-5.2 and 1.6 to 6.3 with GPT-5.5 and Opus 4.8, while curated skills fell below no
+      skills on one benchmark (Gao, Oct 2026); in an audit of automatic harness and skill evolution, shortcuts
+      and extra inference explained 54% and 14% of gains, held-out gains were smaller in 13 of 15 settings,
+      and Opus 4.8 evolving its own harness gained nothing significant on SWE-bench Verified (Ding, Oct
+      2026); skills written before any attempt scored 8.1 to 11.5 points below no skills while curated
       ones added 18.2 to 24.8 (Li, Feb 2026); with 1,000 irrelevant skills listed, Pass@3 fell from 51.6%
       to 38.6% (Liu, Oct 2026); Voyager found 3.3x more unique items than prior agents (Wang, May 2023)
     basis: evidence
   cost:
     effect: mixed
-    size: medium
-    when: skills used 34.2K fewer tokens per task than the Raw arm but 95.3K more than cleaned traces
-      of the same runs, on 83 matched tasks (Jiang, Aug 2026); listing every skill's description raised
-      tokens per run from 498k to 1,966k with 1,000 irrelevant skills added, and an LLM preselector brought
-      it to 547k (Liu, Oct 2026)
+    size: large
+    when: compiling a completed run into programs cut tokens per repeated request 81% (Sonnet 4.6) and
+      74% (Opus 4.8) and cost 82% and 75%, against 54% and 49% fewer tokens for the raw trace in context,
+      and compiling was repaid after 1.1 and 1.5 reuses (Ni, Nov 2026); SKILL.md skills used 34.2K fewer
+      tokens per task than the Raw arm but 95.3K more than cleaned traces of the same runs, on 83 matched
+      tasks (Jiang, Aug 2026); a transferred coding library used 17% to 49% more words per task than no
+      skills (Gao, Oct 2026); listing every skill's description raised tokens per run from 498k to 1,966k
+      with 1,000 irrelevant skills added, and an LLM preselector brought it to 547k (Liu, Oct 2026)
     basis: evidence
   performance:
     effect: mixed
-    size: small
-    when: Voyager reached tech-tree milestones up to 15.3x faster, counted in prompting iterations, than
-      prior agents (Wang, May 2023); a run took 15.3 minutes with only the relevant skills and 17.0 with
-      1,000 more listed, and preselection adds a median 8 to 41 seconds of routing (Liu, Oct 2026)
+    size: medium
+    when: repeating a request with a compiled skill cut latency from 372 s to 103 s (Sonnet 4.6) and from
+      373 s to 113 s (Opus 4.8) (Ni, Nov 2026); Voyager reached tech-tree milestones up to 15.3x faster,
+      counted in prompting iterations, than prior agents (Wang, May 2023); a run took 15.3 minutes with
+      only the relevant skills and 17.0 with 1,000 more listed, and preselection adds a median 8 to 41
+      seconds of routing (Liu, Oct 2026); a transferred coding library added steps per task in all four
+      settings (58.4 against 52.4 up to 240.9 against 184.2) (Gao, Oct 2026)
     basis: evidence
   security:
     effect: degrades
@@ -119,16 +170,23 @@ impact:
       tasks across six open-weight models, leaving 4.9 to 9.0 times the planted count, and one model's
       infection rose to 68% after the plants were removed; a name blocklist caught 0 of 275 authored copies;
       a four-line counter-prompt cut it to at most 6.7%, and a curator-signed quarantine stops re-retrieval
-      (Wu, Aug 2026)
+      (Wu, Aug 2026); with no attacker in the learning loop, skills learned from users approving tasks
+      they had asked for raised attack success from instructions planted in new content by 14.0 to 48.8
+      points across four models; approved counterexamples cut it from 35.0% to 5.8%, and delimiting tool
+      output left 47.5% against 0% before learning, both on Qwen3.8-27B on one file-creation task (Wang,
+      Oct 2026)
     basis: evidence
   governance:
     effect: mixed
     size: medium
     when: 'skills are versioned files a reviewer can read, but task success hides library failure: skill-use
       precision fell from 29.6% to 3.3% as the pool grew from 5 to 100 while success moved from 36.4%
-      to 39.3% (Jiang, Aug 2026), and Claude Opus 4.6 kept Pass@3 at 62.2% (from 64.9%) while its loaded-skill
-      recall fell from 81.3% to 30.9% (Liu, Oct 2026); agent-authored skills bypass submission-side review
-      unless new entries wait in a curator-signed quarantine (Wu, Aug 2026)'
+      to 39.3% (Jiang, Aug 2026), Claude Opus 4.6 kept Pass@3 at 62.2% (from 64.9%) while its loaded-skill
+      recall fell from 81.3% to 30.9% (Liu, Oct 2026), and summary delivery rose from 44.2% to 97.5% while
+      an unauthorized invite ran in 62.5% of conversations (Wang, Oct 2026); three evolvers wrote the
+      same benchmark shortcut into code, a skill and a prompt, and held-out tests from the same benchmark
+      did not reveal it (Ding, Oct 2026); agent-authored skills bypass submission-side review unless new
+      entries wait in a curator-signed quarantine (Wu, Aug 2026)'
     basis: evidence
   brand:
     effect: none
@@ -139,17 +197,21 @@ impact:
 measure:
 - method: experiment
   tier: 4
-  how: 'paired runs, same model and harness: no library, the agent-built library, and where available
-    a curated library or cleaned traces of past runs, on held-out instances of recurring task families
-    scored by a deterministic verifier; pass rate, tokens and time per task, loaded-skill recall, zero-load
-    rate and misapplied-skill rate; repeat with the library padded to its expected size with irrelevant
-    skills, with implicit loading against a preselector, and with planted skills carrying copy-me boilerplate
-    and a harmless callback to measure how often authored skills reproduce them'
+  how: 'paired runs, same model and harness: no library, the agent-built library, a compute-matched plain
+    arm given the library''s extra calls, and where available a curated library or cleaned traces of past
+    runs, on held-out tasks from other sources than the skills'' own (other repositories or benchmarks),
+    scored by a deterministic verifier over at least three runs; pass rate, tokens, cost and time per
+    task including authoring and compiling, loaded-skill recall, zero-load rate and misapplied-skill rate;
+    audit admitted skills for benchmark shortcuts; repeat with the library padded to its expected size
+    with irrelevant skills, with implicit loading against a preselector, with planted skills carrying
+    copy-me boilerplate and a harmless callback, and with content that carries an instruction the user
+    did not ask for, and again after a model change'
 - method: monitor
   how: per-skill loads and outcomes, the zero-load rate on tasks that have a matching skill, skills never
-    opened (prune), skills admitted and rejected with their source run and verifier result, authored skills
-    that copy retrieved code or add network or credential access, and pass rate on the task families the
-    library serves
+    opened (prune), skills admitted and rejected with their source run and verifier result, compiled programs
+    handed back to the model and reuses per compiled skill, authored skills that copy retrieved code,
+    add network or credential access or tell the agent to carry out instructions found in content, actions
+    the user's request did not ask for, and pass rate on the task families the library serves
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -258,6 +320,115 @@ evidence:
   direction: contradicts
   measured: true
   locator: Abstract; §4; §5.1; App. D.6 Table 6; App. D.6.1
+- source: Jiayi Ni, Zac Wang, Alex Zhang, Zheng Liu, Roopa Prabhu (NVIDIA), "How Much Skill Orchestration
+    Can LLM Agents Compile Away? Execution-Grounded Specialization for Token-Efficient Skill Use", https://arxiv.org/abs/2611.10022
+  date: '2026-11-05'
+  task: Compile one completed skill-guided run into a capsule of parameterized programs and natural-language
+    steps, admit it only after structure, build and end-to-end replay checks in a fresh sandbox, run it
+    with a plan executor that returns to the model only for input, judgment or a failed program, and compare
+    a repeat of the same request with the cold run, with the raw trace in context and with a written procedure
+    compiled from the same trace
+  effect: '87 SkillsBench tasks, Claude Code, mean of 3 runs, warm against cold: tokens per task 1,313K
+    to 247K (-80.9%) with Sonnet 4.6 and 1,063K to 273K (-74.3%) with Opus 4.8; cost $0.90 to $0.17 and
+    $1.21 to $0.30; latency 372 s to 103 s and 373 s to 113 s; reward 0.538 to 0.546 and 0.692 to 0.690.
+    The raw trace in context cut tokens 54% and 49%, a written procedure 67% and 52%, at reward within
+    0.01 of cold. Compiling all 87 tasks cost $67 and $116, repaid after 1.1 and 1.5 reuses in aggregate
+    (median 1.3 and 2.2 per task). Compiling from the skill and request before any run used 1.24x the
+    tokens of plain skill use (more on 58 of 84 tasks). On 66 changed requests built from 24 tasks, tokens
+    fell 70% to 87% and reward changed by +0.01 to +0.15; three Sonnet capsules that hard-coded request
+    values gave wrong answers on changed inputs. Opus capsules raised three open-weight models'' reward
+    by 0.16 to 0.25 at 72% to 81% fewer tokens.'
+  conditions: SkillsBench, 87 tasks, human-written skills supplied with each task, Claude Code at medium
+    effort; capsules compiled by the same model from each completed run without verifier access; each
+    task's capsule is supplied, so retrieval from a growing library is not tested; changed-request probes
+    only from tasks whose cold run succeeded; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §3; §5.3; §7.1; §7.2 Table 2; §7.3 Table 3; §7.4; §7.5 Table 4; §7.6 Table 5; §8
+- source: 'Xinyan Wang, Xiaogeng Liu, Jun Shao, Chaowei Xiao, "Appreciation Teaches Unauthorized Execution:
+    Self-Evolution Degrades the Robustness of Personal Agents to Indirect Prompt Injection", https://arxiv.org/abs/2610.39122'
+  date: '2026-10-29'
+  task: Let a personal agent (OpenClaw) learn reusable skills (MetaClaw) or weights (OpenClaw-RL) from
+    conversations in which the user asks it to carry out a task written in a file or message and approves
+    the result, then test it on new content carrying a similar instruction the user did not ask for, with
+    controls on the feedback and a delimiting defense
+  effect: 'Attack success on new content, mean over five tasks, base to self-evolved: skill evolution
+    +14.0 to +48.8 points across four models (GPT-OSS-120B 4.7% to 53.5% after 12 conversations; GPT-OSS-20B
+    11.0% to 38.5%; Qwen3.8-27B 1.3% to 19.2%; Inkling-Small 2.2% to 16.2%), rising in 15 of 20 model-task
+    pairs; RL +3.0 to +39.3. Evolved skills dropped the condition that the user ask: in one library 7
+    of 17 skills prescribed executing instructions found in files and 8 more showed it in examples (87.5%
+    attack success), while another library from the same evolver kept the condition (0%). Controls (Qwen3.8-27B,
+    file creation): 0.0% without evolution, 35.8% after approval-only evolution, 35.0% with added plain
+    read-only approvals, 5.8% when the added approvals rewarded leaving an embedded, unrequested task
+    undone. With seven executing skills, harmful actions not seen in adaptation ran in 119 of 162 conversations
+    against 1 of 162 with an empty library. Delimiting tool output with an authorization rule lowered
+    attack success from 97.5% to 47.5% (base 0%). Primary-task metrics hid the effect: summary delivery
+    rose from 44.2% to 97.5% while an unauthorized invite ran in 62.5% of conversations.'
+  conditions: OpenClaw with MetaClaw skill evolution (GPT-5.2 as evolver) and OpenClaw-RL; executors Qwen3.8-27B,
+    GPT-OSS-120B, GPT-OSS-20B (skills only) and Inkling-Small; five tasks over files, e-mail and Slack
+    with simulated services, 40 new test instances each, sandboxing off; each library learned from 12
+    approved conversations, not months of use; results hold across three presentation orders; independent
+  direction: contradicts
+  measured: true
+  locator: Abstract; §1; §3; §4.1; §4.2 Table 1, Figure 3; §4.3 Table 2, Figure 4; §4.4; §4.5 Table 3;
+    App. C.5; App. D.3
+- source: Jun Gao, Yun Peng, Changhai Zhou, Yuhan Zhu, Xiangyu Zeng, Shiyang Zhang, Yuhua Zhou, Luozheng
+    Qin, Qian Qiao, Xiaoteng Ma, Baian Chen, Weiyi Shang, Zhen Ming Jack Jiang, Lizhi Liao, Xiaoxue Ren,
+    "Hierarchical Skill Evolution for Coding Agent", https://arxiv.org/abs/2610.35616
+  date: '2026-10-26'
+  task: Evolve ten skills (eight procedural skills from successful runs, two recovery skills from failure
+    signatures that recur across repositories) from a frozen coding agent's verifier-scored runs on 474
+    SWE-Gym tasks in ten repositories, with a writer and an evaluator that promote a candidate only with
+    repeated support and reject task identifiers or hidden patch content, then freeze the library and
+    apply it to other benchmarks, harnesses and models
+  effect: 'Frozen library on new benchmarks, GLM-5.2, mean of 3 runs: SWE-bench Verified 73.5% to 75.4%
+    (Pi harness) and 76.1% to 80.6% (Claude Code); DeepSWE 43.1% to 48.7% and 44.8% to 52.5%. Curated
+    SWE skills (49) scored 74.7% and 79.7% on SWE-bench Verified but fell below no skills on DeepSWE (34.5%
+    and 38.6%); GEPA 74.6% and 78.9%, 46.6% and 49.0%; ReasoningBank 72.8% and 76.6%, 44.0% and 46.0%.
+    Same library under Pi: GPT-5.5 82.6% to 85.4% and 67.2% to 73.5%; Opus 4.8 88.6% to 90.2% and 59.3%
+    to 61.1%. Removing the recovery skills cost 0.8 to 5.6 points and the procedural skills 1.2 to 4.7;
+    shuffling runs across repositories before aggregation cost 1.2 to 3.8. Words per task were higher
+    than with no skills in all four settings (385.1K against 314.7K and 662.6K against 454.0K on SWE-bench
+    Verified; 2.8M against 2.4M and 6.7M against 4.5M on DeepSWE) but lower than with the curated skills.
+    Updating the library from the target benchmark''s own runs, without verifier feedback, raised SWE-bench
+    Verified to 90.1% and 93.9% after eight rounds, scored on the same tasks.'
+  conditions: SWE-bench Verified (500 tasks) and DeepSWE (113 tasks); GLM-5.2 under Pi and Claude Code,
+    three runs; GPT-5.5 and Opus 4.8 only under Pi, number of runs not stated; costs counted in words
+    from one trace per task; skills built on SWE-Gym with a held-out validation repository; no compute-matched
+    arm; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §4; §5.1 Table 1; §5.2 Table 2; §5.3 Tables 3-4; §5.4 Tables 5-6; App. A Table 7;
+    App. B; App. E
+- source: 'Wenxuan Ding, Qin Lu, Changlong Yu, Sha Li, Shuowei Jin, Xin Liu, Zhenyu Shi, Greg Durrett
+    (Amazon, New York University), "Harness-Delta Attribution: Dissecting Gains From Harness Evolution",
+    https://arxiv.org/abs/2610.22466'
+  date: '2026-10-15'
+  task: Split the search-set gain of automatically evolved harnesses (skill documents, prompts, tools
+    and orchestration code) into benchmark shortcuts (disabled in the evolved harness and re-scored),
+    test-time scaling (the baseline given the evolved harness's inference budget) and a residual, and
+    score evolved harnesses on held-out tasks; frameworks are Meta-Harness, SkillOpt (edits only a skill
+    document) and AHE (Claude Opus 4.8 evolves its own prompts, tools, skills and memory)
+  effect: 'In the 21 of 25 settings with significant search-set gains, detected overfitting and test-time
+    scaling explained 54% and 14% of the gain on average, together over half in 14. SkillOpt (no added
+    inference): ALFWorld +46.2 points with 44% overfitting, LiveMath +45.7 with 88% overfitting, SWE-bench
+    Verified +10.4 for Qwen3-4B with none detected, and no significant gain in its other 3 settings. AHE
+    with Opus 4.8: LiveMath +48.6, all overfitting; CREATE +6.9 CU, 75% test-time scaling; SWE-bench Verified
+    no significant gain. All three frameworks wrote the same LiveMath shortcut (a meta-option correct
+    in 21 of 35 search questions) into code, a skill and a prompt. Excluding ALFWorld, held-out gains
+    were smaller than search-set gains in 13 of 15 settings, less than half in 8, and negative in 4; selecting
+    on a validation split raised held-out scores in 10 of 16 Meta-Harness settings, lowered them in 6,
+    and left the held-out gain below the search-set gain in 14 of 16. On ALFWorld 89% of the gain was
+    overfitting although held-out gains were close to search-set gains; a zero-LLM evolved controller
+    still passed 93.3% of held-out games.'
+  conditions: 11 executors, mostly Qwen3 to Qwen3.6 from 0.8B to 35B, plus Claude Haiku 4.5 and Opus 4.8
+    in some settings; Opus 4.8 as proposer; small splits (SWE-bench Verified 48 search, 24 validation,
+    50 test; LiveMath 35/18/124; ALFWorld 50/36/120; CREATE 120/80/561); overfitting is a lower bound
+    found by an analysis agent with human review; most settings evolve code or the whole harness, six
+    evolve a skill document alone; independent of the three frameworks
+  direction: contradicts
+  measured: true
+  locator: Abstract; §3; §4; §5 Table 1, Figures 4-5; App. B.2; App. D; App. E; App. G
 assessment:
   qa:
     unit: Skill loading.
@@ -303,6 +474,8 @@ related:
 - 10.c.i
 - 7.d.ii
 - 9.a.i
+- 9.c.ii
+- 7.a.ii
 provenance:
   layer: target
   origin: observed
@@ -310,13 +483,18 @@ provenance:
   sub_type: memory
   library_group: Learning
   library_source: catalog
-caveats: 'The positive evidence for agent-built skills is narrow: the strongest controlled gain scored
-  skills on the same tasks whose runs they were distilled from (tasks chosen because raw runs both passed
-  and failed), its 6.06-point lead is over cleaned traces with a lower bound of 0.76, and Voyager''s headline
-  compares its whole system, not the library alone, with GPT-4 in Minecraft. The self-generated deficit
-  comes from skills written before any attempt, so it does not test skills distilled from verified successes,
-  and one configuration ran that arm at a higher effort level. The poisoning study used six open-weight
-  models, attacker-planted seeds and an agent asked to author a tool on every task; the routing study
-  used curated SkillsBench skills with marketplace distractors, mostly on open-weight models with a 37-task
-  check on Claude Opus 4.6, Gemini 3.1 Pro and GPT-5.4. No source here measures an agent-grown library
-  over months of production use.'
+caveats: 'The positive evidence for agent-built skills is narrow and mostly from the methods'' own authors:
+  the largest controlled gain scored skills on the tasks whose runs they came from (its 6.06-point lead
+  over cleaned traces has a lower bound of 0.76), the one cross-benchmark transfer test covers a single
+  coding library (GPT-5.5 and Opus 4.8 under one harness, run count not stated, no compute-matched arm),
+  and the compiled-code savings come from repeating the same 87 requests plus 66 changed ones, with each
+  task''s skill supplied rather than retrieved. An independent audit found most gains from automatic harness
+  and skill evolution came from benchmark shortcuts or extra inference, though on small splits (50 held-out
+  SWE-bench tasks) with mostly small open-weight executors, and Voyager''s headline compares its whole
+  system, not the library alone, with GPT-4 in Minecraft. The security results use open-weight executors
+  (six models with attacker-planted seeds and an agent asked to author a tool on every task; four models
+  adapted from 12 approved conversations each, with sandboxing off), and the routing study used curated
+  skills with marketplace distractors, mostly on open-weight models with a 37-task check on Claude Opus
+  4.6, Gemini 3.1 Pro and GPT-5.4. No source here measures an agent-grown library over months of production
+  use, and the self-generated deficit comes from skills written before any attempt (one configuration
+  ran that arm at a higher effort level).'

@@ -18,56 +18,77 @@ domains:
 evidence_domains:
 - code-generation
 - planning
+- computer-use
 categories:
 - memory.resume
-summary: 'Give the first session of a multi-session build a setup-only prompt (expand the spec into a
-  JSON list of end-to-end tests, all failing, and write an init script, a progress file and a first commit)
-  and every later session a maintainer prompt that reads that state, re-tests what passed, builds one
-  failing item, verifies it end to end and commits. A separate up-front spec step pays when the model
-  would otherwise start building and under-scope, and it is cheap: Anthropic kept its planner on Opus
-  4.6 for that reason at $0.46 of a $124.70 run, and in one controlled study a planning call before a
-  single development pass raised a game-building score from 49.58 to 59.71. Freezing that first plan is
-  the weak part: in the same study a plan written once and built over three fresh sessions scored 63.39,
-  above 58.24 for one session continued for three passes but below 71.52 when each session replanned from
-  test results, and Cursor dropped its one-time planner as too rigid. No study compares the split with
-  one agent keeping the same state files (4.b.iii), Anthropic''s two "agents" differ only in their first
-  prompt, and strong models narrow the need: one Codex session ran about 25 hours on spec, plan and status
-  files.'
+summary: 'Have the first session of a long build write a failing end-to-end test list, an init script
+  and a progress file, and have every later session re-test what passed, build and verify one item, and
+  commit. It pays when the model would otherwise under-scope, one-shot or stop early, and when items count
+  as done only on a check the builder cannot write: a planning call before one development pass raised
+  a game-building score from 49.58 to 59.71, Anthropic kept its planner on Opus 4.6 at $0.46 of a $124.70
+  run, and a harness that kept the requirement list outside fresh one-subtask sessions and closed items
+  only on a read-only audit raised WeaveBench pass rate from 51.8% to 80.7% over one session with the
+  same model. Freezing the plan and letting agents edit their own checks are the weak parts: a plan frozen
+  after the first loop scored 63.39 against 71.52 when each loop replanned from test results, Cursor dropped
+  its one-time planner as too rigid, and in an agent factory whose agents filed 95% of new issues, 7 of
+  their 40 CI changes loosened checks. Strong models narrow the need, and no study compares the split
+  with one agent keeping the same state files (4.b.iii): one Codex session ran about 25 hours, and one
+  conversation with compaction delivered fully working full-stack products in 64.7% of builds with GPT-6.1
+  Sol.'
 how: '1. Start from one agent with one prompt that keeps the 4.b.iii state files (spec, plan, progress
   log, git history) in one continuous session with compaction, and log what goes wrong across a multi-session
   build: it starts building before it specs and under-scopes, tries to one-shot and runs out of context
   mid-feature, declares the job done early, or breaks features that had passed. A strong model may need
   nothing more: one Codex session with a spec, a milestone plan it wrote first, a runbook and a status
-  file ran about 25 hours. 2. If it under-scopes or one-shots, give the first session a setup-only prompt
-  on the same harness, tools and system prompt (in Anthropic''s version the first user prompt is the only
-  difference), chosen by the harness when no feature list exists yet. It expands the spec into a JSON
-  list of end-to-end tests ordered by priority, each with steps and all failing (over 200 for Anthropic''s
-  claude.ai clone), and writes an init script that installs, starts the app and runs a smoke test, a progress
-  file and a first git commit. Keep it at product level rather than implementation detail, since spec
-  errors cascade downstream; ask for a concrete number of items ("20-100 tasks", not "many"); and review
-  the spec itself, since a weak one set Cursor''s first browser on an architecture that could not grow
-  into a full browser. 3. Give every later session a maintainer prompt with a fixed contract: read the
-  progress file, the list and the git log; run the init script and re-test one or two core passing items,
-  marking any regression failing and fixing it first; take the highest-priority failing item and only
-  that; verify it end to end as a user would (browser automation for a web app); change only that item''s
-  status; commit, update the progress file and leave a merge-ready state. 4. Let the plan move with the
-  evidence instead of freezing it: allow each session, or a planning step at its start that cannot edit
-  code, to append items for defects and requirements the build exposes and to re-prioritize, never to
-  delete or weaken an item. In one study a plan frozen after the first loop scored 63.39 against 71.52
-  when it was revised each loop from test results. 5. Keep each role narrow: check each session''s work
-  outside the maintainer''s own pass flags (7.c.iii, 9.b.iii), and do not give one agent planning, coding,
-  review, merging and the completion decision at once; Cursor''s agent that held all of them stalled and
-  claimed premature completion. 6. Measure with paired runs on the same specs and model at matched sessions
-  and tokens: one agent with the 4.b.iii files, setup plus maintainer, and setup plus a maintainer that
-  may append items; score with an end-to-end suite the agents never see (features passing, spec features
-  never built, regressions reopened), plus tokens, the setup session''s share and wall time; re-run after
+  file ran about 25 hours, and one conversation with compaction built full-stack products over 9 to 18
+  feature requests, fully working in 64.7% of builds with GPT-6.1 Sol and 48.5% with Opus 5.5. Early stops
+  are the failure to look for: 26% of single-session program rebuilds submitted failing work with over
+  90% of their budget left. 2. If it under-scopes, one-shots or skips requirements, give the first session
+  a setup-only prompt on the same harness, tools and system prompt (in Anthropic''s version the first
+  user prompt is the only difference), chosen by the harness when no feature list exists yet. It expands
+  the spec into a JSON list of end-to-end tests ordered by priority, each with steps and all failing (over
+  200 for Anthropic''s claude.ai clone), with a test for every stated requirement, since agents skip what
+  no test checks: in one benchmark missed requirements were mostly those the visible tests left unclear,
+  and withholding the visible tests often cut complex rebuilds from 95% or more of held-out tests passed
+  to below 50%. It also writes an init script that installs from a clean environment, starts the app and
+  runs a smoke test, a progress file and a first git commit. Keep it at product level rather than implementation
+  detail, since spec errors cascade downstream; ask for a concrete number of items ("20-100 tasks", not
+  "many"); and review the spec itself, since a weak one set Cursor''s first browser on an architecture
+  that could not grow into a full browser. 3. Give every later session a maintainer prompt with a fixed
+  contract: read the progress file, the list and the git log; run the init script from a clean install
+  (fresh container, empty database) and re-test one or two core passing items, marking any regression
+  failing and fixing it first; take the highest-priority failing item and only that; verify it end to
+  end as a user would (browser automation for a web app); change only that item''s status; commit, update
+  the progress file and leave a merge-ready state. The clean install matters: in one benchmark''s reference
+  runs every build that failed all of its test plans used a database table before creating it, which only
+  a clean install exposes. 4. Let the plan move with the evidence instead of freezing it: allow each session,
+  or a planning step at its start that cannot edit code, to append items for defects and requirements
+  the build exposes and to re-prioritize, never to delete or weaken an item. In one study a plan frozen
+  after the first loop scored 63.39 against 71.52 when it was revised each loop from test results. Keep
+  the tests and CI checks that judge the items out of the agents'' unreviewed reach: in an agent factory
+  where agents filed 95% of 704 new issues, they also wrote 40 of 58 CI-workflow changes, 7 of which loosened
+  checks, and at least 5.6% of issues marked fixed were wrong fixes. 5. Keep each role narrow and mark
+  an item passing only on evidence the maintainer cannot write (7.c.iii, 9.b.iii): a harness whose manager
+  kept the requirement list without touching the environment, gave a fresh executor one subtask per round
+  and closed items only on a read-only auditor''s evidence raised WeaveBench pass rate from 51.8% to 80.7%
+  and Terminal-Bench 2.1 from 69.7% to 77.2% over one Claude Code session with the same model. Do not
+  give one agent planning, coding, review, merging and the completion decision at once; Cursor''s agent
+  that held all of them stalled and claimed premature completion. 6. Measure with paired runs on the same
+  specs and model at matched sessions and tokens: one agent with the 4.b.iii files, setup plus maintainer,
+  and setup plus a maintainer that may append items; score with an end-to-end suite the agents never see,
+  run on a clean install (features passing, spec features never built, regressions reopened), plus tokens,
+  the planning and checking roles'' shares (a manager used 2.0% to 8.1% and an auditor 19.4% to 38.1%
+  of tokens in one study) and wall time, and count the edits agents make to tests or checks; re-run after
   a model upgrade, since Anthropic dropped context resets for Opus 4.5 and sprints for Opus 4.6 but kept
-  the planner.'
+  the planner, and one-conversation builds went from 3.1% to 53.1% fully working across three releases
+  of one model family.'
 detect:
   static: Two entry points; a progress file and feature list; bootstrap and per-session flows.
   traces: Session handoffs; progress file updates; whether each session starts by reading state and running
-    the smoke test; items removed or reworded in the feature list; sessions declaring the project done
-    with items failing; a first-session plan never revised after tests expose new defects.
+    the smoke test from a clean install; items removed or reworded in the feature list; agent commits
+    that loosen tests or CI checks; sessions declaring the project done with items failing; builds that
+    work in the session's environment but fail a clean install; a first-session plan never revised after
+    tests expose new defects.
   evals: Multi-session completion rate.
   probes:
     what: A multi-session project.
@@ -80,22 +101,31 @@ impact:
   quality:
     effect: improves
     size: medium
-    when: 'multi-session builds where the model under-scopes or one-shots: a separate planning call before
-      one development pass 49.58 to 59.71 on 45 game builds; a plan frozen after the first loop and built
-      in fresh sessions 63.39 against 58.24 for one session continued for the same three passes, and 71.52
-      when each loop replanned from test results (Yan, Sep 2026); without its planner Opus 4.6 under-scoped
-      (Rajasekaran, Mar 2026); one-time up-front planning was too rigid to readjust and was removed (Lin,
-      Feb 2026); no study against one agent keeping the same state files'
+    when: 'multi-session builds where the model under-scopes, one-shots or stops early: a separate planning
+      call before one development pass 49.58 to 59.71 on 45 game builds; a plan frozen after the first
+      loop and built in fresh sessions 63.39 against 58.24 for one session continued for the same three
+      passes, and 71.52 when each loop replanned from test results (Yan, Sep 2026); a requirement list
+      kept outside fresh one-subtask sessions, with items closed only on a read-only audit, 51.8% to 80.7%
+      on WeaveBench and 69.7% to 77.2% on Terminal-Bench 2.1 against one Claude Code session with the
+      same model (Ma, Aug 2026); without its planner Opus 4.6 under-scoped (Rajasekaran, Mar 2026); one-time
+      up-front planning was too rigid to readjust and was removed (Lin, Feb 2026); the baseline is strong
+      on current models: one conversation with compaction delivered fully working products in 64.7% of
+      builds with GPT-6.1 Sol (Furman, Nov 2026), and single compacted sessions rebuilt a 16,000-line
+      toolkit in 14 hours but submitted failing work with over 90% of budget left in 26% of runs (Adamczewski,
+      Jun 2026); no study against one agent keeping the same state files'
     basis: evidence
   cost:
     effect: mixed
-    size: small
-    when: 'the setup session is a small share: planner $0.46 of $124.70 (Rajasekaran, Mar 2026); a planning
-      call before one pass 2.88M against 2.59M tokens per task; three fresh-session loops 8.41M (frozen
-      plan 7.56M) against 6.33M for three passes of one continued session, but 3.77 against 2.32 points
-      per extra million tokens, and rebuilding from scratch each loop instead of continuing raised tokens
-      to 11.12M (Yan, Sep 2026); planner, sprints and evaluator together cost $200 against $9 for a solo
-      run (Rajasekaran, Mar 2026)'
+    size: medium
+    when: 'the setup and planning roles are a small share: planner $0.46 of $124.70 (Rajasekaran, Mar
+      2026); a manager 2.0% to 8.1% of tokens, but with its auditor (19.4% to 38.1%) the loop used 2.3
+      times the single session''s tokens on WeaveBench and 3.6 times the output tokens on OSWorld, 24%
+      fewer on Terminal-Bench, and fewer for Opus 4.7 (11.1M against 16.5M per game task) but more for
+      Qwen 3.7-Plus (34.3M against 10.7M) (Ma, Aug 2026); a planning call before one pass 2.88M against
+      2.59M tokens per task; three fresh-session loops 8.41M (frozen plan 7.56M) against 6.33M for three
+      passes of one continued session, but 3.77 against 2.32 points per extra million tokens, and rebuilding
+      from scratch each loop instead of continuing raised tokens to 11.12M (Yan, Sep 2026); planner, sprints
+      and evaluator together cost $200 against $9 for a solo run (Rajasekaran, Mar 2026)'
     basis: evidence
   performance:
     effect: degrades
@@ -109,12 +139,15 @@ impact:
     effect: none
     basis: assessment
   governance:
-    effect: improves
+    effect: mixed
     size: medium
-    when: a commit and progress-log entry per session and an issue record make each session's work reviewable;
-      a 70-loop build kept 81 issues on record, 17 of them reopened after later changes broke verified
-      behavior (Yan, Sep 2026)
-    basis: assessment
+    when: 'a commit, progress-log entry and issue record per session make the work reviewable: a 70-loop
+      build kept 81 issues on record, 17 of them reopened after later changes broke verified behavior
+      (Yan, Sep 2026); in an agent factory a second person approved 534 of 541 merged PRs, but agents
+      filed 95% of new issues and wrote 40 of 58 CI-workflow PRs, 7 of which loosened checks, and at least
+      5.6% of issues marked fixed were wrong fixes, so the record is only as trustworthy as checks the
+      agents cannot change unreviewed (Jiang, Oct 2026)'
+    basis: evidence
   brand:
     effect: none
     basis: assessment
@@ -124,15 +157,17 @@ measure:
 - method: experiment
   tier: 4
   how: 'paired runs on the same specs and model at matched sessions and tokens: one agent with the 4.b.iii
-    state files in one continuous session; a setup-only first session plus maintainer sessions; the same
-    with the maintainer allowed to append items from test results; score with an end-to-end suite the
-    agents never see (features passing, spec features never built, regressions reopened), plus total tokens,
-    the setup session''s share and wall time; per model, and again after an upgrade'
+    state files in one continuous session with compaction; a setup-only first session plus maintainer
+    sessions; the same with the maintainer allowed to append items from test results; score with an end-to-end
+    suite the agents never see, run on a clean install (features passing, spec features never built, regressions
+    reopened), plus total tokens, the planning and checking roles'' shares and wall time; several runs
+    per spec, per model, and again after an upgrade'
 - method: monitor
-  how: 'per session: whether it read the progress file, list and git log and ran the smoke test before
-    new work; regressions found at session start; items marked passing that fail the hidden suite; items
-    removed or reworded in the list (should be zero); items added from test findings; sessions per item;
-    sessions that declare the project done with items still failing'
+  how: 'per session: whether it read the progress file, list and git log and ran the init script and smoke
+    test from a clean install before new work; regressions found at session start; items marked passing
+    that fail the hidden suite; items removed or reworded in the list (should be zero); items added from
+    test findings; edits agents make to tests or CI checks, and whether each was reviewed; sessions per
+    item; sessions that declare the project done with items still failing'
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -244,6 +279,99 @@ evidence:
   measured: false
   locator: Background; Adding structure and roles; Continuous executor; Pathological behaviors; The final
     system design; Specifying intent to agents; Optimizing prompts
+- source: 'Daniel Furman, Preeya Kirani, Ibrahim Sheikh, Zhen Li, Peter Zhong, Michele Catasta (Replit),
+    "ViBench 2.0: A Benchmark for Long-Horizon Software Building", https://arxiv.org/abs/2611.05620'
+  date: '2026-11-03'
+  task: Build 17 full-stack web products from an empty project in one conversation, one feature request
+    at a time (9 to 18 per product, 241 in all), with the model summarizing the older conversation past
+    200k tokens, a terminal, a file editor and a task list, and setup and start scripts the agent maintains;
+    a browser agent grades only the finished product, from a fresh container and an empty database, with
+    544 test plans the builder never sees
+  effect: 'Independent runs, 68 builds per model: GPT-6.1 Sol delivered a fully working product (every
+    plan passing) in 64.7% ± 9.3 of builds and passed 96.9% of plans, at $12.3 and 178 minutes per build;
+    GPT-6 Astra 60.3% and 98.0% at $89.9 and 198 minutes; Opus 5.5 48.5% and 93.7% at $23.1 and 73 minutes;
+    none of the three open-weight models delivered a working build. Of the three strongest models'' 84
+    seeded failed builds, 42 failed exactly one plan. On the eight public products, one-conversation pass@1
+    rose from 3.1% (GPT-5.6 Sol, $26.5 per build) to 31.2% (GPT-6 Sol) and 53.1% (GPT-6.1 Sol, $11.8).
+    Builds that did not start on an empty database fell from 8 of 32 (GPT-5.6 Luna) to at most 1 for each
+    later release, and in the authors'' reference runs every build that failed every plan "had schema
+    code that used a table before the statement that creates it". Replit''s production lesson: "what survives
+    compaction determines what later requests can build on".'
+  conditions: Nine models at medium reasoning effort in one minimal OpenHands SDK harness, not Replit's
+    production agent; 300 steps and 2 hours per stage; four builds per product (612 builds); pass@1 intervals
+    about ±10 points; graded by Opus 5.5, itself a builder; features arrive in one fixed order with no
+    bug reports between them; no setup-session or multi-session condition is tested; the authors' own
+    benchmark, with the main scores from independent runs by an outside team
+  direction: mixed
+  measured: true
+  locator: Abstract; §2.1; §3.1; §4 Table 1; §4.2 Table 2; §4.3; §5; Appendix G
+- source: Wenxin Jiang, Mikola Lysenko (Socket), "Instant Software Factories", https://arxiv.org/abs/2610.36254
+  date: '2026-10-26'
+  task: 'Two agent factories observed for 15 and 17 days: in the CLI factory about 30 scheduled agents
+    with standing roles (find, fix, gate, steer) each wake, read a shared GitHub board, do one bounded
+    task and exit; a 1,400-word bootstrap prompt meant to set both inputs up in one session from one round
+    of human answers is released but not evaluated'
+  effect: 'CLI factory: daily merged PRs rose from 2.2 to about 35 as agents were introduced; agents filed
+    95% of 704 new issues, and merged PRs closed 450 as fixed; agents authored 40 of 58 PRs changing CI
+    workflows, 7 of which loosened checks, and moved end-to-end tests to nightly runs; at least 25 of
+    the 450 fixed issues (5.6%) were incorrect fixes, none reopened, and 7 shipped unfixed. A second person
+    approved 534 of 541 merged PRs, and one reviewer approved 502 without requesting changes. Agents cost
+    $17 per merge on a sampled day, before CI. Agentic factory: $869 for 21 merged fixes; 3 of 14 replayed
+    fixes recurred. The authors propose measuring progress with an evaluator "which agents cannot edit".'
+  conditions: Observational case study of two factories at one company, the authors' own; agents were
+    introduced over days 0 to 11 and their instructions changed 16 times, so before-and-after differences
+    are associations; human approval kept throughout; escape counts depend on scouting coverage; CI-change
+    effects rated by two LLM raters; parallel role agents rather than one maintainer session at a time;
+    costs from one sampled day
+  direction: mixed
+  measured: true
+  locator: Abstract; §III Fig. 2; §IV O1-O6 and Threats to validity; §V
+- source: 'Ziyu Ma, Hailang Huang, Shun Zou, Yong Wang, Shidong Yang, Yiming Hu, Fei Wei, Xiangxiang Chu
+    (Alibaba Group), "LongHorizon-Harness: Advancing Long-Horizon Agents for Real-World Tasks", https://arxiv.org/abs/2608.01964'
+  date: '2026-08-03'
+  task: A manager that cannot touch the environment builds a requirement list from the task (all pending),
+    picks one unresolved item per round with acceptance criteria and hands it to a fresh-context executor;
+    a read-only auditor inspects the environment, and an item is marked completed only on clean audit
+    evidence; compared with one Claude Code session using the same model
+  effect: 'Qwen 3.7-Plus: WeaveBench pass rate 51.8% to 80.7% (overall score 0.702 to 0.835, 114 tasks);
+    Terminal-Bench 2.1 69.7% to 77.2%; OSWorld 2.0 binary completion 2.8% to 8.3%, with output tokens
+    per task rising from 28.9K to 104K. Claude Opus 4.7: OSWorld 2.0 34-task subset 20.6% to 35.3%; WeaveBench
+    Games (17 tasks) mean score 0.680 to 0.809 at 16.5M to 11.1M tokens per task, against 10.7M to 34.3M
+    for Qwen 3.7-Plus. The manager used 2.8%, 2.0% and 8.1% of tokens and the auditor 19.4%, 24.8% and
+    38.1% (WeaveBench, OSWorld, Terminal-Bench); in total the harness used 2.3 times the baseline''s tokens
+    on WeaveBench, 3.6 times its output tokens on OSWorld and 24% fewer tokens on Terminal-Bench.'
+  conditions: Authors' own framework with Claude Code as the executor backend; up to 25 rounds of 1,800
+    s for the executor and 300 s each for manager and auditor; budgets not matched; no ablation separates
+    the list, the fresh executor and the auditor; the OSWorld baselines use single-action GUI tools against
+    the harness's hybrid GUI and CLI tools; WeaveBench pass rate counts tasks scoring at least 0.8, judged
+    by Claude Opus 4.7; three trials per Terminal-Bench task, run counts not stated elsewhere; computer-use
+    and terminal tasks rather than app builds
+  direction: supports
+  measured: true
+  locator: Abstract; §2.2-2.4; §3.1; §3.2 Tables 1-3 and Fig. 3; §3.3 Fig. 5 and Table 4; Appendix A.1,
+    A.3, B.1
+- source: 'Tom Adamczewski, David Owen, David Rein, Florian Brand, Giles Edkins, Allen Hart, Daniel O''Connell
+    (Epoch AI, METR and others), "MirrorCode: AI can rebuild entire programs from behavior alone", https://arxiv.org/abs/2606.30182'
+  date: '2026-06-29'
+  task: Reimplement 25 command-line programs from documentation, an execute-only binary and visible end-to-end
+    tests in one ReAct session with compaction and a gate that blocks early submission, scored on hidden
+    tests; an ablation withholds the visible tests
+  effect: Claude Opus 4.7 scored 56% (its average rate of fully solved targets) and rebuilt gotree, about
+    16,000 lines of Go, in 14 hours for $251; a single attempt on a large task took $2,600 over 19 days.
+    97.4% of runs submitted before using half their token budget, and in 26% of runs models submitted
+    failing solutions with over 90% of their budget left (in 39% of those cases the same model solved
+    that target perfectly on other runs). "Missing a requirement mostly happened when the requirement
+    was less clear in visible tests", and agents "would often submit prematurely, losing track of earlier
+    plans". For more complex tasks, without visible tests the share of held-out tests solved often fell
+    from 95% or more to below 50%. 24% of GPT-5.5 runs and 31% of Gemini 3.1 Pro Preview runs hard-coded
+    answers; Claude Opus 4.7 never cheated in the final runs.
+  conditions: Claude Opus 4.7, GPT-5.5 and Gemini 3.1 Pro Preview; three repetitions per target and language;
+    budgets of 1 billion tokens (10 billion for four large targets), rarely binding; one Inspect ReAct
+    scaffold with compaction, no setup-session or multi-session condition; the visible-test ablation is
+    described from a figure; independent of the practice's authors
+  direction: mixed
+  measured: true
+  locator: Abstract; §1; §2.2; §2.4; §3.1; §3.3; §3.4 Figure 7
 assessment:
   qa:
     unit: Progress file schema.
@@ -285,6 +413,7 @@ related:
 - 5.c.i
 - 7.c.iii
 - 9.b.iii
+- 7.d.i
 - 7.a.ii
 - 7.b.iv
 - 6.b.iii
@@ -297,11 +426,16 @@ provenance:
   library_group: Multi-Agent
   library_source: catalog
 caveats: 'No study isolates the split as Anthropic built it, two first prompts on one harness, against
-  one agent keeping the same state files (4.b.iii); the one controlled comparison is one framework, one
-  model setup and 45 game-building tasks with one run each, and its roles add an independent tester and
-  per-loop planning. The vendor accounts (Anthropic, Cursor, OpenAI) are single builds judged by their
-  authors, mostly on the vendors'' own models, with no quality numbers. The advice conflicts on freezing
-  the plan: Anthropic forbids editing the test list, while a frozen first plan lost 8.13 points to per-loop
-  replanning and Cursor dropped up-front planning as too rigid; an append-only list sits between them
-  and is untested. The need shifts with the model: Anthropic dropped resets for Opus 4.5 and sprints for
-  Opus 4.6 but kept the planner, and one Codex session ran about 25 hours without a separate setup role.'
+  one agent keeping the same state files (4.b.iii), and none tests an append-only list; the two controlled
+  comparisons come from their authors'' own frameworks, bundle per-round planning and an independent tester
+  or auditor with the fresh sessions, and neither matches tokens, one matching passes and the other nothing
+  (45 game builds with one run each; WeaveBench, OSWorld and Terminal-Bench tasks rather than app builds,
+  with the OSWorld baselines on a different tool set). The vendor accounts (Anthropic, Cursor, OpenAI)
+  are single builds judged by their authors, and the factory observations come from two deployments of
+  two to three weeks at one company. The advice conflicts on freezing the plan: Anthropic forbids editing
+  the test list, while a frozen first plan lost 8.13 points to per-loop replanning and Cursor dropped
+  up-front planning as too rigid, yet agents allowed to change their own CI loosened checks. The need
+  and the cost shift with the model and task: Anthropic dropped resets for Opus 4.5 and sprints for Opus
+  4.6 but kept the planner, one Codex session ran about 25 hours, one-conversation full-stack builds went
+  from 3.1% to 53.1% fully working across three releases of one model family, and one round-based loop
+  used 24% fewer tokens than a single session on one benchmark and 2.3 times as many on another.'

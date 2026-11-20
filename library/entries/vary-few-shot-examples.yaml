@@ -30,7 +30,7 @@ summary: 'Keep the model from copying its own context: when it fills with near-i
   in one study agents attended more to their own earlier responses as context grew, and periodically clearing
   old rounds beat keeping the full history on eight agent tasks (68.9% against 54.4% for Qwen3-8B, 71.1%
   against 64.6% for GPT-4o-mini). Separating items pays most when many similar ones would share a context:
-  grading 25 per prompt changed 11-22% of decisions between random batches, and a majority vote over nine
+  grading 25 per prompt changed 11-22% of decisions between random batches for five open-weight 4-9B models (6-15% for 14-32B models), and a majority vote over nine
   orders of each batch still left 52-60% of those flips; for prompt examples, diverse demonstrations beat
   the most similar ones by up to 23 points. Changes to how history is written help only a little on current
   agents and have limits: labeling each observation as the outcome of the action before it raised success
@@ -44,7 +44,7 @@ how: '1. Start from the baseline: run the agent with its uniform template on a b
   15 of 20), run every item alone in a fresh context as the reference, and log accuracy and decisions
   by position, repeated actions and repeats of failed calls; for batched grading, also run the same items
   in a second random arrangement and with renamed item keys, since accuracy can hold (AUROC moved -0.033
-  to +0.010) while 11-22% of decisions change with the batch. 2. Find where uniformity enters: tool results
+  to +0.010) while 11-22% of decisions change with the batch (five open-weight 4-9B models). 2. Find where uniformity enters: tool results
   and actions serialized with one fixed template, harness messages with identical wording, few-shot examples
   that share one format and one structure, many similar items in one context, failed calls replayed verbatim,
   and long runs of unproductive steps that all follow one strategy. 3. Diversify the examples in the prompt:
@@ -66,7 +66,7 @@ how: '1. Start from the baseline: run the agent with its uniform template on a b
   but lowered success (45.01%). 6. Where items are independent, break the repetition structurally: give
   each ambiguous item its own context, with all shared instructions first so they are served from the
   prompt cache (see 5.c.ii); shuffling is not a substitute, since a majority vote over nine orders of
-  a batch left 52-60% of the flips and batches of five still differed from single-item grading on 9-16%
+  a batch left 52-60% of the flips (open-weight 4-9B models) and batches of five still differed from single-item grading on 9-16%
   of decisions; if you must batch, shuffle items across batches and report agreement with single-item
   runs. In long sessions on tasks whose state is in the current observation, try clearing old rounds periodically
   (for example back to the last round once the history reaches 12 rounds) instead of keeping all of it
@@ -112,7 +112,7 @@ impact:
       raised success from 46.39% to 48.25%, and self-written lesson notes cut repeats to 21.38% while
       success fell to 45.01% (Liu, Oct 2026); describing a failed call instead of replaying it cut exact
       repeats from 31% to 16% while task success went from 42% to 33%, within noise (Gumaan, Aug 2026);
-      one item per prompt avoids the 11-22% of decisions that changed with the batch, of which a vote
+      one item per prompt avoids the 11-22% of decisions that changed with the batch for five open-weight 4-9B models (6-15% for 14-32B), of which a vote
       over nine orders left 52-60% (Xie, Oct 2026); rejecting near-duplicate proposals and reweighting
       toward unused edit types raised audited faithfulness from 0.44 to 0.71 where a higher temperature
       added 0.02-0.03 (He, Aug 2026); equivalent formats alone moved accuracy by up to 76 points (Sclar,
@@ -144,7 +144,7 @@ impact:
     effect: improves
     size: small
     when: 'a verdict made in its own context depends only on its item and can be reproduced: in batches
-      of 25, 11-22% of moderation and grading decisions changed with which items shared the prompt, and
+      of 25, 11-22% of moderation and grading decisions by five open-weight 4-9B models (6-15% for 14-32B) changed with which items shared the prompt, and
       one model flagged 58% of comments targeting a race when graded alone against 35% in batches (point
       estimates; Xie, Oct 2026); batching changed 5.6-26.7% of one model''s screening decisions for systematic
       reviews (Hida, Aug 2026)'

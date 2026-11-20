@@ -7,6 +7,26 @@ changes, and credits whoever contributed them.
 
 ## Unreleased
 
+- 27 cards are revised from the Nov 11-19 refinements and the Nov 17 review, with 111 new
+  sources (each dated, quoted and located in its entry; 66 of them contradict or are mixed on the
+  entry): bound tool output (2.c.i, 4 new sources), fail-soft tools (2.b.i, 4), few-shot examples
+  (3.a.i, 4), restructure the system prompt (3.a.iv, 4), self-discover reasoning (3.c.i, 4),
+  filesystem checkpoints (4.b.i, 4), initializer and maintainer agents (4.b.ii, 4), episodic
+  memory (4.c.i, 4), skill library (4.c.ii, 4), discrete phase separation (5.c.i, 4),
+  oracle-worker escalation (6.a.i, 7), parallel read-only tools (6.b.i, 4), LLM map-reduce
+  (6.b.ii, 5), code-then-execute (6.c.i, 4), plan-then-execute (6.c.ii, 4), size run budgets
+  (7.b.iii, 4), reflection loop (7.c.i, 4), self-critique evaluator (7.c.ii, 4), graph of thought
+  (7.c.iv, 3), language agent tree search (7.c.v, 4), multi-agent debate (7.c.vi, 4), tree of
+  thought (7.c.vii, 4), continuous task loop (7.d.i, 4), inversion of control (7.d.ii, 4), tune
+  the search tool (8.b.i, 4), link large schemas (8.b.ii, 4) and make the final answer
+  extractable (9.b.i, 4). Contributed by the Mahalanobis Systems maintainers.
+- Corrections that narrow numbers to the models the sources measured: keep errors in context
+  (7.b.ii) names the DeepSeek V4 and Qwen 3.7 models behind its recovery results and adds the
+  DeepSeek-only control; avoid few-shot ruts (3.a.ii) says its 11-22% batch effect is for 4-9B
+  open-weight models (6-15% for 14-32B); mask tools instead of removing them (3.b.ii) says
+  tool_addition and tool_removal are a beta on listed recent models only, and that the pruning
+  study's cost difference was inconclusive. Contributed by the Mahalanobis Systems maintainers.
+
 ## 0.4.0 — 2026-11-10
 
 - New technique: write a fail-to-pass test before the fix, and harden it against wrong fixes

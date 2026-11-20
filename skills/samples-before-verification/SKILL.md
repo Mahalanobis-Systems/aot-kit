@@ -80,6 +80,7 @@ Most of the evidence is math, code and question answering, and the agent results
 - `aot-kit:self-discover-reasoning` (3.c.i, Self-Discover reasoning structures)
 - `aot-kit:reflection-loop` (7.c.i, Reflection loop)
 - `aot-kit:self-critique-evaluator` (7.c.ii, Self-critique evaluator loop)
+- `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 - `aot-kit:test-first-fail-to-pass` (9.c.iv, Write a fail-to-pass test before the fix, and harden it against wrong fixes)
 
 <!-- End of the generated part. Everything below is written by hand. -->

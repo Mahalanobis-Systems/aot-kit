@@ -20,62 +20,90 @@ evidence_domains:
 - computer-use
 categories:
 - topologies.trust
-summary: 'Have the agent fix its tool calls (an ordered list or a dependency graph) from the trusted request
-  before it reads any tool output, and let a controller execute only those calls, so injected text cannot
-  add an action. On AgentDojo this cut attack success below 1% (0.69% against 13.16% undefended for a
-  tool-graph design; 0.52% against 15.62% for another plan-first design in an independent test), but a
-  strict plan cost 15 to 43 points of benign utility; letting read-only lookups be added during execution
-  recovered it in one study. It pays only where the request alone fixes the actions: on a benchmark where
-  every task needs data-dependent planning, plan-first defenses kept 0 to 30% utility against 53% undefended
-  on GPT-4o, while undefended Claude Sonnet 4.5 already held attack success at 0.87%. Injected data can
-  still pick the arguments and branches of planned calls (89.5% attack success against a plan-first computer-use
-  agent), so also bound each planned call''s parameters and destinations.'
+summary: 'Commit the agent''s tool calls, writes above all, from the trusted request before it reads any
+  tool output, and have code reject any other write and any write argument the request did not supply.
+  On AgentDojo, plan-first designs cut attack success below 1% (0.69% against 13.16% for a tool graph;
+  0.52% against 15.62% in an independent test), but a strict plan cost 15 to 43 points of benign utility,
+  and where every task needs data-dependent planning they kept 0 to 30% utility against 53% undefended
+  (GPT-4o); one design that re-plans only within a tool whitelist kept 51% at 2% attack success in its
+  authors'' test. The plan alone does not stop injected data from choosing the values of planned calls:
+  a tool graph let 47.92% and 67.36% of parameter-poisoning attacks through, a plan layer added nothing
+  over input isolation against task tampering on five current models (7.0% against 6.6%), and branch steering
+  reached 89.5% against a plan-first computer-use agent. Checking each write''s recipient, amount, object
+  and destination against values the request states let 0 of 13,935 attacks through on 15 open models
+  of 1.7B to 35B parameters, at 29.0% utility under attack against 50.2% undefended.'
 how: '1. Start from the baseline: your current tool loop (7.d.iii) and, as the cheapest plan-first variant,
   a tool filter that only fixes the tool set from the request (in an independent GPT-4o test it kept 70.10%
   of AgentDojo tasks against 80.41% undefended, at 4.59% average attack success against 23.69%). Run both
-  on an injection suite that includes tasks whose actions depend on what the agent reads: AgentDojo has
-  only 6 of 97, and on a benchmark built from such tasks undefended Claude Sonnet 4.5 already held attack
-  success at 0.87%. 2. Sort your tasks by whether the request alone fixes the actions. Where the next
-  write depends on what is read (act on the to-do list in this file), do not force a fixed plan: plan-first
-  defenses kept 0 to 30% utility on such tasks against 53.33% undefended (GPT-4o); contain the input (10.c.i)
-  and gate the action (10.b.i) instead. 3. Give a planner only the user request, the tool descriptions
-  and trusted context, and have it emit a dependency graph: each node a tool call, each argument a literal
-  or marked as filled from a named earlier node''s output. Pin the tool descriptions it reads, since they
-  are planner input too. Spend on the planner rather than the executor: an o4-mini planner over a GPT-4o-mini
-  executor raised utility under attack from 57.07% to 64.39% for $7.99 against $6.73, planning being about
-  20% of tokens (1.b.i). 4. Execute the graph in dependency order with a controller that rejects any call
-  not in the plan, except read-only (query) tools added after reading results; the executor fills only
-  the pending arguments. A strict graph cost 15.5 points of benign utility (52.58% against 68.04%); read-only
-  expansion brought it to 64.95%. Never return raw tool output or error messages to the planner to re-plan:
-  in one study an error message and an email that reached the planner each put an attacker''s call into
-  the plan. 5. Bound what each planned write may do before execution, in code: recipients, accounts and
-  amounts from the request or a trusted record (ask the user when there is none), allowed hosts and endpoints,
-  and per-branch conditions. Without this, injected data set the recipient of a planned send_money in
-  one test and steered branches at 89.5% success against a plan-first computer-use agent; per-branch constraints
-  took that to 0% at 97% of benign utility. Where an injected instruction targets a write tool the plan
-  already uses, answer it with a simulated call so the executor fills the real one from the request (attack
-  success 4.77% to 0.64% in one study). 6. Measure paired against the baseline, same suite and model:
-  benign utility, utility under attack, attack success, tokens and latency per task (one design used 2.4x
-  the input tokens and 1.9x the time, another 0.54x the tokens and 2.7x the time); add adaptive attacks
-  that reuse planned tools with attacker arguments, craft values that meet branch conditions and reach
-  the planner through errors; in production, monitor rejected calls and write arguments taken from tool
-  output.'
+  on an injection suite that includes tasks whose actions depend on what the agent reads (AgentDojo has
+  only 6 of 97) and attacks that keep the task''s own tools but tamper with the values it needs: undefended
+  Claude Sonnet 4.5 held template attacks to 0.87% on a data-dependent benchmark, but planted false amounts,
+  rules or state claims still succeeded against it 11.1% of the time (11.1% to 23.2% across five current
+  models). 2. Sort your tasks by whether the request alone fixes the actions. Where the next write depends
+  on what is read (act on the to-do list in this file), a fixed plan fails: plan-first defenses kept 0
+  to 30% utility on such tasks against 53.33% undefended (GPT-4o). Either mark that step in the plan for
+  a re-plan that may add only tools from a whitelist fixed up front, with a declared source for each write
+  argument (one design kept 51% utility at 2% attack success there, against 53% utility and 39% attack
+  success undefended, in its authors'' GPT-4o test), or contain the input (10.c.i) and gate the action
+  (10.b.i). 3. Give a planner only the user request, the tool descriptions and trusted context, and have
+  it emit the calls in order or as a dependency graph: each node a tool call, each argument a literal
+  from the request or a placeholder filled from a named earlier node''s output. Pin the tool descriptions
+  it reads, since they are planner input too, and classify each tool as read-only or write in code from
+  its name and schema rather than leaving the security decision to the model: tool graphs written by the
+  agent''s own model admitted attacks on 13 of 15 open models (1.7B to 35B). Spend on the planner rather
+  than the executor: an o4-mini planner over a GPT-4o-mini executor raised utility under attack from 57.07%
+  to 64.39% for $7.99 against $6.73, planning being about 20% of tokens (1.b.i). 4. Commit the writes:
+  execute in dependency order with a controller that rejects any write not in the plan, so the executor
+  may add read-only lookups and fill placeholders but never add, drop or reorder a write. A strict graph
+  cost 15.5 points of benign utility (52.58% against 68.04%) and read-only expansion brought it to 64.95%;
+  in another study a planner allowed to append writes after reading let 53 of 7,432 attacks through, where
+  committed writes let none. Treat the URL or destination of a lookup as a write argument: on eight open
+  models a tool graph with read-only expansion let 69 of 168 attacks that fetch an attacker''s URL succeed
+  (85 undefended, 0 with destinations checked). Never return raw tool output or error messages to the
+  planner to re-plan: in one study an error message and an email that reached the planner each put an
+  attacker''s call into the plan. 5. Bound in code what each planned write may do before it runs: every
+  argument that decides whom or what it affects (recipient, account, amount, object identifier, channel,
+  URL) must equal a value the request states or come from a trusted record named for it, else ask the
+  user (free-text bodies such as a message are not covered). The plan alone does not do this: a tool graph
+  let 47.92% (Qwen3.6-27B) and 67.36% (GPT-4o) of parameter-poisoning attacks through, against 93.06%
+  and 57.64% undefended; against task tampering, in action-level audits of two of the five models (GLM-5 and
+  Sonnet 4.5), no plan-position check blocked an attacked call and only the argument checklist blocked
+  any (0 of 26 and 3 of 31); branch steering reached 89.5% against a plan-first computer-use agent until per-branch
+  constraints took it to 0% at 97% of benign utility. Exact request grounding let 0 of 13,935 attacks
+  through across 15 open models (106 of 7,432 without it, on eight of them); budget for confirmations,
+  since values that appear only in tool output become questions to the user (8 to 12% of that design''s
+  failures, where they went unanswered). Where an injected instruction targets a write tool the plan already
+  uses, answer it with a simulated call so the executor fills the real one from the request (attack success
+  4.77% to 0.64% in one study). 6. Measure paired against the baseline, same suite and model: benign utility,
+  utility under attack, attack success scored on write arguments, confirmation requests, tokens and latency
+  per task (a tool graph used 2.4x the input tokens and 1.9x the time, a strict plan-first design 0.54x
+  the tokens and 2.7x the time, committed writes with request grounding 17.1k tokens per episode against
+  28.0k undefended, whitelisted re-planning 1.87x the time and 4.23x the tokens). Add adaptive attacks
+  that reuse planned tools with attacker arguments, tamper with amounts, rules or state the task reads,
+  craft values that meet branch conditions, send lookups to attacker URLs and reach the planner through
+  errors; in production, monitor rejected calls, confirmation requests and write arguments or lookup destinations
+  taken from tool output.'
 detect:
-  static: A plan (tool calls with their dependencies) is generated from the request before any untrusted
-    data is read; a controller executes only planned calls plus read-only lookups; write-call arguments
-    and destinations are bounded before execution; raw tool output and error messages never go back to
-    the planner.
-  traces: Executed calls equal the planned calls plus read-only lookups; no new write call after data
-    ingestion; each write argument traces to the request or a trusted record, not to tool output.
-  evals: Injection suite attack success, benign utility and utility under attack, on tasks that include
-    data-dependent ones; tokens and latency per task.
+  static: Write calls are committed from the request before any untrusted data is read, and the executor
+    can add only read-only lookups; read and write tools are classified in code from their schemas; every
+    authority argument of a write (recipient, account, amount, object identifier, destination) and every
+    lookup destination is checked in code against values the request states or a trusted record, else
+    the user is asked; raw tool output and error messages never go back to the planner.
+  traces: Executed writes are a prefix of the committed writes, in order; executed calls equal the planned
+    calls plus read-only lookups; each write argument and lookup destination traces to the request, a
+    trusted record or a user confirmation, not to tool output.
+  evals: Injection suite attack success scored on write arguments, benign utility and utility under attack,
+    on tasks that include data-dependent ones and attacks that keep the task's tools but change their
+    values; confirmation requests, tokens and latency per task.
   probes:
-    what: Injected data that tries to add a tool call, change the arguments of a planned call, or steer
-      a planned branch.
+    what: Injected data that tries to add a tool call, change the arguments of a planned call, tamper
+      with a value, rule or state the task reads, steer a planned branch, or send a lookup to an attacker's
+      URL.
     construct: Documents and tool outputs with instructions to call an extra tool or to send a planned
-      write to an attacker's account or URL, crafted values that satisfy a branch condition, and error
-      messages carrying instructions; success is no unplanned call and no write argument taken from untrusted
-      data.
+      write to an attacker's account or URL; planted records that keep the task's tools but assert a false
+      amount, policy or state; records that carry the user's own descriptor; crafted values that satisfy
+      a branch condition; error messages carrying instructions. Success is no unplanned write and no authority
+      argument or lookup destination taken from untrusted data.
   primary:
   - static
   - traces
@@ -84,40 +112,51 @@ impact:
     effect: mixed
     size: large
     when: benign utility about even for a tool graph with read-only expansion (67.01% against 68.04%)
-      and higher under attack (58.77% against 54.30%) (An, Aug 2025); 37.11% against 80.41% for a strict
-      plan-first design (Ji, Nov 2025); 0 to 30% against 53.33% on data-dependent tasks (Li, Feb 2026);
-      Sonnet-5 in both roles 38.8% against 51.0% with ReAct, but a gpt-5 planner lifted a small executor
-      from 23.5% to 36.8% (Zingrillo, Oct 2026)
+      and higher under attack (58.77% against 54.30%) (An, Aug 2025), but 40.1% against 59.4% for the
+      same design across 15 open models (1.7B to 35B) and 55.7% against 90.7% on the strongest of them
+      (Xu, Nov 2026); 37.11% against 80.41% for a strict plan-first design (Ji, Nov 2025); 0 to 30% against
+      53.33% on data-dependent tasks (Li, Feb 2026), 51% against 53% with whitelisted re-planning (Wang,
+      May 2026); committed writes with request grounding 29.0% under attack against 50.2% (Xu, Nov 2026);
+      adding a plan layer to input isolation cut benign completion from 98.0% to 88.9% with no security
+      gain (Zhang, Nov 2026); Sonnet-5 in both roles 38.8% against 51.0% with ReAct, but a gpt-5 planner
+      lifted a small executor from 23.5% to 36.8% (Zingrillo, Oct 2026)
     basis: evidence
   cost:
     effect: mixed
     size: medium
-    when: 2.4x the input tokens for a tool-graph design (An, Aug 2025); 0.54x the tokens for a strict
-      plan-first design and 0.65x for a tool filter, from fewer turns (Ji, Nov 2025); $0.627 against $0.291
-      per task with Sonnet-5 in both roles, $0.332 with a gpt-5 planner over a locally served executor
+    when: 2.4x the input tokens for a tool-graph design (An, Aug 2025) and 60.5k against 28.0k tokens
+      per episode across 15 open models (1.7B to 35B), where committed writes with request grounding used
+      17.1k (Xu, Nov 2026); 0.54x the tokens for a strict plan-first design and 0.65x for a tool filter,
+      from fewer turns (Ji, Nov 2025); 4.23x for whitelisted re-planning (Wang, May 2026); $0.627 against
+      $0.291 per task with Sonnet-5 in both roles, $0.332 with a gpt-5 planner over a locally served executor
       (Zingrillo, Oct 2026)
     basis: evidence
   performance:
     effect: degrades
     size: medium
     when: 13.88 s against 7.13 s per task (An, Aug 2025); 2.7x the wall-clock time for a strict plan-first
-      design (13.36 against 4.98), while a tool filter was slightly faster (4.28) (Ji, Nov 2025)
+      design (13.36 against 4.98), while a tool filter was slightly faster (4.28) (Ji, Nov 2025); 9.93
+      s against 5.32 s for whitelisted re-planning (Wang, May 2026)
     basis: evidence
   security:
     effect: improves
     size: large
     when: 'attack success below 1% on static benchmarks: 0.69% against 13.16% on AgentDojo (An, Aug 2025);
-      0.52% against 15.62% on AgentDojo and 0.00% against 31.04% on ASB (Ji, Nov 2025). Not against argument
-      or branch steering: 89.5% against a plan-first computer-use agent until each branch''s parameters
-      were bounded (0%) (Zingrillo, Oct 2026); an adaptive attack reusing planned tools raised one design
-      3.9x, to 1.91% (Ji, Nov 2025)'
+      0.52% against 15.62% on AgentDojo and 0.00% against 31.04% on ASB (Ji, Nov 2025); 0 of 13,935 with
+      committed writes and request-grounded arguments (Xu, Nov 2026). Only with argument bounds: a tool
+      graph let 47.92% and 67.36% of parameter-poisoning attacks through (93.06% and 57.64% undefended)
+      (Wang, Nov 2026); a plan layer added nothing over input isolation against task tampering (7.0% against
+      6.6%, 17.0% undefended) (Zhang, Nov 2026); branch steering 89.5% against a plan-first computer-use
+      agent until each branch''s parameters were bounded (0%) (Zingrillo, Oct 2026); an adaptive attack
+      reusing planned tools raised one design 3.9x, to 1.91% (Ji, Nov 2025)'
     basis: evidence
   governance:
     effect: improves
-    size: large
-    when: The plan is a record of what the agent may do, reviewable before it runs; no source here measures
-      it.
-    basis: assessment
+    size: medium
+    when: 'the committed plan and the allowed argument values are a record that can be checked after the
+      fact: a trace audit re-derived them from the logged request and tool registry and found no violation
+      in 25,452 episodes (Xu, Nov 2026); no source measures human review of plans'
+    basis: evidence
   brand:
     effect: improves
     size: small
@@ -130,13 +169,16 @@ measure:
   tier: 4
   how: 'paired runs, plan-first against the current loop and a tool filter, same model, on an injection
     suite that includes data-dependent tasks and helpful third-party instructions (AgentDojo or ASB plus
-    AgentDyn-style tasks; WASP or STEER-Bench for browser agents): benign utility, utility under attack,
-    attack success, tokens and latency per task; add adaptive attacks that reuse planned tools with attacker
-    arguments, craft values that meet branch conditions and reach the planner through error messages'
+    AgentDyn-style tasks; WASP or STEER-Bench for browser agents) and attacks that keep the task''s tools
+    but change their values (task-tampering and parameter-poisoning cases): benign utility, utility under
+    attack, attack success scored on write arguments, confirmation requests, tokens and latency per task;
+    add adaptive attacks that reuse planned tools with attacker arguments, craft values that meet branch
+    conditions, send read-only lookups to attacker URLs and reach the planner through error messages'
 - method: monitor
-  how: calls the controller rejected as unplanned, read-only expansions per task, tasks abandoned because
-    the plan did not fit, and write arguments whose values came from tool output rather than the request
-    or a trusted record
+  how: calls the controller rejected as unplanned, writes the executor tried to add, read-only expansions
+    per task, confirmation requests for authority values found only in tool output, tasks abandoned because
+    the plan did not fit, and write arguments or lookup destinations whose values came from tool output
+    rather than the request or a trusted record
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -229,6 +271,95 @@ evidence:
   direction: supports
   measured: true
   locator: §3; Table 1; §4.2.1 Figure 5; Table 2; Table 3; App. G Table 5
+- source: 'Zimo Xu, Wenzhuo Liu, Hideki Nakayama, "CapLite: Prompt-Injection Defense for Small Language
+    Model Agents without Model-Written Security Artifacts", https://arxiv.org/abs/2611.17115'
+  date: '2026-11-12'
+  task: 'Run four enforcement defenses (CaMeL, Progent, IPIGuard, DRIFT) with each of 15 open-weight models
+    writing its own security artifact, then test CapLite: a planner that sees only the request and tool
+    schemas commits the write calls (with placeholders for looked-up values) before any tool result is
+    read, a read-only loop looks values up, and deterministic code admits a write only if every authority
+    argument (recipient, amount, object identifier, destination) equals a value the request states, else
+    asks the user'
+  effect: 'AgentDojo, important_instructions, mean of 15 models, benign utility / utility under attack
+    / attack success / tokens per episode: undefended 59.4 / 50.2 / 16.66% / 28.0k; IPIGuard 40.1 / 35.7
+    / 3.12% (435 attacks, breached on 13 of 15 models) / 60.5k; DRIFT 35.7 / 34.9 / 1.54% / 28.1k; CaMeL
+    24.9 / 27.2 / 0.14% / 93.7k; CapLite 28.1 / 29.0 / 0.00% (0 of 13,935) / 17.1k. Strongest model (Qwen3.6-35B-A3B),
+    benign utility: undefended 90.7, IPIGuard 55.7, CapLite 42.3. An attack that has the agent fetch an
+    attacker URL with a read-only tool, eight models: 85/168 undefended, 69/168 IPIGuard, 0/168 CapLite.
+    Ablations over eight models: a planner that may append writes after reading admitted 53 of 7,432 attacks
+    (0.7%); removing the argument check admitted 106 (1.4%) and raised benign utility 5.6 points. In 43%
+    of CapLite''s benign failures the committed plan missed a needed write; confirmation requests caused
+    8 to 12% of failures. A trace audit found no violation of committed writes or request grounding in
+    25,452 episodes.'
+  conditions: AgentDojo v1.2.2, 97 user tasks, 949 attacked pairs (929 with a tool goal); 15 open-weight
+    models from 1.7B to 35B (Qwen3, Qwen3.5, Qwen3.6, Gemma-4, Llama-3.1-8B, Granite-4.2, Ministral-3,
+    LFM2.5), thinking disabled, temperature 0, one seed; every defense uses the same small model in all
+    roles; confirmation requests were not answered and count as failures; CapLite is the authors' own
+    design; independent of IPIGuard's authors
+  direction: mixed
+  measured: true
+  locator: Abstract; §2; §3.2; §5 Tables 1, 2, 3; App. B Tables 5, 6, 8
+- source: 'Rongting Zhang, Martin Bertran, Sandeep Avula, Chia-Jung Lee, Vanessa Murdock (Amazon), "Beyond
+    Instruction Override: Benchmarking Indirect Prompt Injection with Task-Tampering Attacks", https://arxiv.org/abs/2611.07640'
+  date: '2026-11-05'
+  task: Benchmark attacks that keep the user's task and its tools but tamper with a decision it needs
+    (an amount, a recipient, a rule, a state claim), and run seven defenses on five current models, including
+    DRIFT with only its injection isolator and DRIFT with its planned tool sequence and parameter checklist
+    added
+  effect: 'Mean over five models, attack success / benign / attacked task success: no defense 17.0% /
+    95.3 / 83.7; DRIFT isolator only 6.6% / 98.0 / 93.3; DRIFT with plan and checklist 7.0% / 88.9 / 83.4;
+    Progent 15.4% / 74.9 / 65.0; CaMeL 1.3% / 13.3 / 13.9. Undefended attack success 23.2% (DeepSeek V3.1),
+    17.4% (Kimi K2.5), 20.6% (Claude Sonnet 4), 11.1% (Claude Sonnet 4.5), 12.9% (GLM-5). "DRIFT’s added
+    plan and checklist layer does not lower ASR (7.0%) but lowers benign TSR (88.9%) relative to isolation."
+    Under the plan layer 0 of 26 (GLM-5) and 3 of 31 (Sonnet 4.5) emitted attacked calls were blocked,
+    all by the argument checklist; no tool-level gate (DRIFT''s plan-position check and alignment judge,
+    Progent''s tool allowlist) blocked an attacked call.'
+  conditions: 90 cases in three simulated tool environments (productivity, DevOps, marketplace); 90 benign
+    and 1,433 attacked runs per model and defense, one run each at temperature 0 through Amazon Bedrock,
+    thinking settings not stated; the defenses are the authors' adaptations to one ReAct loop; attacks
+    planted once and not adapted to the defense (detection-optimized rewrites only); independent of DRIFT's
+    authors
+  direction: contradicts
+  measured: true
+  locator: Abstract; §5.1; §5.2 Table 3; §5.5 Table 4; App. K; App. L
+- source: 'Yao Wang, Zehua Ma, Weiming Zhang, Han Fang, "Right Tool, Wrong Parameters: Defending LLM Agents
+    Against Parameter Poisoning", https://arxiv.org/abs/2611.04673'
+  date: '2026-11-03'
+  task: Build FactAuthBench, AgentDojo tasks whose attacker content keeps the intended tool call but changes
+    a task-critical argument, and compare defenses including the IPIGuard tool graph with the authors'
+    argument-level source check (AuthorityFlow)
+  effect: 'Benign utility / utility under attack / attack success. Qwen3.6-27B: no defense 90.28 / 3.47
+    / 93.06%; IPIGuard 70.83 / 16.67 / 47.92%; DRIFT 86.11 / 44.44 / 39.58%; CaMeL with policies 43.75
+    / 29.17 / 0.69%; AuthorityFlow 82.64 / 27.08 / 9.03%. GPT-4o: no defense 81.94 / 27.78 / 57.64%; IPIGuard
+    81.94 / 20.14 / 67.36%; DRIFT 79.86 / 36.81 / 37.50%; CaMeL with policies 39.58 / 26.39 / 2.08%; AuthorityFlow
+    73.61 / 20.83 / 5.56%.'
+  conditions: FactAuthBench, 144 paired clean and attack cases over AgentDojo's Banking, Slack, Travel
+    and Workspace suites; Qwen3.6-27B and GPT-4o agents in the main table; baselines from official implementations
+    or default configurations; static attack content; no repeated runs reported; AuthorityFlow is the
+    authors' own; independent of IPIGuard's authors
+  direction: contradicts
+  measured: true
+  locator: Abstract; §4.1; §4.2 Table 1
+- source: 'Peiran Wang, Ying Li, Yuan Tian, "Aligning Provenance with Authorization: A Dual-Graph Defense
+    for LLM Agents", https://arxiv.org/abs/2605.26497'
+  date: '2026-05-26'
+  task: A planner that sees only the request and the tool catalog writes an authorization graph (expected
+    tools in order, a declared source for each security-critical argument of a write, and steps marked
+    for re-planning with a tool whitelist); a checker compares the agent's actual calls and argument sources
+    with it; at a re-plan step the planner reads the observation and may add only whitelisted tools
+  effect: 'AgentDyn, GPT-4o agent, attack success / benign utility / utility under attack: none 0.39 /
+    0.53 / 0.55; AuthGraph 0.02 / 0.51 / 0.47; DRIFT 0.01 / 0.30 / 0.27; Tool Filter 0.08 / 0.05 / 0.05;
+    Progent 0.02 / 0.07 / 0.06; CaMeL 0.00 / 0.00 / 0.00. AgentDojo, GPT-4o: none 0.40 / 0.79 / 0.54;
+    AuthGraph 0.01 / 0.76 / 0.58. Ablation (AgentDojo, GPT-4o): attack success 0.18 without the parameter-source
+    check, 0.12 without the hard block on unplanned tools. Overhead on AgentDojo: 9.93 s against 5.32
+    s per task (1.87x), 47.4K against 11.2K tokens (4.23x).'
+  conditions: AgentDojo (97 tasks, 629 injections) and AgentDyn; GPT-4o-mini and GPT-4o agents with a
+    GPT-4o graph builder and checker and a GPT-4o-mini planner, temperature 0; static attacks only; 2
+    of 60 AgentDyn tasks in which the user delegates trust to an observation were excluded from the reported
+    metrics; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §3.3; §4.1; §4.2 Tables 3, 4, 5, 6; App. B.2
 assessment:
   qa:
     unit: Controller rejects unplanned calls.
@@ -281,13 +412,18 @@ provenance:
   sub_type: planning
   library_group: Control Flow
   library_source: catalog
-caveats: 'Most attack-success numbers here come from static template attacks: the one independent adaptive
-  test raised a plan-first design 3.9x (to 1.91%) by reusing planned tools with attacker arguments, and
-  an email that reached the planner''s context put an attacker''s tool into the plan in a case study.
-  Utility depends on how plannable the tasks are: AgentDojo has 6 data-dependent tasks in 97, and on a
-  benchmark where all tasks are, plan-first defenses lost most of their utility; that benchmark shares
-  authors with one of the defenses it tests, and the 89.5% branch-steering figure is on its authors''
-  own benchmark. A fixed plan does not stop injections in the user prompt (Beurer-Kellner, Jun 2025) or
-  in tool descriptions the planner reads, and frontier models already resist template attacks without
-  a defense (0.87% for undefended Claude Sonnet 4.5), so the guarantee matters most against attackers
-  stronger than today''s benchmarks.'
+caveats: 'The plan fixes which tools run, not what values they get: without argument bounds a tool graph
+  let 47.92% and 67.36% of parameter-poisoning attacks through and a plan layer added nothing over input
+  isolation against task tampering on five current models, while the bounded design''s 0 of 13,935 comes
+  from its authors'' test on open models of 1.7B to 35B with thinking off and AgentDojo''s tasks, at 21
+  points less utility under attack than undefended. Most attack numbers come from static template attacks:
+  the one independent adaptive test raised a plan-first design 3.9x (to 1.91%) by reusing planned tools,
+  and an email that reached the planner''s context put an attacker''s tool into the plan in a case study;
+  a fixed plan also does not stop injections in the user prompt (Beurer-Kellner, Jun 2025) or in tool
+  descriptions the planner reads. Utility depends on how plannable the tasks are: AgentDojo has 6 data-dependent
+  tasks in 97, the benchmark built from such tasks shares authors with one of the defenses it tests, the
+  89.5% branch-steering figure is on its authors'' own benchmark, and the re-planning design that kept
+  utility on data-dependent tasks is its authors'' GPT-4o test, which excluded 2 of 60 tasks and lets
+  the re-planner read the observation. Frontier models resist template attacks undefended (0.87% for Claude
+  Sonnet 4.5) but not task tampering (11.1%), and no source here compares a plan-first defense with a
+  current frontier model running its vendor''s built-in defenses.'

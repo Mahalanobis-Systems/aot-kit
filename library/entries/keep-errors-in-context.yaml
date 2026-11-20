@@ -28,7 +28,7 @@ summary: 'Show the agent every failed action as a marked error it can read, with
   an empty or plausible-looking result or deleting the failed attempt. On one benchmark agents recovered
   from explicit failures 37 points more often than from silent ones across nine models, a note naming
   the recovery tools on silently failed results raised completion from 10.9% to 28.1% on four current
-  open-weight models, and one model almost never misreported a failure marked status:error (at most 1.2%)
+  DeepSeek V4 and Qwen 3.7 models, and one model almost never misreported a failure marked status:error (at most 1.2%)
   but answered dishonestly in up to 45.3% of failures returned as status:ok. The limits: deleting the
   failed exchange did only 1.9-3.8 points worse than keeping it across 13 open models, in 135M-1.7B models
   the verbatim failed call made exact repeats more likely (though deleting it was worse), a model''s own
@@ -49,8 +49,8 @@ how: '1. Start from the harness as it is and find every place a failure is hidde
   against at most 1.2% when the tool returned status error. Where a tool can fail silently, check its
   results against cheap output contracts (required fields, types, allowed values, sign, simple totals)
   and, on a violation, keep the result and attach a short note naming the violated property and the tools
-  that can recover it: on four current open-weight models that raised completion under silent failures
-  from 10.9% to 28.1%. Keeping the loop alive when a tool raises is 2.b.i. 3. Cap what goes in: keep the
+  that can recover it: on four current DeepSeek V4 and Qwen 3.7 models that raised completion under silent
+  failures from 10.9% to 28.1%, and in a DeepSeek-only control the recovery-tool list itself added 11.4 points. Keeping the loop alive when a tool raises is 2.b.i. 3. Cap what goes in: keep the
   exception type and message, the frames in the agent''s own code and the last lines of output; write
   the full trace or log to a file and give the path (2.c.i); make test and lint runs print a few lines,
   with ERROR and the reason on one line. Write the errors you own so they name the next step (the call
@@ -117,7 +117,7 @@ impact:
     size: medium
     when: recovery from silent failures 37.15 points below explicit errors, averaged over nine models
       (Zhu, Jun 2026); a contract note naming recovery tools on silently failed results 28.1% vs 10.9%
-      completion on four current open-weight models and +14.0 and +12.0 points on τ-bench retail, no net
+      completion on four current DeepSeek V4 and Qwen 3.7 models and +14.0 and +12.0 points on τ-bench retail, no net
       effect where most runs completed anyway (Panthi, Aug 2026); deleting the failed exchange 1.9-3.8
       points below keeping it across 13 open models, a new-turn note with the next step +34.4 points on
       real coding-agent histories and +14.2 and +10.5 points on ToolMaze explicit errors, no gain on Loud/Quiet
@@ -532,9 +532,9 @@ provenance:
   sub_type: state_management
   library_group: Production
   library_source: master
-caveats: 'Two harness ablations now separate showing a failure from hiding it, both on open-weight models:
-  across 13 models (3B-70B), deleting the failed exchange did 1.9-3.8 points worse than keeping it and,
-  when the note replaced it in the user message, broke stopping in Llama models, and on four current models
+caveats: 'Two harness ablations now separate showing a failure from hiding it:
+  across 13 open-weight models (3B-70B), deleting the failed exchange did 1.9-3.8 points worse than keeping it and,
+  when the note replaced it in the user message, broke stopping in Llama models, and on four current DeepSeek V4 and Qwen 3.7 models
   a contract note on silently failed results raised completion from 10.9% to 28.1%, with no net gain where
   most runs succeeded anyway and as many harms as rescues on clean runs; no ablation covers a closed frontier
   model, and the honesty result (at most 1.2% dishonest answers on status:error, up to 45.3% on status:ok)

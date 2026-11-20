@@ -80,6 +80,7 @@ Most measured evidence is narrow: the frontier-model strategy study ran two runs
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
 - `aot-kit:vary-few-shot-examples` (3.a.ii, Avoid few-shot ruts)
 - `aot-kit:discrete-phase-separation` (5.c.i, Discrete phase separation)
+- `aot-kit:continuous-task-loop` (7.d.i, Continuous autonomous task loop)
 
 <!-- End of the generated part. Everything below is written by hand. -->
 

@@ -23,60 +23,100 @@ evidence_domains:
 - commerce
 - tool-use
 - code-generation
+- data-analysis
 categories:
 - topologies.parallel
 summary: 'Give each piece of a large or untrusted input its own tool-less model call that sees only that
   piece and must answer in a fixed schema, then combine the answers in code or in a reducer that never
-  sees the raw text. Against prompt injection it confines an attack to the item it sits in: with each
-  product review mapped to two integers and a median, injected reviews swayed a GPT-4o shopping agent
-  0.0% of the time against 31.7% undefended at the same utility, but a schema too narrow for the task cut fixes on 180 curated SWE-bench Lite issues from 68.3% to 45.0%. On long input it pays when the model degrades with length
-  and the answer needs little reasoning across chunks: prompted chunk readers on a 4B model held 72.92%
-  on multi-hop QA at 896K tokens where the same model given the whole document fell to 31.25%, while character
-  inference, which depends on relations spread across a dialogue, scored below the whole-input call at
-  every chunk size. A frontier long-context model is the baseline to beat: DeepSeek-V4-Pro at maximum
-  reasoning kept 78.91% at 896K, and whole-input Gemini 2.5 Pro beat a map-reduce whose per-document sub-agents searched only their own
-  document 68.0 to 58.1 on 102 multi-document questions, where map-reduce won only on cost.'
+  sees the raw text. Against prompt injection it confines an instruction to the item it sits in (injected
+  reviews swayed a GPT-4o shopping agent 0.0% of the time against 31.7% undefended, and a tool-less reader
+  let 2 of 649 known attacks through on gpt-5-mini), but not data an item forges (a quarantined reader
+  still took 25.0% of forged-record attacks on GPT-5.2, against 49.1% undefended), and a schema too narrow
+  for the task cut fixes on 180 curated SWE-bench Lite issues from 68.3% to 45.0%. On long input it pays
+  when the model degrades with length and the answer needs little reasoning across chunks: prompted 4B
+  chunk readers held 72.92% on multi-hop QA at 896K tokens where the same model given the whole document
+  fell to 31.25%, and a lead that sends rounds of lookups to the readers beat a single map pass, which
+  scored below a whole input truncated to 128K on LongBench v2 (32.4 vs 40.6). A frontier whole-input
+  call is the baseline to beat: DeepSeek-V4-Pro kept 78.91% at 896K, whole-input Gemini 2.5 Pro beat per-document
+  map-reduce 68.0 to 58.1, and small chunk readers under a Gemini 3 Pro lead only tied Gemini 3 Pro reading
+  the whole input (71.3% vs 72.2%), at about a sixth of the cost.'
 how: '1. Start from the baseline: the whole input in one call to your current model with thinking on,
   at the input lengths you actually see, and for untrusted input an injection eval with one poisoned item
   among clean ones; record accuracy, cost and p50/p95 latency per item. Expect it to be strong: DeepSeek-V4-Pro
-  at maximum reasoning held 78.91% on multi-hop QA at 896K tokens, whole-input Gemini 2.5 Pro beat per-document retrieval map-reduce 68.0 to 58.1, and at 7K tokens a 4B model given the whole document with thinking beat prompted
-  chunk readers 80.47% to 72.92%. 2. Check that the task decomposes: per-item judgments (does this file
-  hold an invoice, how does this review rate the product, how many years of experience does this resume
-  show), extraction, filters, counts and extremes do; answers that hinge on relations across chunks do
-  not (character inference over a dialogue scored below the whole input at every chunk size). For multi-hop
-  questions use rounds (step 5), not one pass. 3. Split on item boundaries (one file, review, resume,
-  email or document per call), so a poisoned item can only change its own record. For long running text,
-  try a few chunk sizes on 5 sampled documents each and keep the best (this picked the exhaustive-search
-  optimum in 4 of 6 settings and came within 0.04 in the others); the best sizes ran from 4K to 32K tokens
-  across models and tasks, and a 1K-token overlap did not help. 4. Map: one isolated call per piece with
-  no tools, the task rewritten as a per-piece subtask the reducer can combine (for the second-smallest
-  number, ask each chunk for its two smallest), and the output schema enforced with structured outputs.
-  For untrusted data allow only integers, floats, booleans, enums from a vetted list or short arrays of
-  them, never free text that a later privileged or tool-using call reads; for trusted long text, short
-  JSON findings with an explicit not-found answer. The map can run on a smaller model (1.b.i): 4B chunk
-  readers scored as well as 9B ones. 5. Reduce in code where you can (count, filter, median, top-K), which
-  no single tampered input can redirect; if the reducer is a model with tools, pass it only the validated
-  schema fields. For questions that need several hops, let a lead call that never sees the document send
-  focused queries to all chunk readers and ask follow-ups over a few rounds; prompted, this held 72.92%
-  to 76.04% from 7K to 896K tokens, and RL training of the lead added about 10 points. 6. Measure against
-  the baseline on the same items at each input length: accuracy, cost per item and latency (parallel chunk reading, measured on the RL-trained version on two GPUs against one, took 78.22 s against
-  375.32 s for the whole 896K document with thinking, but 5.33 s against 1.16 s at 7K, and a three-stage per-document retrieval pipeline took 54.8 s against 45.6 s). For injection, report
-  attack success with a canary in one item, check that the reduce output changes only through that item''s
-  own fields, and track the per-chunk schema-violation rate.'
+  at maximum reasoning held 78.91% on multi-hop QA at 896K tokens, whole-input Gemini 2.5 Pro beat per-document
+  retrieval map-reduce 68.0 to 58.1, whole-input Gemini 3 Pro scored 72.2% on LongBench v2''s Long subset
+  (over 128K), and at 7K tokens a 4B model given the whole document with thinking beat prompted chunk
+  readers 80.47% to 72.92%. Current models already resist most fixed instruction payloads on their own
+  (GPT-5.2 let 0.2% of AgentDojo''s through undefended, gpt-5-mini 2.83% of 22,899 known-successful LLMail-Inject
+  payloads), so also plant data injection (an item that forges a record or a field) and, where you can,
+  an attacker that adapts to your design. 2. Check that the task decomposes: per-item judgments (does
+  this file hold an invoice, how does this review rate the product, how many years of experience does
+  this resume show), extraction, filters, counts and extremes do; answers that hinge on relations across
+  chunks do not (character inference over a dialogue scored below the whole input at every chunk size).
+  For multi-hop questions and questions over long running text use rounds (step 5), not one pass: a single
+  map pass with one aggregation step scored below a whole-input call truncated to 128K on real long documents
+  (Qwen3-14B 32.4 vs 40.6 on LongBench v2, 48.77 vs 63.34 on InfiniteBench). 3. Split on item boundaries
+  (one file, review, resume, email, record or document per call), so a poisoned item can only change its
+  own record, and do the split and the item count in code from the source''s own structure (API records,
+  files, rows), never by asking a model to find or count records in text that holds untrusted fields:
+  a fake object planted in one untrusted JSON field made six current models (GPT-5.2, Claude Opus 4.5
+  and Gemini 3 Pro among them) return the attacker''s value 31.3% to 43.3% of the time, and with randomized
+  field names, fake list entries were what still got through when an agent totaled a list. Take trusted
+  fields (sender, author, ID, URL, origin) from the parsed record in code, not from a map''s output; if
+  a call must read structured data, suffix field names with a random nonce and tell the model to trust
+  only those (this cut the attack to 0.0% to 3.0%). For long running text, try a few chunk sizes on 5
+  sampled documents each and keep the best (this picked the exhaustive-search optimum in 4 of 6 settings
+  and came within 0.04 in the others); the best sizes ran from 4K to 32K tokens across models and tasks,
+  and a 1K-token overlap did not help. 4. Map: one isolated call per piece with no tools, the task rewritten
+  as a per-piece subtask the reducer can combine (for the second-smallest number, ask each chunk for its
+  two smallest), and the output schema enforced with structured outputs. For untrusted data allow only
+  integers, floats, booleans, enums from a vetted list or short arrays of them, never free text that a
+  later privileged or tool-using call reads: on gpt-5-mini a reader without tools let 2 of 649 attacks
+  through and the reader plus a JSON hand-off none, while the same JSON schema on the single acting agent
+  let 92 through, and injected text still reached 63.7% of the reader''s free-text summary fields. For
+  trusted long text, short JSON findings with an explicit not-found answer. When items are trusted and
+  each needs its own analysis, the map can be one agent per item with its own tools that writes a fixed
+  structured report (findings, quantitative evidence, interpretation, references, caveats) into a store,
+  with synthesis over the stored reports: one agent per perturbation was preferred in 45 of 60 blinded
+  expert judgments over one agent given all of them (not compute-matched). The map can run on a smaller
+  model (1.b.i): 4B chunk readers scored as well as 9B ones, and 4B to 14B readers added 2.9 points where
+  a larger lead added 11.1. 5. Reduce in code where you can (count, filter, median, top-K), which no single
+  tampered input can redirect; if the reducer is a model with tools, pass it only the validated schema
+  fields. For questions that need several hops or span long running text, let a lead call that never sees
+  the document send focused, atomic lookups (one entity or term each) to all chunk readers and ask follow-ups
+  over a few rounds; prompted, this held 72.92% to 76.04% from 7K to 896K tokens, RL training of the lead
+  added about 10 points, and with Gemini 3 Pro as the lead and 4B readers on 4,096-token chunks it scored
+  71.3% against 72.2% for Gemini 3 Pro on the whole input, at $20.4 against $126.7 for the evaluation
+  set. Before adding sub-calls to a lead that holds the input in a REPL, try the same lead searching and
+  slicing it in code without them (5.c.ii): with GPT-5, sub-model calls scored 59.5 against 65.2 on CodeQA
+  and 86.0 against 89.7 on BrowseComp+ (but 53.0 against 50.5 on OOLONG), and within the model''s window
+  the recursive version often scored below the whole-input call. 6. Measure against the baseline on the
+  same items at each input length: accuracy, cost per item and latency (parallel chunk reading, measured
+  on the RL-trained version on two GPUs against one, took 78.22 s against 375.32 s for the whole 896K
+  document with thinking, but 5.33 s against 1.16 s at 7K, and a three-stage per-document retrieval pipeline
+  took 54.8 s against 45.6 s). For injection, report attack success with a canary in one item and, separately,
+  with a forged record or field; check that the reduce output changes only through that item''s own fields
+  and that the item count and trusted fields match the source, and track the per-chunk schema-violation
+  rate.'
 detect:
   static: Chunking, a sandboxed model per chunk with a constrained output schema, a deterministic reducer.
     Flag map calls that hold tools, free-text map outputs read by a privileged or tool-using reducer,
-    and chunking applied to tasks whose answer depends on relations across chunks.
+    items split or counted by a model in text that holds untrusted fields, trusted fields (sender, ID,
+    origin) taken from a map's output instead of the parsed record, a single map pass over long running
+    text, and chunking applied to tasks whose answer depends on relations across chunks.
   traces: Per-chunk outputs conform to schema.
-  evals: Injection containment (attack success with one poisoned item); accuracy against the whole-input
-    call at several input lengths, with cost and latency.
+  evals: Injection containment (attack success with one poisoned item, for an injected instruction and
+    for a forged record or field separately); accuracy against the whole-input call at several input lengths,
+    with cost and latency, for one pass and for lead-driven rounds.
   probes:
-    what: One injected item among clean items; long inputs with the evidence placed at different positions
-      and split across chunks.
+    what: One injected item among clean items; an item whose untrusted text forges another record or a
+      trusted field; long inputs with the evidence placed at different positions and split across chunks.
     construct: Plant a canary instruction in one item (a review, file or email); the reduce output may
-      change only through that item's own schema fields, and no tool call may follow the canary. For long
-      input, move the evidence across positions and across a chunk boundary and compare accuracy with
-      the whole-input call at the same lengths.
+      change only through that item's own schema fields, and no tool call may follow the canary. Plant
+      a fake object inside one item's untrusted field (another sender or ID, an extra list entry); the
+      item count and trusted fields must still match the source. For long input, move the evidence across
+      positions and across a chunk boundary and compare accuracy with the whole-input call at the same
+      lengths.
   primary:
   - static
   - probes
@@ -87,33 +127,46 @@ impact:
     when: 'gains on long input when the model degrades with length and evidence sits within chunks: 72.92%
       vs 31.25% for the whole 896K-token document on a 4B model (Li, Sep 2026); synthetic Math 0.11 to
       0.55 and LongBench-v2 QA 0.31 to 0.48 for gpt-4o-mini at 128K, at a chunk size picked after the
-      fact on test data (Xu, Jun 2025). Losses when the answer
-      spans chunks (character inference below whole input at every chunk size; Xu, Jun 2025), against
-      a frontier whole-input call (Gemini 2.5 Pro 68.0 vs 58.1; Akay, Mar 2026) and when the schema is
-      too narrow for the task (180 curated SWE-bench Lite issues 68.3% to 45.0%; Jacob, Sep 2025)'
+      fact on test data (Xu, Jun 2025); lead-driven rounds of lookups 48.7 vs 38.9 against a 128K-truncated
+      whole input on LongBench v2 Long for Qwen3-14B, and 71.3 vs 72.2 against whole-input Gemini 3 Pro
+      (Chen, Sep 2026); per-item agents preferred in 45 of 60 blinded expert judgments over one agent
+      with all items, not compute-matched (Sun, Oct 2026). Losses when the answer spans chunks (character
+      inference below whole input at every chunk size; Xu, Jun 2025), with a single map pass (32.4 vs
+      40.6 against a truncated whole input; Chen, Sep 2026), against a frontier whole-input call (Gemini
+      2.5 Pro 68.0 vs 58.1; Akay, Mar 2026), with sub-calls under a strong lead (GPT-5 CodeQA 59.5 vs
+      65.2 without them; Alizadeh, Mar 2026) and when the schema is too narrow for the task (180 curated
+      SWE-bench Lite issues 68.3% to 45.0%; Jacob, Sep 2025)'
     basis: evidence
   cost:
     effect: mixed
-    size: medium
-    when: 'every chunk is still read once, plus per-call instructions and a reduce call; cheaper when
-      the map runs on a smaller model: $0.103 vs $0.273 per query with Gemini 2.5 Flash readers against
-      whole-input Gemini 2.5 Pro (Akay, Mar 2026); repeated rounds re-read every chunk unless the KV cache
-      is reused (Li, Sep 2026)'
+    size: large
+    when: 'every chunk is still read once, plus per-call instructions, a reduce call and any rounds; cheaper
+      when the map runs on a smaller model: $20.4 vs $126.7 on LongBench v2 Long for 4B readers under
+      a Gemini 3 Pro lead against whole-input Gemini 3 Pro (Chen, Sep 2026), $0.103 vs $0.273 per query
+      with Gemini 2.5 Flash readers against whole-input Gemini 2.5 Pro (Akay, Mar 2026); repeated rounds
+      re-read every chunk unless the KV cache is reused (Li, Sep 2026)'
     basis: evidence
   performance:
     effect: mixed
     size: medium
     when: 'faster on long input with a parallel map: 78.22 s vs 375.32 s per question at 896K tokens against
       the whole document with thinking (RL-trained version on two GPUs vs one), but 5.33 s vs 1.16 s at
-      7K (Li, Sep 2026); a coordinator, per-document retrieval map and reduce pipeline took 54.8 s vs 45.6 s for one whole-input call (Akay, Mar 2026)'
+      7K (Li, Sep 2026); a coordinator, per-document retrieval map and reduce pipeline took 54.8 s vs
+      45.6 s for one whole-input call (Akay, Mar 2026); on a fixed 8-GPU budget a lead-driven chunked
+      version stayed near flat from 256K to 1M tokens while one-pass and sequential chunk agents grew
+      linearly, shown only in a figure and not against the whole-input call (Chen, Sep 2026)'
     basis: evidence
   security:
     effect: improves
     size: large
-    when: per-item calls with typed outputs and a median reducer took injected-review attack success on
-      a GPT-4o shopping agent from 31.7% to 0.0% at equal utility; typed hand-offs took calendar scheduling
-      from 63.0% and bug fixing from 98.9% to 0.0% (Jacob, Sep 2025); a poisoned item can still set its
-      own values (Beurer-Kellner, Jun 2025)
+    when: 'per-item calls with typed outputs and a median reducer took injected-review attack success
+      on a GPT-4o shopping agent from 31.7% to 0.0% at equal utility; typed hand-offs took calendar scheduling
+      from 63.0% and bug fixing from 98.9% to 0.0% (Jacob, Sep 2025); a tool-less reader cut 649 known-successful
+      LLMail-Inject attacks on gpt-5-mini to 2, and with a JSON hand-off to 0, against 92 for the JSON
+      schema alone (Cheng, Mar 2026); it does not stop data an item forges: a quarantined reader still
+      let 25.0% of forged-record attacks through on GPT-5.2, against 49.1% undefended, while fixed instruction
+      payloads succeeded 0.2% of the time undefended (Choi, Jul 2026), and a poisoned item can still set
+      its own values (Beurer-Kellner, Jun 2025)'
     basis: evidence
   governance:
     effect: improves
@@ -130,19 +183,22 @@ measure:
 - method: before-after
   tier: 2
   how: 'injection eval on your own items: plant a canary instruction in one item (review, file, email,
-    document) among clean ones and compare attack success with the raw-text design; the reduce output
-    may change only through the poisoned item''s own schema fields, and no tool call may follow the canary;
-    report utility on clean items alongside'
+    document) among clean ones, and separately a forged record or field inside one item''s untrusted text
+    (another sender or ID, an extra list entry), and compare attack success with the raw-text design;
+    the reduce output may change only through the poisoned item''s own schema fields, the item count and
+    trusted fields must match the source, and no tool call may follow the canary; report utility on clean
+    items alongside, and where possible add an attacker that adapts to the split'
 - method: experiment
   tier: 4
   how: 'paired eval against the whole-input call with thinking on, at several input lengths you actually
-    see: accuracy, cost per item, p50/p95 latency; include items whose evidence spans chunk boundaries
-    and pick the chunk size on a few sampled documents per size before the full run; confirm with a production
-    A/B before switching'
+    see: accuracy, cost per item, p50/p95 latency; run one map pass and lead-driven rounds, and for a
+    lead that holds the input in a REPL, the same lead with and without sub-calls; include items whose
+    evidence spans chunk boundaries and pick the chunk size on a few sampled documents per size before
+    the full run; confirm with a production A/B before switching'
 - method: monitor
-  how: per-chunk schema-violation and not-found rates, chunks per request, reducer input size, slowest-chunk
-    latency, cost per request; on a regularly audited sample, answers that depended on facts spread across
-    chunks
+  how: per-chunk schema-violation and not-found rates, chunks per request, items per request against the
+    source's record count, reducer input size, rounds per question, slowest-chunk latency, cost per request;
+    on a regularly audited sample, answers that depended on facts spread across chunks
 evidence:
 - source: paper Table 6
   date: 2026-02
@@ -251,6 +307,129 @@ evidence:
   measured: true
   locator: §3.6; §5.3-5.5 Table 1; Appendix F Table 2; Appendix G Table 3; Appendix I Table 6; Appendix
     J Table 7; Appendix N
+- source: 'Guanzheng Chen, Viet Dac Lai, Subhojyoti Mukherjee, Branislav Kveton, Seunghyun Yoon, Franck
+    Dernoncourt, Qizhe Xie, Trung Bui (National University of Singapore, Adobe Research), "DISCO: Distributed
+    Long Context Scaling with Grounding-Reasoning Disaggregation", https://arxiv.org/abs/2609.33485'
+  date: '2026-09-27'
+  task: A driver model that never sees the raw input plans rounds of atomic, entity-level lookups sent
+    to small worker models, each holding one 4,096-token shard (map), reasons over the pooled findings
+    (reduce) and replans until it can answer (at most 10 stages); the driver is optionally RL-trained
+    (GRPO). Compared with the same driver given the whole input, RAG, sequential Chain-of-Agents, single-pass
+    LLM×MapReduce and RLM
+  effect: 'LongBench v2 Medium / Long / average, Qwen3-14B with thinking: whole input (truncated to 128K)
+    42.3 / 38.9 / 40.6; LLM×MapReduce 31.1 / 33.7 / 32.4; DISCO 41.8 / 48.7 / 45.3; DISCO with RL 43.7
+    / 50.9 / 47.3; RLM 13.9 average. Qwen3-8B averages: whole input 30.6, LLM×MapReduce 30.6, DISCO 35.3,
+    with RL 38.1. InfiniteBench average: Qwen3-8B whole input 57.90, LLM×MapReduce 45.10, DISCO 60.70,
+    with RL 63.68; Qwen3-14B 63.34, 48.77, 64.71, 67.19. RULER-QA at 1M tokens (Qwen3-8B): RAG 10.9, LLM×MapReduce
+    72.4, DISCO 78.4; no whole-input run. Gemini-3-Pro-Preview as driver with Qwen3-4B workers, LongBench
+    v2 Long: 71.3% vs 72.2% for Gemini on the whole input, evaluation cost $20.4 vs $126.7 (6.2x); 70.37
+    with Ministral-3-8B workers. Workers 4B to 14B: 50.9 to 53.8; driver 8B to 14B: 39.8 to 50.9. LLM
+    workers beat a dense retriever in the same loop, 47.3 vs 39.6. Thinking on added 0.9 and 5.6 points
+    to the whole-input call (8B, 14B) and 5.5 and 13.5 to DISCO. Latency stayed near flat from 256K to
+    1M tokens on 8 H100s while Chain-of-Agents and LLM×MapReduce grew linearly (figure only).'
+  conditions: Qwen3-8B and Qwen3-14B drivers in thinking mode, Qwen3-4B-Instruct-2507 workers; Gemini-3-Pro-Preview
+    (thinking level not stated); LongBench v2 Medium (32K-128K) and Long (over 128K) multiple-choice subsets,
+    InfiniteBench En.MC and En.QA (150K-200K, En.QA judged by Qwen3-235B), RULER-QA 256K to 1M; open models
+    extended to 128K with YaRN and the whole-input baseline truncated in the middle to 128K, so it never
+    sees the full Long documents; RL on 4.5K synthetic MuSiQue-based samples; no repeat runs or intervals
+    reported; the authors' own method
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1; §4.1 Table 1, Figures 2-3; §4.2 Figure 4; §4.4 Figure 5; Appendix A.2; Appendix
+    A.4 Tables 3-4
+- source: Woohyuk Choi, Juhee Kim, Taehyun Kang, Jihyeon Jeong, Luyi Xing, Byoungyoung Lee (Seoul National
+    University, UIUC), "Agent Data Injection Attacks are Realistic Threats to AI Agents", https://arxiv.org/abs/2607.05120
+  date: '2026-07-06'
+  task: 'Agent data injection: untrusted text that forges trusted data (a fake JSON object or field, a
+    colliding element ID, a spoofed origin) instead of giving an instruction. Tested on six models reading
+    structured tool responses (extract a field or aggregate, such as counting events) and on AgentDojo
+    agents behind seven defenses, including a dual-LLM quarantined reader (CaMeL without policies) and
+    CaMeL with data-flow policies'
+  effect: 'Standalone, JSON tool responses: benign utility 81.2-84.8% and attack success 31.3-43.3% across
+    GPT-5.2 (41.8%), GPT-5-mini (40.3%), Claude Opus 4.5 (34.3%), Claude Sonnet 4.5 (37.3%), Gemini 3
+    Pro (31.3%) and Gemini 3 Flash (43.3%); a random nonce on field names cut it to 0.0-3.0%; stripping
+    delimiters also cut it to 0.0-3.0% but utility fell to 67.9-72.3%. AgentDojo, GPT-5.2: instruction
+    injection succeeded 0.0-0.7% under every configuration, 0.2% undefended; data injection 49.1% undefended
+    (utility 86.5%), 25.0% with the quarantined reader, 23.1% with CaMeL policies (a label-propagation
+    bug, reported to the authors), 0% with CaMeL Strict at 36.5% utility, 22.2% with Progent (81.4% utility),
+    28.7% with randomized field names (83.3% utility), 40.7% with plan-then-execute, 50.0% and 45.4% with
+    input and output guardrails. Against randomization, the attacks that still worked "added a fake element
+    to a list (e.g., a fake transaction in a transaction history) that the agent processed as a whole
+    (e.g., computing the total of all transactions)."'
+  conditions: 157 standalone cases over seven data categories (JSON from production APIs, anonymized;
+    synthetic web DOM); AgentDojo, 96 user tasks in four suites, 108 authors-written data-injection attacks
+    and the existing 935 instruction injections, tool responses switched from YAML to JSON; agent tests
+    on GPT-5.2 only; the attacker is assumed to know the data format; no adaptive optimization; independent
+    of the defenses' authors
+  direction: mixed
+  measured: true
+  locator: §III-C; §V; §VI-A Table II, Figure 9; §VI-B Table III, Figures 10-11; Appendix B Table V
+- source: 'Darren Cheng, Wen-Kwang Tsao (TrendAI Lab, Trend Micro), "Agent Privilege Separation in OpenClaw:
+    A Structural Defense Against Prompt Injection", https://arxiv.org/abs/2603.13424'
+  date: '2026-03-13'
+  task: Split an email assistant into a reader agent with no privileged tools (only store_summary) that
+    turns the raw emails into a JSON summary (sender, subject, body summary, action items) and an actor
+    agent with send_email that sees only that JSON, with a regex validator in audit mode; replay LLMail-Inject
+    attacks against the single agent, JSON formatting alone, isolation alone and both
+  effect: 'Undefended single agent: 2.83% of 22,899 unique LLMail-Inject Phase 1 payloads succeeded (649).
+    On those 649: JSON formatting on the single agent 14.18% (92), reader/actor isolation without JSON
+    0.31% (2), isolation plus JSON hand-off 0.0% (0); by scenario, JSON alone let 28.3% of data-exfiltration
+    attacks through, isolation 0.0%. Injected content still reached 63.7% of the reader''s summaries;
+    the authors say the schema stops actionable content, not content propagation.'
+  conditions: gpt-5-mini in OpenClaw; LLMail-Inject's four scenarios (2 or 10 emails, with or without
+    retrieval, one exfiltration goal); the reader takes all emails of a scenario in one call, so this
+    is one quarantined hand-off, not one call per item; replayed human-written payloads, none adapted
+    to this defense; no clean-task utility reported; the authors' own defense
+  direction: supports
+  measured: true
+  locator: §2.2; §3; §4.1 Table 2; §4.2 Table 3; §4.3; §5.2; §6 Limitations and Residual risk
+- source: 'Keivan Alizadeh, Parshin Shojaee, Minsik Cho, Mehrdad Farajtabar (Apple), "Recursive Language
+    Models Meet Uncertainty: The Surprising Effectiveness of Self-Reflective Program Search for Long Context",
+    https://arxiv.org/abs/2603.15653'
+  date: '2026-03-07'
+  task: Hold the long input in a REPL and let the root model write programs over it, with recursive sub-model
+    calls on slices (RLM) or without them, against the base model given the whole input in its prompt,
+    CodeAct with BM25 and a summarizing agent; the paper's own SRLM picks among 8 candidate programs using
+    self-consistency, verbalized confidence and reasoning length
+  effect: 'Accuracy, GPT-5 (medium reasoning) root with GPT-5-mini sub-calls, LongBench v2 CodeQA / BrowseComp+
+    (1K documents) / OOLONG (131K): base model 24.0 / 0.0 (both context overflow) / 44.0; RLM 59.5 / 86.0
+    / 53.0; RLM without sub-calls 65.2 / 89.7 / 50.5; SRLM 68.9 / 92.4 / 65.5. Qwen3-Coder-480B: base
+    20.0 / 0.0 / 36.0, RLM 59.8 / 37.1 / 45.7, without sub-calls 53.8 / 36.3 / 39.1. "Under GPT-5, recursion
+    hurts performance and the variants without sub-calls outperform their recursive counterparts in most
+    cases"; "On shorter contexts (for example < 131 K), RLM often underperforms the base model"; recursion
+    helped more on code and structured-data QA than on dialogue-history and document QA.'
+  conditions: GPT-5 and Qwen3-Coder-480B-A35B; Table 1 on LongBench v2 CodeQA (23K-4.2M tokens), BrowseComp+
+    (6M-11M) and OOLONG trec_coarse at 131K; context-length sweeps on full OOLONG (about 650 tasks, 1K
+    to 4M tokens) and full LongBench v2 (about 500) in figures only; GPT-5-mini judge; 600 s limit per
+    step; RLM numbers are the authors' replication; no repeat runs reported; independent of the RLM authors
+  direction: mixed
+  measured: true
+  locator: §3.2-3.3; §3.4 Table 1; §3.5 Figure 2; §3.6 Figure 3; §3.7 Figure 4; Appendix C.1 Figures 8-9
+- source: Alexander Sun, Joshua J. Park, David DeTomaso, Seoyeon Kim, Amelia Liu, Suyash Shringarpure,
+    Kenny Kim, Patrick C. Thompson, Tuo Shi, Yunyun Wang, Eran A. Mukamel, Grace X. Y. Zheng, Y. Joy Jiao,
+    Xin Jin (Scripps Research, OpenAI, PerturbAI), "Distributed AI agents enable comprehensive discovery
+    of biological insights at scale" (bioRxiv), https://doi.org/10.64898/2026.10.15.759436
+  date: '2026-10-16'
+  task: One agent per perturbation of a whole-brain Perturb-seq atlas (1,946 agents run independently
+    and in parallel with the same prompt, coding tools and literature access) writes a structured report
+    (findings, quantitative evidence, interpretation, references, caveats, follow-up experiments) into
+    a searchable store; downstream agents label findings against the literature and synthesis agents rank
+    cross-perturbation findings over the stored reports. Compared with one agent given 1 to 893 perturbations
+    with the same model, prompt, tools and data access
+  effect: 'The parallel run finished in 32 minutes, with 39,185 paper reads and 16,445 retained citations.
+    One agent given more perturbations plateaued in steps and tool calls; at 893 it cited 11 references,
+    the distributed agents 711x more, and no-literature-retrieved flags increasingly dominated its output.
+    Across 20 matched report pairs, each rated by three blinded experts, distributed-agent interpretations
+    were preferred in 45 of 60 judgments (75%), the single agent''s in 10 (16.7%), 5 ties. Median recall
+    at rank 50 for ranking the most depleted perturbations: 0.36 distributed vs 0.18 single agent. Authors:
+    "matched comparisons are needed to determine how much of this scaling advantage generalizes."'
+  conditions: GPT-Rosalind-5.5; one whole-brain Perturb-seq atlas (1,946 perturbations, 893 with detectable
+    responses); 30 doctoral-level expert raters; not compute-matched (one agent against one agent per
+    perturbation); trusted data, map agents hold tools; OpenAI and PerturbAI staff among the authors;
+    preprint
+  direction: supports
+  measured: true
+  locator: Results (Fig. 1A-B, Fig. 2C-F, Fig. 3K, Fig. 4K); Discussion
 assessment:
   qa:
     unit: Schema enforcement per chunk; reducer.
@@ -303,13 +482,20 @@ provenance:
   sub_type: parallelization
   library_group: Multi-Agent
   library_source: catalog
-caveats: The injection result is one study with one fixed payload per case and no adaptive attacker; containment
-  holds by construction only for instruction injection, a poisoned item can still lie about itself, and
-  a free-text map output read by a privileged reducer gives the protection up. The long-input gains come
-  from packed or synthetic benchmarks (HotpotQA paragraphs padded with distractors, synthetic number lists),
-  from 2024 non-reasoning models in one study and 4B to 9B models in another, where beyond 262K tokens
-  the whole-input baseline ran on a context stretched with YaRN. The one comparison against a frontier
-  long-context model on real documents is a 102-question study whose map ran on a cheaper model, so its
-  cost gap mixes the split with the model change; PARSER's headline 11x latency cut is against a sequential
-  memory agent, and its 6.3-point lead over DeepSeek-V4-Pro needs RL on the lead agent and shrinks to
-  0.3 points out of distribution.
+caveats: The injection evidence is three studies with fixed payloads and no attacker adapting to the split
+  (one payload per case in one, 649 replayed attacks on one model without utility in another), and the
+  third shows the split does not stop data an item forges (a fake record or field got through a quarantined
+  reader 25.0% of the time on GPT-5.2, where fixed instruction payloads already failed almost always undefended);
+  containment holds by construction only for instruction injection, and a free-text map output read by
+  a privileged reducer gives the protection up. The long-input gains come mostly from packed or synthetic
+  benchmarks and 4B to 14B models, often with an RL-trained lead, where the open-model whole-input baselines
+  ran on contexts stretched with YaRN or truncated to 128K; the two comparisons against a frontier long-context
+  model on real documents are a 102-question study whose map ran on a cheaper model (map-reduce lost 58.1
+  to 68.0) and one LongBench v2 run in which a Gemini 3 Pro lead tied its own whole-input call (thinking
+  level and run count not stated), both by the method's authors, so their cost gaps mix the split with
+  a model change. A single map pass lost to a truncated whole-input call on real long documents, and with
+  GPT-5 as the lead, sub-calls lowered accuracy on two of three tasks against the same harness without
+  them; PARSER's headline 11x latency cut is against a sequential memory agent, and its 6.3-point lead
+  over DeepSeek-V4-Pro needs RL on the lead agent and shrinks to 0.3 points out of distribution. The per-item
+  agent study behind structured reports per item is not compute-matched and was run with the model's vendor,
+  and governance is unmeasured.

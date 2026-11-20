@@ -19,63 +19,96 @@ evidence_domains:
 - reasoning
 - code-generation
 - data-analysis
+- computer-use
 categories:
 - orchestration.extra-compute
-summary: 'Train or tune the system''s own judge from its own outputs and synthetic judgments (contrastive
-  pairs with one side deliberately degraded, the judge''s own verdicts kept only where they match the
-  construction label) instead of human labels, then use it to score, select or train in the loop. It pays
-  where no sound check exists and a prompted judge is too weak or too costly: synthetic-only training
-  lifted a 70B judge from 75.4 to 88.3 on RewardBench and another 70B judge from 48.6 to 60.0 on JudgeBench,
-  and an agent-loop verifier evolved from ten anchored examples agreed with held-out labels 0.625
-  of the time against 0.55 for the bare LLM judge it contains, a gap that was not significant. The limits are the point: gains concentrate on the benchmark used for selection (human
-  agreement on MT-Bench moved only from 77.8 to 78.9), and a policy optimized against its own reference-free
-  judge drove the judge''s pass rate from 0.72 to 0.94 while true accuracy stayed at 0.20. Keep a human-labeled
-  set the judge never trains or selects on; the agent''s downstream score cannot validate the judge.'
+summary: 'Train your own judge on your system''s outputs, labeled by construction, by execution or by
+  agreeing stronger judges, instead of paying humans or a frontier judge for every verdict. It pays where
+  no sound check exists and a prompted judge is too weak or too costly: synthetic-only training lifted
+  a 70B judge from 75.4 to 88.3 on RewardBench, a 9B computer-use judge trained on agreement-filtered
+  frontier verdicts reached 86.1% on 1,019 human-labeled trajectories against 89.7% for Claude Opus 4.8
+  at 30 to 60 times lower cost, and a reward model trained on execution-labeled agent runs lifted best-of-32
+  on SWE-bench Verified from 67.0% to 74.6%. The limits are the point: gains concentrate on the benchmark
+  used for selection, a verifier with nearly the same best-of-N gain as another collapsed RL training,
+  a policy optimized against its own judge drove the judge''s pass rate from 0.72 to 0.94 while true accuracy
+  stayed at 0.20, and judges sharing weights with the policy were rewritten as it trained. Keep a human-labeled
+  set the judge never trains or selects on and a small independent check inside the loop: neither the
+  agent''s score nor the judge''s agreement with humans validates the loop.'
 how: '1. Start from the baseline: a prompted judge from another model family with written criteria (7.c.iii),
-  or a sound external check where one exists (9.a.i). Bootstrap your own judge only where that baseline
-  disagrees with human labels too often or costs too much per call. First label two small human sets:
-  one for calibration and selection, and a locked one the judge never trains or selects on (one agent-loop
-  verifier was selected on ten anchored items and validated on locked sets of 40-48). 2. Build contrastive
-  pairs from your own traces so the label comes from construction, not from the judge''s opinion: a good
-  output against a degraded one, such as an answer to a subtly modified instruction, a sampled answer
-  that fails a known-answer check, or an output cut to a bare opener (''Thought process:''). Include both
-  orderings of every pair. 3. Train the judge on the pairs (fine-tune on its own verdicts that match the
-  label and iterate, or RL on verdict correctness), or tune a judge prompt against them. Prefer a base
-  from another family than the generator, since self-preference rises with self-recognition, but check
-  it: judges also favor any model whose mistakes resemble theirs. Where answers are checkable, make the
-  judge commit its own answer before it compares (false-positive rate on wrong answers 0.719 to 0.012
-  in one study). 4. Gate it before use: chance-corrected agreement and true- and false-positive rates
-  on the locked set; judge benchmarks other than the one used for selection; accuracy on the generator''s
-  outputs against equal-quality outputs from other sources; false-positive rate on adversarial probes
-  (bare openers, punctuation, padded and plausible-but-wrong answers). Never validate it by the agent''s
-  downstream score: an always-pass verifier trained skills as well as a valid one. 5. In the loop, control
-  length when picking preferred outputs, track the judge''s pass rate against audited accuracy, and keep
-  a human-audited sample and an outer judge outside the loop (9.c.iii). 6. Refresh on a schedule from
-  new traces: promote a retrained judge only if it agrees better with the locked set, add outputs the
+  or a sound external check where one exists (9.a.i). Price it and see what more effort or a vote buys
+  before training anything: on computer-use trajectories GPT-5.5 went from 88.99% at medium effort to
+  90.36% at xhigh, a vote of the three best judges added about a point at several times the cost, and
+  the strongest judges cost $2,300 to $4,000 for the 51,200 calls of one modest RL run. Bootstrap your
+  own judge only where that baseline disagrees with human labels too often or costs too much per call.
+  First label two small human sets: one for calibration and selection, and a locked one the judge never
+  trains or selects on (one agent-loop verifier was selected on ten anchored items and validated on locked
+  sets of 40-48); include a failure-heavy slice, where the best computer-use judge fell from 89.7% to
+  69.7%. 2. Get labels from construction, not from the judge''s opinion. Build contrastive pairs from
+  your own traces: a good output against a degraded one, such as an answer to a subtly modified instruction,
+  a sampled answer that fails a known-answer check, or an output cut to a bare opener (''Thought process:''),
+  with both orderings of every pair. For agent runs, label whole trajectories by execution (fail-to-pass
+  tests) and mix runs from several policies, on- and off-policy: one SWE reward model picked better with
+  more candidates only when trained on more than about 20k trajectories (under 5k it could get worse),
+  and the best ratio tried was two positives per negative. Where no check exists, label with an ensemble
+  of strong judges from different families and keep only near-unanimous verdicts with their reasoning
+  (one computer-use corpus kept about 85%). 3. Train the judge on these labels (fine-tune on its own verdicts
+  that match the label and iterate, or RL on verdict correctness), or tune a judge prompt against them;
+  then run a short RL pass on the cases it still gets wrong, mostly false successes (about 3.1K in one
+  study). Give it a context that holds whole trajectories (32k tokens fit 12.5% of SWE trajectories, 128k
+  99.5%). Keep its weights apart from the policy it will reward: judges sharing weights with the policy
+  were rewritten by its updates (probe AUC 0.812 to 0.630) or flipped more verdicts after training (29.9%
+  to 38.5%). Prefer a base from another family than the generator, since self-preference rises with self-recognition,
+  but check it: judges also favor any model whose mistakes resemble theirs. Where answers are checkable,
+  make the judge commit its own answer before it compares (false-positive rate on wrong answers 0.719
+  to 0.012 in one study). 4. Gate it before use: chance-corrected agreement and true- and false-positive
+  rates on the locked set and its failure-heavy slice; judge benchmarks other than the one used for selection;
+  accuracy on the generator''s outputs against equal-quality outputs from other sources; false-positive
+  rate on adversarial probes (bare openers, punctuation, padded and plausible-but-wrong answers, failed
+  runs that claim success). If it will be a training reward, also check discrimination (AUC) and calibration
+  on the policy''s own outputs, and which criteria drive its verdicts there: two SWE verifiers with nearly
+  the same best-of-N gain (+4.7 and +4.5 points) differed by 0.095 AUC, and the worse-calibrated one collapsed
+  RL. Never validate it by the agent''s downstream score: an always-pass verifier trained skills as well
+  as a valid one. 5. In the loop, control length when picking preferred outputs, track the judge''s pass
+  rate against audited accuracy, and score a small share of outputs with an independent judge, chosen
+  where the in-loop judge drifts most from its locked copy: in one image-generation study, the authors'' full repair
+  (a locked self-reward read and dense latent self-reward, with a drift-triggered controller spending
+  external scores on 1/16 of rollouts) beat a frozen external judge scoring every rollout (GenEval 0.602
+  against 0.560, at 2.91 against 10.38 seconds per step), while external scores alone on 1/16 of rollouts
+  reached 0.544. Keep a human-audited sample and an outer judge outside the loop (9.c.iii). 6.
+  Refresh on a schedule from new traces against external labels, never the judge''s own: refreshing a
+  drifted judge on its own labels gave rebounds that shrank each round (agreement peak 0.50 to 0.19 over
+  five rounds, three seeds). Promote a retrained judge only if it agrees better with the locked set, add outputs the
   old judge wrongly accepted as negatives, and discard scores that depended on the replaced judge. 7.
   Measure with a paired eval on the locked set against the prompted judge and against best-of-N or majority
-  vote at equal compute (9.c.ii); report the gap between the judge''s pass rate and audited accuracy at
+  vote at equal compute (9.c.ii), with cost and latency per call; grade the loop''s end quality on validity
+  measures the judge does not score (a self-judged policy halved order flips while its fable accuracy
+  fell from 56.5% to 53.4%), and report the gap between the judge''s pass rate and audited accuracy at
   every iteration.'
 detect:
   static: A pipeline that trains or prompt-tunes a judge on the system's own outputs or its own verdicts,
-    with periodic refresh. Flag a judge from the same model or family as the generator, no human-labeled
-    set held out from both training and selection, and a judge validated only by the agent's downstream
-    score.
+    with periodic refresh. Flag a judge from the same model or family as the generator, a judge that shares
+    trainable weights with the policy it rewards, a refresh trained on the judge's own labels, no human-labeled
+    set held out from both training and selection, a reward model chosen only by best-of-N gains, and
+    a judge validated only by the agent's downstream score.
   traces: Judge pass rate and score distribution per training or refresh iteration next to accuracy on
-    an audited sample; a widening gap, scores saturating near the top of the scale, and output length
-    rising across iterations.
-  evals: Chance-corrected agreement with a locked human-labeled set; the judge's accuracy on the generator's
-    own outputs against equal-quality outputs from other sources; results on judge benchmarks other than
-    the one used for model selection.
+    an audited sample and on a small share of outputs scored by an independent judge; the judge's scores
+    on a fixed probe set over time; a widening gap, scores saturating near the top of the scale, and output
+    length rising across iterations.
+  evals: Chance-corrected agreement with a locked human-labeled set, including a failure-heavy slice;
+    AUC and calibration on the policy's own outputs where the judge is a reward; the judge's accuracy
+    on the generator's own outputs against equal-quality outputs from other sources; results on judge
+    benchmarks other than the one used for model selection.
   judge: An outer judge kept outside every loop, from another family, given the task contract and checked
     against humans.
   probes:
-    what: 'Outputs built to fool the judge: content-free answers, plausible-but-wrong answers and padded
-      answers, plus the generator''s outputs paired with equal-quality outputs from other sources.'
+    what: 'Outputs built to fool the judge: content-free answers, plausible-but-wrong answers, failed
+      agent runs that claim success, and padded answers, plus the generator''s outputs paired with equal-quality
+      outputs from other sources.'
     construct: Cut real outputs to a bare reasoning opener or punctuation ('Thought process:', ':'); collect
       confident wrong answers the generator produces, or that a loop optimized against the judge converges
-      on; pad correct answers; pair generator outputs with equal-quality outputs from another model or
-      a human. The judge must reject the first three and score the pairs evenly.
+      on, and failed agent runs whose closing message claims success; pad correct answers; pair generator
+      outputs with equal-quality outputs from another model or a human. The judge must reject the first
+      three and score the pairs evenly.
   primary:
   - evals
   - probes
@@ -86,22 +119,32 @@ impact:
     when: 'gains on judge benchmarks and on what is trained against them: RewardBench 75.4 to 88.3 (Wang,
       Aug 2024); JudgeBench 48.6 to 60.0 for a 70B judge trained on 22K synthetic pairs, but +0.6 (70.8
       to 71.4) on a Qwen3-32B thinking base, still below o3''s 75.7 (Whitehouse, May 2025); AlpacaEval
-      2 LC win rate 25.5% to 39.4% (Wu, Jul 2024); search with a co-evolved code reviewer found a coder
-      passing 23 of 28 held-out DeepSWE tasks against 21 of 28 with a fixed evaluator, one run (Iacob,
-      Jun 2026).
-      Gains that do not transfer: MT-Bench human agreement 77.8 to 78.9 (Wang, Aug 2024); a self-trained
-      8B judge scored 83.0 against 69.5 on RewardBench but 30.2 against 32.3 on JudgeBench (Whitehouse,
-      May 2025); self-play against its own judge took the pass rate from 0.72 to 0.94 at 0.20 true accuracy
-      (Zhou, Jul 2026)'
+      2 LC win rate 25.5% to 39.4% (Wu, Jul 2024); a 9B computer-use judge trained on agreement-filtered
+      frontier verdicts 76.7% to 86.1% on human-labeled trajectories against 89.7% for Claude Opus 4.8,
+      and 39.4% to 60.2% against 69.7% on failure-heavy runs (Sun, Jul 2026); best-of-32 on SWE-bench
+      Verified 51.6% to 62.0% and 67.0% to 74.6%, and added to the execution reward in RL 54.8% against
+      51.8% (Shum, Dec 2025); search with a co-evolved code reviewer found a coder passing 23 of 28 held-out
+      DeepSWE tasks against 21 of 28 with a fixed evaluator, one run (Iacob, Jun 2026). Gains that do
+      not transfer: MT-Bench human agreement 77.8 to 78.9 (Wang, Aug 2024); a self-trained 8B judge scored
+      83.0 against 69.5 on RewardBench but 30.2 against 32.3 on JudgeBench (Whitehouse, May 2025); self-play
+      against its own judge took the pass rate from 0.72 to 0.94 at 0.20 true accuracy (Zhou, Jul 2026);
+      a poorly calibrated reward model left Terminal Bench at 15.0% after RL against 30.0% with the execution
+      reward (Shum, Dec 2025); a self-judged policy halved order flips (14.3% to 6.6%) while fable accuracy
+      fell from 56.5% to 53.4% (Meurers, Oct 2026); unanchored self-reward cut held-out GenEval by 7.6
+      to 9.4 points (Chen, Oct 2026)'
     basis: evidence
   cost:
-    effect: degrades
+    effect: mixed
     size: medium
     when: 'up-front generation, training and validation, repeated at every refresh: Meta-Rewarding sampled
       7 responses for each of 5,000 prompts and 11 judgments of each response per iteration, for four
       iterations (Wu, Jul 2024); Self-Taught Evaluators retrained a 70B judge for five iterations (Wang,
-      Aug 2024); one co-evolution search with a learned reviewer used 587M tokens to its best coder against
-      429M with a fixed evaluator on DeepSWE, but 1.35 to 1.72 times fewer on Polyglot (Iacob, Jun 2026)'
+      Aug 2024); a computer-use judge was built from about 321K ensemble verdicts, and its 1,019-trajectory
+      human-gold test set took about 800 human hours (Sun, Jul 2026); one co-evolution search with a learned
+      reviewer used 587M tokens to its best coder against 429M with a fixed evaluator on DeepSWE, but
+      1.35 to 1.72 times fewer on Polyglot (Iacob, Jun 2026). Per call far below a frontier judge: about
+      $68 against $2,300 (GPT-5.5) to $4,000 (Claude Opus 4.8) for the 51,200 judge calls of one modest
+      RL run, and $1.36 against $45 to $100 to judge 1,019 trajectories (Sun, Jul 2026)'
     basis: evidence
   performance:
     effect: none
@@ -113,7 +156,10 @@ impact:
       or '':'' drew false-positive rates as high as 80%, one trained verifier 66.8% on a single blank
       space, and adding 20k truncated outputs as negatives brought trained judges near 0% (Zhao, Jul 2025);
       errors a policy learned against its own judge fooled judges of other families, and a three-family
-      ensemble still accepted 55% of wrong answers on one seed, 65% over three seeds (Zhou, Jul 2026)'
+      ensemble still accepted 55% of wrong answers on one seed, 65% over three seeds (Zhou, Jul 2026);
+      judges read the agent''s own account: over-accepting incomplete computer-use tasks was two-thirds
+      of all judge errors, and training on false successes (SFT, then RL on them) raised a 9B judge''s
+      catch rate on failure-heavy runs from 14.1% to 57.6% (Sun, Jul 2026)'
     basis: evidence
   governance:
     effect: degrades
@@ -121,7 +167,10 @@ impact:
     when: 'self-referential evaluation: the system''s own score cannot show whether it improved. A collapsed
       always-pass verifier trained skills as well as a valid one, and rubric gaming that no in-loop signal
       saw was caught by an outer judge (Zhang, Oct 2026); without a held-out check a self-play judge reported
-      94% correct when 20% were (Zhou, Jul 2026)'
+      94% correct when 20% were (Zhou, Jul 2026); a judge''s agreement with humans on human-written arguments
+      did not show what drove it on the policy''s outputs, and the policy grew more consistent but not
+      more valid (Meurers, Oct 2026); a drifted judge refreshed on its own labels recovered less each
+      round (agreement peak 0.50 to 0.19) (Chen, Oct 2026)'
     basis: evidence
   brand:
     effect: none
@@ -132,14 +181,17 @@ impact:
 measure:
 - method: experiment
   tier: 3
-  how: 'paired eval on a locked human-labeled set the judge never trains or selects on: the bootstrapped
-    judge against the prompted judge it would replace and against majority vote or best-of-N at equal
-    compute; chance-corrected agreement, true- and false-positive rates, accuracy on the generator''s
-    own outputs against equal-quality outputs from other sources, false-positive rate on adversarial probes;
-    then the loop''s end quality graded on the same locked set, never by the judge'
+  how: 'paired eval on a locked human-labeled set the judge never trains or selects on, with a failure-heavy
+    slice: the bootstrapped judge against the prompted judge it would replace (also at higher effort)
+    and against majority vote or best-of-N at equal compute; chance-corrected agreement, true- and false-positive
+    rates, AUC and calibration on the policy''s own outputs where it will be a reward, accuracy on the
+    generator''s own outputs against equal-quality outputs from other sources, false-positive rate on
+    adversarial probes, cost and latency per call; then the loop''s end quality graded on the same locked
+    set and on validity measures the judge does not score, never by the judge'
 - method: monitor
   how: 'per training iteration and per refresh: the judge''s pass rate against accuracy on a regularly
-    audited human sample, score saturation near the top of the scale, output length, and the judge''s
+    audited human sample and against a small share of outputs scored by an independent judge, its scores
+    on a fixed probe set, score saturation near the top of the scale, output length, and the judge''s
     acceptance rate on the generator''s outputs against outputs from other sources; promote a retrained
     judge only if it agrees better with the locked set'
 evidence:
@@ -331,6 +383,111 @@ evidence:
   direction: mixed
   measured: true
   locator: §1; §5.1; §5.4 Figure 7; Appendix C.5 Table 6; C.6-C.7
+- source: 'Marius De Kuthy Meurers, Aaron Parisi, Bernd Bohnet (Google DeepMind), "Consistency Is Not
+    Validity: Self-Rewarded Moral Argumentation Makes Language Models Decisive but Pliable", https://arxiv.org/abs/2610.30349'
+  date: '2026-10-21'
+  task: A policy judges its own arguments pairwise in both orders with the same weights and is trained
+    by RL on the tournament scores (thinking tokens masked, length penalty), on 780 prompts from 156 solver-verified
+    literature dilemmas; the judge is first checked against human argument-quality labels, and the policy
+    is tested on held-out moral-judgment benchmarks and against a 4-shot prompt
+  effect: 'Judge resolved accuracy against human preferences on 15,000 IBM-ArgQ pairs: 78.5% at 4B and
+    80.4% for a 31B reference, with 33.5% and 10.7% of pairs left unresolved. After training, the shared-weight
+    judge picked the human winner as often (82.2% against 82.4% on pairs both checkpoints resolve) but
+    left 47.3% of pairs unresolved, its presentation flips rising from 29.9% to 38.5%. The policy halved
+    presentation flips on high-ambiguity MoralChoice (14.3% to 6.6%) and cut ELEPHANT indirectness from
+    25.5% to 6.2%, while moral sycophancy stayed flat (45.3% to 44.0%), framing acceptance rose (5.2%
+    to 7.5%) and MORABLES accuracy fell (56.5% to 53.4%, change 95% CI [-4.8, -1.5]). On human-written
+    arguments the judge''s overall preference agreed most with rhetoric; on the policy''s own outputs
+    the reward followed dialectic (Spearman 0.94) and rhetoric least (0.53): "Outcome accuracy on human
+    arguments therefore does not reveal which aspect drives the judge on the policy''s distribution".
+    Four targeted in-context examples, without training, gave fewer presentation flips (2.1%) and lower
+    sycophancy (26.8%) but raised framing acceptance to 29.0%.'
+  conditions: Gemma-4 E4B (4.5B effective) as policy and judge with shared weights, Gemma-4 31B as reference
+    judge; IBM-ArgQ-30k (15,000 pairs), Dagstuhl-15512; MoralChoice (1,267 scenarios), ELEPHANT (1,391
+    posts), MORABLES (709 fables); one policy scale, each configuration trained once; judges validated
+    only on human-written arguments
+  direction: contradicts
+  measured: true
+  locator: §3.2; §5, Figures 1-2; §6.2, Figure 5; §7.1-7.2; Limitations
+- source: 'Binyan Chen, Tong Pan, "Self-Verifier Capture in Unified Visual Generators: Diagnosing and
+    Repairing Closed-Loop Self-Reward", https://arxiv.org/abs/2610.16500'
+  date: '2026-10-12'
+  task: Image generators score their own latents through their language-model understanding pathway (yes-token
+    logit for prompt agreement) and are trained by GRPO on that self-reward; a matched design crosses
+    a frozen or shared reward read with a semantic or denoising verifier, tracks the frozen judge's agreement
+    with an external scorer panel as the policy drifts, refreshes the judge on its own labels for five
+    rounds, then repairs the loop by locking the judge after warm-up and scoring a small, drift-selected
+    share of rollouts with external scorers; compared with an external judge on every rollout
+  effect: 'Self-reward rose while held-out quality fell: GenEval -7.6 and DPG-Bench -3.0 points with a
+    frozen semantic judge, -9.4 and -3.9 with a shared one; a fixed probe''s ranking AUC stayed at 0.812
+    under the frozen read and fell to 0.630 under sharing. The frozen judge''s Spearman agreement with
+    the external panel fell from 0.76 to 0.18 as the policy drifted, and refreshing it on its own labels
+    gave transient rebounds whose median peak fell from 0.50 to 0.19 over five rounds. Locking removed
+    89% of the shared-weight effect but not the exploitation. With external scores on 1/16 of rollouts
+    the full method reached GenEval 0.602 and DPG 81.3 against 0.560 and 79.0 for a frozen Qwen2.5-VL-7B
+    judge on every rollout, at 2.91 against 10.38 seconds per training step (7.43 for the external panel
+    on every rollout); at 1/32 coverage it scored higher in all four base and metric comparisons and was
+    jointly non-inferior.'
+  conditions: Scale-RAE (about 3.9B, Qwen and DiT) and Show-o2-1.5B latent image generators; external
+    panel HPSv2, PickScore, ImageReward; GenEval and DPG-Bench held out; five seeds; image generation,
+    not text or agents; two authors
+  direction: mixed
+  measured: true
+  locator: §3.2-3.4, Figure 2; §4.1; §5.1-5.4, Table 1; Appendix G.6, Table 16
+- source: 'Qiushi Sun, Kanzhi Cheng, Yian Wang, et al., "OSReward: Instituting Standardized Evaluation
+    for Cross-Platform Computer-Use Reward Models", https://arxiv.org/abs/2607.28609'
+  date: '2026-07-30'
+  task: 'Benchmark 27 prompted vision-language judges on 1,019 computer-use trajectories with human gold
+    verdicts, then train open judges without new human labels: about 321K verdicts from an ensemble of
+    strong judges on separate trajectories, kept only where they agree near-unanimously (about 85% kept;
+    96.6K samples carrying an agreeing judge''s reasoning), SFT on Qwen3.5, then a short GRPO pass on
+    about 3.1K mined errors, mostly false successes; compare accuracy and cost with the prompted judges
+    and with a vote of judges'
+  effect: 'Binary accuracy on the human-gold set (failure-heavy Hard subset in brackets): Qwen3.5-9B base
+    76.7 [39.4], OS-Shepherd-9B 86.1 [60.2], with Hard fail recall 14.1% to 57.6%; OS-Shepherd-35B-A3B
+    85.6 [62.7]; Claude-Opus-4-8 89.7 [69.7], GPT-5.5 89.5 [67.3], GPT-5-mini 86.1 [56.3]. Over-accepting
+    an incomplete task made up two-thirds of all judge errors and was the leading error of every judge.
+    More thinking gained +2.83 points on the weakest judge and +0.39 on the strongest; GPT-5.5 at medium,
+    high and xhigh effort scored 88.99, 89.50 and 90.36. A top-3 judge vote "edges the best single judge
+    by about a point at several times the cost"; resampling at T=0.7 flipped 6-9% of verdicts. Cost to
+    judge the full set: about $100 for Claude-Opus-4-8, $45 for GPT-5.5, $1.36 for OS-Shepherd-9B; for
+    the 51,200 judge calls of one modest RL run, "about $4,000 with Claude-Opus-4-8 or $2,300 with GPT-5.5
+    ... against about $68 with OS-Shepherd-9B". Four times the parameters added 2.4 points of Hard balanced
+    accuracy and nothing on the full set.'
+  conditions: Web, Windows, Ubuntu and Android trajectories from agents of four model families; three
+    annotators plus meta-review per trajectory (about 800 human hours); Hard subset of 284 trajectories
+    (30/70 success/fail); training corpus disjoint from the benchmark; greedy decoding, one run; API list
+    prices (May 2026); transfer checked on OSWorld, AndroidWorld and WebArena against their own verifiers
+  direction: supports
+  measured: true
+  locator: §3.3-3.4; §4.2-4.4, Table 1; §5.3-5.4; §6.1-6.3, Table 4; Appendix D.2; Appendix E.6, Table
+    15
+- source: 'KaShun Shum, Binyuan Hui, Jiawei Chen, Lei Zhang, X. W., Jiaxi Yang, Yuzhen Huang, Junyang
+    Lin, Junxian He, "SWE-RM: Execution-free Feedback For Software Engineering Agents", https://arxiv.org/abs/2512.21919'
+  date: '2025-12-26'
+  task: Train an execution-free reward model that reads a whole agent trajectory and answers YES or NO
+    (score from the token probabilities), on OpenHands trajectories from Qwen3-Coder and Claude-4 policies
+    labeled by their fail-to-pass test results; ablate data scale, positive-to-negative ratio, policy
+    mix, sources and context length; use it for best-of-32 selection and as an RL reward, alone or added
+    to the execution reward
+  effect: 'Two early verifiers with nearly identical best-of-N gains (+4.7% and +4.5%) differed by 0.095
+    in AUC and about threefold in expected calibration error; as RL rewards one improved smoothly and
+    the other collapsed. Best-of-32 resolve rate on SWE-bench Verified: Qwen3-Coder-Flash 51.6% pass@1
+    to 62.0% and Qwen3-Coder-Max 67.0% to 74.6%, against 54.6% and 67.6% for the DeepSWE execution-based
+    verifier; OpenHands-LM-32B 48.8% against 44.6%. RL pass@1: hybrid reward 54.8% against 51.8% for execution
+    only; on Terminal Bench 32.5% hybrid, 31.3% reward model only, 30.0% execution only and 15.0% with
+    a poorly calibrated reward model of comparable best-of-N. Selection improved with more candidates
+    when trained on more than 20k trajectories, while fewer than 5k could make it decline; 500 examples
+    gave ECE 0.481, seven times that at 100k; 2:1 positives to negatives was best of the ratios tried;
+    a 32k context could score 12.5% of trajectories and 128k 99.5%.'
+  conditions: Qwen3-30B-A3B reward model (3B active), up to 256k context; SWE-bench Verified (500 tasks),
+    32 runs per instance; SWE-Gym, SWE-rebench, SWE-smith and R2E-Gym training sources; RL on Qwen3-30B-A3B
+    with GSPO in OpenHands; also SWE-bench Live (Lite), SWE-bench Multilingual, Multi-SWE-bench mini,
+    Terminal Bench
+  direction: supports
+  measured: true
+  locator: Abstract; §3.1-3.2, Figures 2-5; §4.1-4.3, Tables 1-2; §5.1, Table 4; §5.2.2, Figure 7, Table
+    5
 assessment:
   qa:
     unit: null
@@ -381,13 +538,18 @@ provenance:
   sub_type: reflection
   library_group: Feedback & Iteration
   library_source: catalog
-caveats: 'Most evidence comes from instruction-following benchmarks graded by GPT-4 (AlpacaEval, Arena-Hard)
-  or from judge benchmarks also used for model selection, and the agent-loop studies are small: 28 held-out
-  DeepSWE tasks with one run per arm, locked sets of 40-48 items over three seeds, one model family. Gains
-  shrink on strong reasoning bases (+0.6 on JudgeBench for a Qwen3-32B thinking model, which o3 still
-  beat), and the largest self-play hacking appeared in a regime built to hold accuracy low; under natural
-  chain-of-thought the gap between judge pass rate and true accuracy fell to 0.086-0.125. A judge from
-  another family cuts self-preference but not shared blind spots: judges favor any model whose mistakes
-  resemble theirs, and errors a policy learned against one judge fooled judges of other families. Several
-  methods sold as label-free still used human data (Self-Rewarding''s seed evaluation examples, a ten-item
-  anchor, accepted and rejected pull requests), so treat a small human set as part of the method.'
+caveats: 'Most evidence comes from judge benchmarks also used for model selection, instruction-following
+  benchmarks graded by GPT-4, or single-run agent studies; the largest human-labeled agent test (1,019
+  computer-use trajectories, one run) left the trained 9B judge at 60.2% against 69.7% for the best frontier
+  judge on failure-heavy runs, and the drift and shared-weight results come from one two-author image-generation
+  study and one 4B policy trained once. Gains shrink on strong bases: +0.6 on JudgeBench for a Qwen3-32B
+  thinking judge, which o3 still beat, and four times the parameters added 2.4 points to a trained computer-use
+  judge on failure-heavy runs; the largest self-play hacking appeared in a regime built to hold accuracy
+  low, and under natural chain-of-thought the gap between judge pass rate and true accuracy fell to 0.086-0.125.
+  A judge from another family cuts self-preference but not shared blind spots: judges favor any model
+  whose mistakes resemble theirs, errors a policy learned against one judge fooled judges of other families,
+  and judges of every family accepted failed computer-use runs that claimed success. Several methods sold
+  as label-free still used human data (Self-Rewarding''s seed evaluation examples, a ten-item anchor,
+  accepted and rejected pull requests), so treat a small human set as part of the method; and no source
+  here times a trained judge per call against a prompted frontier judge or compares its selection with
+  a plain majority vote over the generator''s samples at equal compute.'

@@ -74,7 +74,9 @@ No source tests these practices together, and PII tokenization has no measured l
 - `aot-kit:plan-then-execute` (6.c.ii, Plan-then-execute)
 - `aot-kit:skill-library` (4.c.ii, Skill library evolution)
 - `aot-kit:restructure-system-prompt` (3.a.iv, Restructure the system prompt: every requirement once, up front, in named sections; nothing the model doesn't need)
+- `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
 - `aot-kit:staged-compaction` (5.a.i, Compact conversation history in stages: elide stale tool outputs, then keep an anchored summary)
+- `aot-kit:tune-search-tool` (8.b.i, Tune the search tool: snippets, enough results, retries, reformulation, filters, source quality)
 - `aot-kit:rewrite-tool-surface` (2.a.ii, Rewrite the tool surface: names, schemas, descriptions)
 - `aot-kit:surface-unreadable-information` (8.a.ii, Surface information the source holds but the agent cannot read)
 - `aot-kit:reduce-tool-surface` (2.a.i, Reduce the tool surface: remove and consolidate tools, then defer the rest behind search)
@@ -82,7 +84,10 @@ No source tests these practices together, and PII tokenization has no measured l
 - `aot-kit:react-loop` (7.d.iii, ReAct loop)
 - `aot-kit:evaluator-optimizer-loop` (7.c.iii, Evaluator-optimizer loop)
 - `aot-kit:keep-errors-in-context` (7.b.ii, Keep errors in context)
+- `aot-kit:multi-agent-debate` (7.c.vi, Multi-agent debate)
 - `aot-kit:llm-map-reduce` (6.b.ii, LLM map-reduce)
+- `aot-kit:inversion-of-control` (7.d.ii, Inversion of control)
+- `aot-kit:parallel-read-only-tools` (6.b.i, Parallel tool execution for read-only calls)
 - `aot-kit:episodic-memory` (4.c.i, Episodic memory retrieval)
 
 <!-- End of the generated part. Everything below is written by hand. -->

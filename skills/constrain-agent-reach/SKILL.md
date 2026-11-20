@@ -73,6 +73,7 @@ The measured evidence is small and mostly comes from builders and vendors: the 7
 - `aot-kit:choose-action-interface` (2.a.iii, Choose how the agent acts: typed tools, code execution, or shell, matched to the model and task)
 - `aot-kit:code-then-execute` (6.c.i, Code-then-execute (CaMeL))
 - `aot-kit:size-execution-budgets` (7.b.iii, Size run budgets so productive runs aren't cut off: turn caps, deadlines, command timeouts)
+- `aot-kit:fail-soft-tools` (2.b.i, Make tool calls and tool results fail soft, and retry transient failures)
 - `aot-kit:external-verifier-feedback` (9.a.i, Feed back a sound external verifier's verdict; never the model's own critique)
 - `aot-kit:isolated-subagent-context` (5.c.ii, Sub-agent architectures with clean contexts)
 - `aot-kit:mask-tools-not-remove` (3.b.ii, Mask tools instead of removing them)
